@@ -1,9 +1,9 @@
 <script setup lang="ts">
 useHead({
-  title: 'AI Session Hub - 智能会话管理平台',
+  title: 'AI Session Hub - 会话与知识管理',
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-    { name: 'description', content: 'AI Session Hub - 聚合管理 Pi、OpenCode、AGY、Claude Code、Codex、WorkBuddy、Reasonix 等终端与应用会话' }
+    { name: 'description', content: 'AI Session Hub - 聚合管理多平台 CLI 与 Desktop Apps 的会话与知识沉淀' }
   ],
   link: [
     { rel: 'icon', href: '/favicon.ico' }
@@ -13,40 +13,37 @@ useHead({
 
 <template>
   <UApp>
-    <div class="min-h-screen bg-slate-50 dark:bg-neutral-950 flex flex-col font-sans">
+    <div class="min-h-screen bg-neutral-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans selection:bg-zinc-900 selection:text-white dark:selection:bg-zinc-100 dark:selection:text-zinc-900">
       <!-- Navbar -->
-      <header class="sticky top-0 z-50 bg-white/85 dark:bg-neutral-900/85 backdrop-blur border-b border-slate-200 dark:border-neutral-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header class="sticky top-0 z-50 bg-white/90 dark:bg-zinc-900/90 backdrop-blur border-b border-zinc-200/80 dark:border-zinc-800/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div class="flex items-center gap-6">
-            <NuxtLink to="/" class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 font-bold text-lg">
-                <UIcon name="i-lucide-layers" class="w-5 h-5" />
+            <NuxtLink to="/" class="flex items-center gap-2.5 group">
+              <div class="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center text-white dark:text-zinc-900 font-bold text-sm shadow-sm transition-transform group-hover:scale-105">
+                <UIcon name="i-lucide-layers" class="w-4 h-4" />
               </div>
-              <div>
-                <div class="font-bold text-base tracking-tight flex items-center gap-2">
-                  <span>AI Session Hub</span>
-                  <UBadge variant="subtle" color="primary" size="xs" class="font-mono">v1.1</UBadge>
-                </div>
-                <p class="text-[11px] text-slate-500 dark:text-neutral-400">一站式 AI CLI & Apps 会话管理中枢</p>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-sm tracking-tight text-zinc-900 dark:text-zinc-100">AI Session Hub</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-medium">v1.1</span>
               </div>
             </NuxtLink>
 
             <!-- Nav Links -->
-            <nav class="hidden sm:flex items-center gap-2">
+            <nav class="hidden sm:flex items-center gap-1">
               <NuxtLink to="/">
-                <UButton variant="ghost" color="neutral" icon="i-lucide-list">会话清单</UButton>
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list">会话清单</UButton>
               </NuxtLink>
               <NuxtLink to="/distill">
-                <UButton variant="ghost" color="neutral" icon="i-lucide-sparkles">知识提炼与复盘</UButton>
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
               </NuxtLink>
             </nav>
           </div>
 
-          <div class="flex items-center gap-3">
-            <UBadge variant="subtle" color="success" size="xs" class="font-mono hidden md:inline-flex flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              MCP HTTP: /api/mcp/sse
-            </UBadge>
+          <div class="flex items-center gap-2.5">
+            <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-100 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-300">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>MCP SSE: /api/mcp/sse</span>
+            </div>
             <UColorModeButton />
           </div>
         </div>
@@ -58,8 +55,8 @@ useHead({
       </main>
 
       <!-- Footer -->
-      <footer class="border-t border-slate-200 dark:border-neutral-800 py-4 text-center text-xs text-slate-400 dark:text-neutral-500">
-        AI Session Hub • 聚合管理本地所有 AI 终端与桌面应用会话 • 支持 MCP HTTP/SSE 服务
+      <footer class="border-t border-zinc-200 dark:border-zinc-800/80 py-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
+        AI Session Hub • 极简、高效的多源会话与知识资产沉淀平台
       </footer>
     </div>
   </UApp>
