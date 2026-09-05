@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const isMcpModalOpen = ref(false)
+
 useHead({
   title: 'AI Session Hub - 会话与知识管理',
   meta: [
@@ -40,10 +42,17 @@ useHead({
           </div>
 
           <div class="flex items-center gap-2.5">
-            <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-100 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-300">
-              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>MCP SSE: /api/mcp/sse</span>
-            </div>
+            <!-- Clickable MCP Status Bar -->
+            <button
+              @click="isMcpModalOpen = true"
+              class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-100 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 transition-colors cursor-pointer select-none group"
+              title="点击查看 MCP 配置示例与调用日志"
+            >
+              <span class="w-2 h-2 rounded-full bg-emerald-500 group-hover:animate-ping"></span>
+              <span class="font-medium">MCP SSE</span>
+              <span class="text-zinc-400">/api/mcp/sse</span>
+              <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
             <UColorModeButton />
           </div>
         </div>
@@ -56,8 +65,11 @@ useHead({
 
       <!-- Footer -->
       <footer class="border-t border-zinc-200 dark:border-zinc-800/80 py-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
-        AI Session Hub • 极简、高效的多源会话与知识资产沉淀平台
+        AI Session Hub • 极简、高效的多源会话与知识资产沉淀平台 • 支持 MCP SSE 协议
       </footer>
+
+      <!-- MCP Configuration & Logs Modal -->
+      <McpModal v-model:open="isMcpModalOpen" />
     </div>
   </UApp>
 </template>

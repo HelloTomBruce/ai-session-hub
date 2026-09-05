@@ -7,6 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { adapterRegistry } from './adapter-registry'
 import { distillSessionsContent } from './distillator'
+import { mcpLogger } from './mcp-logger'
 import type { PlatformType } from './types'
 
 export function createMcpServer() {
@@ -114,133 +115,199 @@ export function createMcpServer() {
   // 2. Tools Call Implementation
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params
+    const startTime = Date.now()
 
-    if (name === 'list_sessions') {
-      const platform = (args.platform as string) || 'all'
-      const search = ((args.search as string) || '').toLowerCase().trim()
-      const cwd = ((args.cwd as string) || '').toLowerCase().trim()
-      const limit = Number(args.limit) || 20
+    try {
+      if (name === 'list_sessions') {
+        const platform = (args.platform as string) || 'all'
+        const search = ((args.search as string) || '').toLowerCase().trim()
+        const cwd = ((args.cwd as string) || '').toLowerCase().trim()
+        const limit = Number(args.limit) || 20
 
-      let sessions = adapterRegistry.getAllSessions(platform)
+        let sessions = adapterRegistry.getAllSessions(platform)
 
-      if (cwd) {
-        sessions = sessions.filter(s => s.cwd.toLowerCase().includes(cwd))
-      }
-      if (search) {
-        sessions = sessions.filter(s => 
-          s.title.toLowerCase().includes(search) || 
-          s.id.toLowerCase().includes(search) ||
-          s.cwd.toLowerCase().includes(search)
-        )
-      }
-
-      const results = sessions.slice(0, limit).map(s => ({
-        id: s.id,
-        platform: s.cli,
-        title: s.title,
-        cwd: s.cwd,
-        model: s.model,
-        messageCount: s.messageCount,
-        updatedAt: new Date(s.updatedAt).toISOString()
-      }))
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(results, null, 2)
-          }
-        ]
-      }
-    }
-
-    if (name === 'get_session_details') {
-      const platform = args.platform as PlatformType
-      const sessionId = args.sessionId as string
-
-      const res = adapterRegistry.getMessages(platform, sessionId)
-      if (!res.session) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `未找到指定会话: platform=${platform}, sessionId=${sessionId}`
-            }
-          ],
-          isError: true
+        if (cwd) {
+          sessions = sessions.filter(s => s.cwd.toLowerCase().includes(cwd))
         }
-      }
+        if (search) {
+          sessions = sessions.filter(s => 
+            s.title.toLowerCase().includes(search) || 
+            s.id.toLowerCase().includes(search) ||
+            s.cwd.toLowerCase().includes(search)
+          )
+        }
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              session: res.session,
-              messages: res.messages
-            }, null, 2)
-          }
-        ]
-      }
-    }
+        const results = sessions.slice(0, limit).map(s => ({
+          id: s.id,
+          platform: s.cli,
+          title: s.title,
+          cwd: s.cwd,
+          model: s.model,
+          messageCount: s.messageCount,
+          updatedAt: new Date(s.updatedAt).toISOString()
+        }))
 
-    if (name === 'distill_knowledge') {
-      const sessionIds = (args.sessionIds as string[]) || []
-      const platform = (args.platform as string) || 'all'
-      const cwd = ((args.cwd as string) || '').toLowerCase().trim()
-      const limit = Number(args.limit) || 5
+        const resText = JSON.stringify(results, null, 2)
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Found ${results.length} sessions`
+        })
 
-      let targetSessions = adapterRegistry.getAllSessions(platform)
-
-      if (sessionIds.length > 0) {
-        targetSessions = targetSessions.filter(s => sessionIds.includes(s.id))
-      } else if (cwd) {
-        targetSessions = targetSessions.filter(s => s.cwd.toLowerCase().includes(cwd))
-      }
-      targetSessions = targetSessions.slice(0, limit)
-
-      if (targetSessions.length === 0) {
         return {
           content: [
             {
               type: 'text',
-              text: '没有找到可供提炼总结的匹配会话。'
+              text: resText
             }
           ]
         }
       }
 
-      // Fetch messages for each session
-      const fullData = targetSessions.map(s => {
-        const { messages } = adapterRegistry.getMessages(s.cli, s.id)
-        return { session: s, messages }
+      if (name === 'get_session_details') {
+        const platform = args.platform as PlatformType
+        const sessionId = args.sessionId as string
+
+        const res = adapterRegistry.getMessages(platform, sessionId)
+        if (!res.session) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'error',
+            durationMs: Date.now() - startTime,
+            error: `Session not found: ${sessionId}`
+          })
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `未找到指定会话: platform=${platform}, sessionId=${sessionId}`
+              }
+            ],
+            isError: true
+          }
+        }
+
+        const resText = JSON.stringify({
+          session: res.session,
+          messages: res.messages
+        }, null, 2)
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Loaded ${res.messages.length} messages for ${res.session.title}`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: resText
+            }
+          ]
+        }
+      }
+
+      if (name === 'distill_knowledge') {
+        const sessionIds = (args.sessionIds as string[]) || []
+        const platform = (args.platform as string) || 'all'
+        const cwd = ((args.cwd as string) || '').toLowerCase().trim()
+        const limit = Number(args.limit) || 5
+
+        let targetSessions = adapterRegistry.getAllSessions(platform)
+
+        if (sessionIds.length > 0) {
+          targetSessions = targetSessions.filter(s => sessionIds.includes(s.id))
+        } else if (cwd) {
+          targetSessions = targetSessions.filter(s => s.cwd.toLowerCase().includes(cwd))
+        }
+        targetSessions = targetSessions.slice(0, limit)
+
+        if (targetSessions.length === 0) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'success',
+            durationMs: Date.now() - startTime,
+            responsePreview: 'No matching sessions for distillation'
+          })
+          return {
+            content: [
+              {
+                type: 'text',
+                text: '没有找到可供提炼总结的匹配会话。'
+              }
+            ]
+          }
+        }
+
+        const fullData = targetSessions.map(s => {
+          const { messages } = adapterRegistry.getMessages(s.cli, s.id)
+          return { session: s, messages }
+        })
+
+        const report = distillSessionsContent(fullData)
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Distilled ${targetSessions.length} sessions: ${report.actionsDone.length} actions, ${report.keyLearnings.length} learnings`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: report.rawMarkdown
+            }
+          ]
+        }
+      }
+
+      if (name === 'get_hub_stats') {
+        const stats = adapterRegistry.getStats()
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Total ${stats.total} sessions across platforms`
+        })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(stats, null, 2)
+            }
+          ]
+        }
+      }
+
+      throw new Error(`Unknown tool: ${name}`)
+    } catch (err: any) {
+      mcpLogger.addLog({
+        type: 'tool',
+        name,
+        params: args,
+        status: 'error',
+        durationMs: Date.now() - startTime,
+        error: err?.message || String(err)
       })
-
-      const report = distillSessionsContent(fullData)
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: report.rawMarkdown
-          }
-        ]
-      }
+      throw err
     }
-
-    if (name === 'get_hub_stats') {
-      const stats = adapterRegistry.getStats()
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(stats, null, 2)
-          }
-        ]
-      }
-    }
-
-    throw new Error(`Unknown tool: ${name}`)
   })
 
   // 3. Resources
@@ -266,6 +333,13 @@ export function createMcpServer() {
     const platform = match[1] as PlatformType
     const sessionId = match[2]
     const res = adapterRegistry.getMessages(platform, sessionId)
+
+    mcpLogger.addLog({
+      type: 'resource',
+      name: uri,
+      status: 'success',
+      responsePreview: `Read resource ${uri}`
+    })
 
     return {
       contents: [
