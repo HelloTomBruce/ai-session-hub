@@ -17,20 +17,36 @@ useHead({
       <!-- Navbar -->
       <header class="sticky top-0 z-50 bg-white/85 dark:bg-neutral-900/85 backdrop-blur border-b border-slate-200 dark:border-neutral-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 font-bold text-lg">
-              <UIcon name="i-lucide-layers" class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="font-bold text-base tracking-tight flex items-center gap-2">
-                <span>AI Session Hub</span>
-                <UBadge variant="subtle" color="primary" size="xs" class="font-mono">v1.0</UBadge>
+          <div class="flex items-center gap-6">
+            <NuxtLink to="/" class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 font-bold text-lg">
+                <UIcon name="i-lucide-layers" class="w-5 h-5" />
               </div>
-              <p class="text-xs text-slate-500 dark:text-neutral-400">一站式 AI CLI & Desktop Apps 会话管理中枢</p>
-            </div>
+              <div>
+                <div class="font-bold text-base tracking-tight flex items-center gap-2">
+                  <span>AI Session Hub</span>
+                  <UBadge variant="subtle" color="primary" size="xs" class="font-mono">v1.1</UBadge>
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-neutral-400">一站式 AI CLI & Apps 会话管理中枢</p>
+              </div>
+            </NuxtLink>
+
+            <!-- Nav Links -->
+            <nav class="hidden sm:flex items-center gap-2">
+              <NuxtLink to="/">
+                <UButton variant="ghost" color="neutral" icon="i-lucide-list">会话清单</UButton>
+              </NuxtLink>
+              <NuxtLink to="/distill">
+                <UButton variant="ghost" color="neutral" icon="i-lucide-sparkles">知识提炼与复盘</UButton>
+              </NuxtLink>
+            </nav>
           </div>
 
           <div class="flex items-center gap-3">
+            <UBadge variant="subtle" color="success" size="xs" class="font-mono hidden md:inline-flex flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              MCP HTTP: /api/mcp/sse
+            </UBadge>
             <UColorModeButton />
           </div>
         </div>
@@ -43,7 +59,7 @@ useHead({
 
       <!-- Footer -->
       <footer class="border-t border-slate-200 dark:border-neutral-800 py-4 text-center text-xs text-slate-400 dark:text-neutral-500">
-        AI Session Hub • 聚合管理本地所有 AI 终端与桌面应用会话
+        AI Session Hub • 聚合管理本地所有 AI 终端与桌面应用会话 • 支持 MCP HTTP/SSE 服务
       </footer>
     </div>
   </UApp>
