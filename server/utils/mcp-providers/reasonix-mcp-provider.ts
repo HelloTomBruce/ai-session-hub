@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { McpProvider } from './base-mcp-provider'
+import type { McpProvider, McpConfigFileInfo } from './base-mcp-provider'
 import { homeDir } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
 
@@ -72,5 +72,40 @@ export class ReasonixMcpProvider implements McpProvider {
     }
 
     return servers
+  }
+
+  getRawConfig(): McpConfigFileInfo {
+    const isAvailable = this.isAvailable()
+    let content = ''
+    if (isAvailable) {
+      try {
+        content = fs.readFileSync(this.filePath, 'utf-8')
+      } catch (e) {
+        console.error('[ReasonixMcpProvider] Failed reading config.toml:', e)
+      }
+    }
+
+    return {
+      platform: this.platform,
+      platformName: this.platformName,
+      path: this.filePath,
+      content,
+      format: 'toml',
+      isAvailable
+    }
+  }
+
+  saveRawConfig(content: string): { success: boolean, message?: string } {
+    try {
+      const dir = path.dirname(this.filePath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(this.filePath, content, 'utf-8')
+      return { success: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { success: false, message: '写入 TOML 配置失败: ' + msg }
+    }
   }
 }

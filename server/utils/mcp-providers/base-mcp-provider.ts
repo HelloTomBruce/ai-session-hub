@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import os from 'node:os'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
 
@@ -15,11 +16,26 @@ export interface RawMcpServerItem {
   autoApprove?: string[]
 }
 
+export interface McpConfigFileInfo {
+  platform: string
+  platformName: string
+  path: string
+  content: string
+  format: 'json' | 'toml' | 'directory'
+  isAvailable: boolean
+}
+
 export interface McpProvider {
   readonly platform: string
   readonly platformName: string
+  readonly configPath?: string
   isAvailable(): boolean
   getServers(): UnifiedMcpServer[]
+  getRawConfig?(): McpConfigFileInfo | null
+  saveRawConfig?(content: string): { success: boolean, message?: string }
+  saveServer?(server: Partial<UnifiedMcpServer> & { id: string }, isNew?: boolean): { success: boolean, message?: string }
+  deleteServer?(id: string): { success: boolean, message?: string }
+  toggleServer?(id: string, disabled: boolean): { success: boolean, message?: string }
 }
 
 export interface JsonMcpProviderOptions {
@@ -95,5 +111,127 @@ export class BaseJsonMcpProvider implements McpProvider {
     }
 
     return servers
+  }
+
+  getRawConfig(): McpConfigFileInfo {
+    const isAvailable = this.isAvailable()
+    let content = ''
+    if (isAvailable) {
+      try {
+        content = fs.readFileSync(this.configPath, 'utf-8')
+      } catch (e) {
+        console.error(`[McpProvider:${this.platform}] Failed reading raw config:`, e)
+      }
+    } else {
+      content = JSON.stringify({ [this.rootKey]: {} }, null, 2)
+    }
+
+    return {
+      platform: this.platform,
+      platformName: this.platformName,
+      path: this.configPath,
+      content,
+      format: 'json',
+      isAvailable
+    }
+  }
+
+  saveRawConfig(content: string): { success: boolean, message?: string } {
+    try {
+      const parsed = JSON.parse(content)
+      const dir = path.dirname(this.configPath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(this.configPath, JSON.stringify(parsed, null, 2), 'utf-8')
+      return { success: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { success: false, message: 'JSON 格式解析错误: ' + msg }
+    }
+  }
+
+  private loadConfigData(): Record<string, unknown> {
+    if (this.isAvailable()) {
+      try {
+        return JSON.parse(fs.readFileSync(this.configPath, 'utf-8'))
+      } catch {
+        return { [this.rootKey]: {} }
+      }
+    }
+    return { [this.rootKey]: {} }
+  }
+
+  private saveConfigData(data: Record<string, unknown>): { success: boolean, message?: string } {
+    try {
+      const dir = path.dirname(this.configPath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(this.configPath, JSON.stringify(data, null, 2), 'utf-8')
+      return { success: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { success: false, message: '写入配置文件失败: ' + msg }
+    }
+  }
+
+  saveServer(server: Partial<UnifiedMcpServer> & { id: string }, isNew?: boolean): { success: boolean, message?: string } {
+    const data = this.loadConfigData()
+    if (!data[this.rootKey] || typeof data[this.rootKey] !== 'object') {
+      data[this.rootKey] = {}
+    }
+
+    const serversObj = data[this.rootKey] as Record<string, RawMcpServerItem>
+
+    if (isNew && serversObj[server.id]) {
+      return { success: false, message: `服务 ID '${server.id}' 在 ${this.platformName} 中已存在` }
+    }
+
+    const item: RawMcpServerItem = {}
+    if (server.type === 'stdio') {
+      item.command = server.command || server.id
+      item.args = server.args || []
+      if (server.type === 'stdio' && this.platform !== 'opencode') {
+        item.type = 'local'
+      }
+    } else {
+      item.url = server.url || ''
+      if (server.headers && Object.keys(server.headers).length > 0) {
+        item.headers = server.headers
+      }
+      if (server.type === 'sse') {
+        item.type = 'sse'
+      }
+    }
+
+    if (server.disabled !== undefined) {
+      item.disabled = Boolean(server.disabled)
+    }
+
+    serversObj[server.id] = item
+    return this.saveConfigData(data)
+  }
+
+  deleteServer(id: string): { success: boolean, message?: string } {
+    const data = this.loadConfigData()
+    const serversObj = (data[this.rootKey] || {}) as Record<string, RawMcpServerItem>
+    if (!serversObj[id]) {
+      return { success: false, message: `服务 ID '${id}' 未找到` }
+    }
+
+    Reflect.deleteProperty(serversObj, id)
+    return this.saveConfigData(data)
+  }
+
+  toggleServer(id: string, disabled: boolean): { success: boolean, message?: string } {
+    const data = this.loadConfigData()
+    const serversObj = (data[this.rootKey] || {}) as Record<string, RawMcpServerItem>
+    if (!serversObj[id]) {
+      return { success: false, message: `服务 ID '${id}' 未找到` }
+    }
+
+    serversObj[id].disabled = disabled
+    return this.saveConfigData(data)
   }
 }

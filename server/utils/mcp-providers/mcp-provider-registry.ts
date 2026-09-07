@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { McpProvider } from './base-mcp-provider'
+import type { McpProvider, McpConfigFileInfo } from './base-mcp-provider'
 import { BaseJsonMcpProvider, homeDir } from './base-mcp-provider'
 import { PiMcpProvider } from './pi-mcp-provider'
 import { ReasonixMcpProvider } from './reasonix-mcp-provider'
@@ -148,6 +148,67 @@ export class McpProviderRegistry {
         toml: tomlConfig
       }
     }
+  }
+
+  getAllConfigs(): McpConfigFileInfo[] {
+    const configs: McpConfigFileInfo[] = []
+    for (const provider of this.providers.values()) {
+      if (provider.getRawConfig) {
+        const cfg = provider.getRawConfig()
+        if (cfg) configs.push(cfg)
+      }
+    }
+    return configs
+  }
+
+  getConfigByPlatform(platform: string): McpConfigFileInfo | null {
+    const provider = this.providers.get(platform)
+    if (!provider || !provider.getRawConfig) return null
+    return provider.getRawConfig()
+  }
+
+  saveConfig(platform: string, content: string): { success: boolean, message?: string } {
+    const provider = this.providers.get(platform)
+    if (!provider) {
+      return { success: false, message: `平台 '${platform}' 不存在` }
+    }
+    if (!provider.saveRawConfig) {
+      return { success: false, message: `平台 '${provider.platformName}' 不支持直接编辑配置文件` }
+    }
+    return provider.saveRawConfig(content)
+  }
+
+  saveServer(platform: string, server: Partial<UnifiedMcpServer> & { id: string }, isNew?: boolean): { success: boolean, message?: string } {
+    const provider = this.providers.get(platform)
+    if (!provider) {
+      return { success: false, message: `平台 '${platform}' 不存在` }
+    }
+    if (!provider.saveServer) {
+      return { success: false, message: `平台 '${provider.platformName}' 暂不支持保存服务对象` }
+    }
+    return provider.saveServer(server, isNew)
+  }
+
+  deleteServer(platform: string, id: string): { success: boolean, message?: string } {
+    const provider = this.providers.get(platform)
+    if (!provider) {
+      return { success: false, message: `平台 '${platform}' 不存在` }
+    }
+    if (!provider.deleteServer) {
+      return { success: false, message: `平台 '${provider.platformName}' 暂不支持删除服务` }
+    }
+    return provider.deleteServer(id)
+  }
+
+  toggleServer(platform: string, id: string, disabled: boolean): { success: boolean, message?: string } {
+    const provider = this.providers.get(platform)
+    if (!provider) {
+      return { success: false, message: `平台 '${platform}' 不存在` }
+    }
+    if (!provider.toggleServer) {
+      return { success: false, message: `平台 '${provider.platformName}' 暂不支持启停服务` }
+    }
+    return provider.toggleServer(id, disabled)
   }
 }
 

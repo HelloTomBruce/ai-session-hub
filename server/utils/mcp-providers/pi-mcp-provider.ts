@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { McpProvider } from './base-mcp-provider'
-import { homeDir } from './base-mcp-provider'
+import { BaseJsonMcpProvider, homeDir } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpServerType, McpToolSchema } from '../mcp-manager-types'
 
 interface CachedToolItem {
@@ -15,17 +14,19 @@ interface CachedServerEntry {
   instructions?: string
 }
 
-export class PiMcpProvider implements McpProvider {
-  readonly platform = 'pi'
-  readonly platformName = 'Pi CLI'
-  readonly filePath = path.join(homeDir, '.pi', 'agent', 'mcp.json')
+export class PiMcpProvider extends BaseJsonMcpProvider {
   readonly cachePath = path.join(homeDir, '.pi', 'agent', 'mcp-cache.json')
 
-  isAvailable(): boolean {
-    return fs.existsSync(this.filePath)
+  constructor() {
+    super({
+      platform: 'pi',
+      platformName: 'Pi CLI',
+      configPath: path.join(homeDir, '.pi', 'agent', 'mcp.json'),
+      rootKey: 'mcpServers'
+    })
   }
 
-  getServers(): UnifiedMcpServer[] {
+  override getServers(): UnifiedMcpServer[] {
     const servers: UnifiedMcpServer[] = []
     if (!this.isAvailable()) return servers
 
@@ -41,7 +42,7 @@ export class PiMcpProvider implements McpProvider {
     }
 
     try {
-      const data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'))
+      const data = JSON.parse(fs.readFileSync(this.configPath, 'utf-8'))
       const mcpServers = data.mcpServers || {}
 
       for (const [id, cfg] of Object.entries(mcpServers)) {
@@ -96,8 +97,8 @@ export class PiMcpProvider implements McpProvider {
           env: c.env,
           url: c.url,
           headers: c.headers,
-          disabled: false,
-          configPath: this.filePath,
+          disabled: Boolean(c.disabled),
+          configPath: this.configPath,
           toolsCount: tools.length,
           tools: tools.length > 0 ? tools : undefined,
           instructions
