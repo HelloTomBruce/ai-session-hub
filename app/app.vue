@@ -38,6 +38,9 @@ useHead({
               <NuxtLink to="/skills">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-puzzle">技能管理</UButton>
               </NuxtLink>
+              <NuxtLink to="/mcp">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-server">MCP 服务</UButton>
+              </NuxtLink>
               <NuxtLink to="/distill">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
               </NuxtLink>
