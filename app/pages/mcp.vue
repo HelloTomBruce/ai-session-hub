@@ -136,8 +136,8 @@ const copyText = (text: string) => {
 
 const copySnippet = () => {
   const snippet = copySnippetType.value === 'json'
-    ? detailData.value?.configSnippets.json
-    : detailData.value?.configSnippets.toml
+    ? detailData.value?.configSnippets?.json
+    : detailData.value?.configSnippets?.toml
   if (snippet) {
     navigator.clipboard.writeText(snippet)
     copiedSnippet.value = true
@@ -543,7 +543,7 @@ const maskToken = (val: string) => {
             </div>
 
             <div class="relative">
-              <pre class="p-3 rounded-lg bg-zinc-900 text-zinc-200 text-xs font-mono overflow-x-auto max-h-[180px] leading-relaxed">{{ copySnippetType === 'json' ? detailData?.configSnippets.json : detailData?.configSnippets.toml }}</pre>
+              <pre class="p-3 rounded-lg bg-zinc-900 text-zinc-200 text-xs font-mono overflow-x-auto max-h-[180px] leading-relaxed">{{ copySnippetType === 'json' ? (detailData?.configSnippets?.json || '') : (detailData?.configSnippets?.toml || '') }}</pre>
               <UButton
                 size="xs"
                 variant="outline"

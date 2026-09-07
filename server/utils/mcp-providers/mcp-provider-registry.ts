@@ -142,9 +142,11 @@ export class McpProviderRegistry {
 
     return {
       server: found,
-      tools: found.tools || [],
-      jsonConfig: JSON.stringify(jsonConfig, null, 2),
-      tomlConfig
+      rawConfig: jsonConfig,
+      configSnippets: {
+        json: JSON.stringify(jsonConfig, null, 2),
+        toml: tomlConfig
+      }
     }
   }
 }
