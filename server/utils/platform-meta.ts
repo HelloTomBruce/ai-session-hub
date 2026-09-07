@@ -147,7 +147,7 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
     configPaths: {
       sessions: '~/.config/opencode/sessions.json',
       skills: '~/.config/opencode/skills/',
-      mcp: '~/.config/opencode/opencode.json'
+      mcp: '~/.config/opencode/opencode.jsonc'
     }
   },
   hub: {

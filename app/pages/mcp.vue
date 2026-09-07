@@ -253,7 +253,7 @@ const editablePlatforms = [
   { id: 'pi', name: 'Pi CLI (~/.pi/agent/mcp.json)' },
   { id: 'claude', name: 'Claude Code (~/.claude.json)' },
   { id: 'workbuddy', name: 'WorkBuddy (~/.workbuddy/mcp.json)' },
-  { id: 'opencode', name: 'OpenCode (~/.config/opencode/opencode.json)' }
+  { id: 'opencode', name: 'OpenCode (~/.config/opencode/opencode.jsonc)' }
 ]
 
 const openAddServer = (defaultPlatform?: string) => {

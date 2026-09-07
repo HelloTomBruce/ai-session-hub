@@ -5,14 +5,29 @@ import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
 
 export const homeDir = os.homedir()
 
+export function parseJsonSafe(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // Strip comments for JSONC files
+    const stripped = raw
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/(?<=[,{[])\s*\/\/[^\n]*/g, '')
+      .replace(/,\s*([\]}])/g, '$1')
+    return JSON.parse(stripped)
+  }
+}
+
 export interface RawMcpServerItem {
-  command?: string
+  command?: string | string[]
   args?: string[]
   env?: Record<string, string>
   url?: string
   headers?: Record<string, string>
   type?: string
   disabled?: boolean
+  enabled?: boolean
   autoApprove?: string[]
 }
 
@@ -75,7 +90,7 @@ export class BaseJsonMcpProvider implements McpProvider {
     const servers: UnifiedMcpServer[] = []
     try {
       const raw = fs.readFileSync(this.configPath, 'utf-8')
-      const data = JSON.parse(raw)
+      const data = parseJsonSafe(raw)
       const serversObj = (data[this.rootKey] || {}) as Record<string, RawMcpServerItem>
 
       for (const [id, cfg] of Object.entries(serversObj)) {
@@ -90,18 +105,36 @@ export class BaseJsonMcpProvider implements McpProvider {
           type = 'http'
         }
 
+        let command: string | undefined
+        let args: string[] | undefined
+
+        if (Array.isArray(cfg.command)) {
+          command = cfg.command[0]
+          args = cfg.command.slice(1)
+        } else if (typeof cfg.command === 'string') {
+          command = cfg.command
+          args = cfg.args
+        }
+
+        let disabled = this.defaultDisabled
+        if (cfg.disabled !== undefined) {
+          disabled = Boolean(cfg.disabled)
+        } else if (cfg.enabled !== undefined) {
+          disabled = !cfg.enabled
+        }
+
         servers.push({
           id,
           name: id,
           platform: this.platform,
           platformName: this.platformName,
           type,
-          command: cfg.command,
-          args: cfg.args,
+          command,
+          args,
           env: cfg.env,
           url: cfg.url,
           headers: cfg.headers,
-          disabled: cfg.disabled !== undefined ? Boolean(cfg.disabled) : this.defaultDisabled,
+          disabled,
           configPath: this.configPath,
           toolsCount: 0
         })
@@ -138,7 +171,7 @@ export class BaseJsonMcpProvider implements McpProvider {
 
   saveRawConfig(content: string): { success: boolean, message?: string } {
     try {
-      const parsed = JSON.parse(content)
+      const parsed = parseJsonSafe(content)
       const dir = path.dirname(this.configPath)
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
@@ -151,10 +184,10 @@ export class BaseJsonMcpProvider implements McpProvider {
     }
   }
 
-  private loadConfigData(): Record<string, unknown> {
+  protected loadConfigData(): Record<string, unknown> {
     if (this.isAvailable()) {
       try {
-        return JSON.parse(fs.readFileSync(this.configPath, 'utf-8'))
+        return parseJsonSafe(fs.readFileSync(this.configPath, 'utf-8'))
       } catch {
         return { [this.rootKey]: {} }
       }
@@ -162,7 +195,7 @@ export class BaseJsonMcpProvider implements McpProvider {
     return { [this.rootKey]: {} }
   }
 
-  private saveConfigData(data: Record<string, unknown>): { success: boolean, message?: string } {
+  protected saveConfigData(data: Record<string, unknown>): { success: boolean, message?: string } {
     try {
       const dir = path.dirname(this.configPath)
       if (!fs.existsSync(dir)) {
