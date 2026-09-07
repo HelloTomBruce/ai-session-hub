@@ -168,46 +168,6 @@ const executeDelete = async () => {
   }
 }
 
-// Create New Session Modal
-const isCreateOpen = ref(false)
-const newForm = ref({
-  cli: 'pi' as keyof typeof sourceMeta,
-  title: '',
-  cwd: '/Users/zhangbei/code',
-  initialPrompt: ''
-})
-const isCreating = ref(false)
-
-const openCreateModal = () => {
-  newForm.value = {
-    cli: currentTab.value !== 'all' ? (currentTab.value as any) : 'pi',
-    title: '',
-    cwd: '/Users/zhangbei/code',
-    initialPrompt: ''
-  }
-  isCreateOpen.value = true
-}
-
-const handleCreate = async () => {
-  if (!newForm.value.cwd) {
-    alert('工作目录必填')
-    return
-  }
-  isCreating.value = true
-  try {
-    await $fetch('/api/sessions', {
-      method: 'POST',
-      body: newForm.value
-    })
-    isCreateOpen.value = false
-    handleRefresh()
-  } catch (err: any) {
-    alert(err?.data?.message || '创建会话失败')
-  } finally {
-    isCreating.value = false
-  }
-}
-
 // Resume command helper
 const copyResumeCommand = (session: UnifiedSession) => {
   let cmd = ''
@@ -301,16 +261,6 @@ const copyResumeCommand = (session: UnifiedSession) => {
           @click="handleRefresh"
         >
           刷新
-        </UButton>
-
-        <UButton
-          icon="i-lucide-plus"
-          color="neutral"
-          size="sm"
-          class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200"
-          @click="openCreateModal"
-        >
-          新建会话
         </UButton>
       </div>
     </div>
@@ -560,60 +510,6 @@ const copyResumeCommand = (session: UnifiedSession) => {
           <div class="flex justify-end gap-2 pt-2">
             <UButton variant="ghost" color="neutral" size="sm" @click="isDeleteOpen = false">取消</UButton>
             <UButton color="error" size="sm" :loading="isDeleting" @click="executeDelete">确认删除</UButton>
-          </div>
-        </div>
-      </template>
-    </UModal>
-
-    <!-- Create Modal -->
-    <UModal v-model:open="isCreateOpen" :ui="{ content: 'max-w-lg' }">
-      <template #content>
-        <div class="p-5 space-y-4">
-          <h3 class="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-            <UIcon name="i-lucide-plus-circle" class="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
-            新建会话
-          </h3>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1.5">选择目标平台 / CLI / APP</label>
-              <div class="grid grid-cols-4 gap-1.5">
-                <div
-                  v-for="(meta, key) in sourceMeta"
-                  :key="key"
-                  @click="newForm.cli = key"
-                  :class="[
-                    'p-2 rounded border text-center cursor-pointer select-none text-xs font-medium transition-all',
-                    newForm.cli === key
-                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
-                      : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'
-                  ]"
-                >
-                  <UIcon :name="meta.icon" class="w-3.5 h-3.5 mx-auto mb-0.5 opacity-80" />
-                  {{ meta.name }}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">会话标题 / 备注</label>
-              <UInput v-model="newForm.title" size="sm" placeholder="如：重构订单模块、调试 API 等" class="w-full" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">工作目录 (CWD)</label>
-              <UInput v-model="newForm.cwd" size="sm" placeholder="/Users/zhangbei/code" class="w-full font-mono text-xs" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1">初始 Prompt（可选）</label>
-              <UTextarea v-model="newForm.initialPrompt" size="sm" placeholder="给该会话初始化的需求或首条消息..." class="w-full" :rows="3" />
-            </div>
-          </div>
-
-          <div class="flex justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <UButton variant="ghost" color="neutral" size="sm" @click="isCreateOpen = false">取消</UButton>
-            <UButton color="neutral" size="sm" class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" :loading="isCreating" @click="handleCreate">立即创建</UButton>
           </div>
         </div>
       </template>

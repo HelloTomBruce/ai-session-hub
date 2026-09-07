@@ -55,14 +55,49 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     return ''
   }
 
+  private formatTitle(row: any): string {
+    if (row.name && row.name.trim()) return row.name.trim()
+    let raw = row.title || row.first_user_message || row.preview || ''
+
+    // If it contains a transcript wrapper
+    if (raw.includes('TRANSCRIPT START')) {
+      const match = raw.match(/\[\d+\]\s*user:\s*([\s\S]+?)(?=\n\s*\[\d+\]|\n\s*>>>|$)/)
+      if (match && match[1]) {
+        raw = match[1].trim()
+      }
+    }
+
+    // If it contains '## My request:'
+    if (raw.includes('## My request:')) {
+      const reqMatch = raw.match(/##\s*My request:\s*([\s\S]+?)(?=\n\s*##|\n\s*\[|$)/)
+      if (reqMatch && reqMatch[1]) {
+        raw = reqMatch[1].trim()
+      }
+    }
+
+    // Clean up headers, whitespace and multiple newlines
+    raw = raw
+      .replace(/^#+\s+/gm, '')
+      .replace(/\r?\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (raw.length > 80) {
+      raw = raw.slice(0, 80) + '...'
+    }
+
+    return raw || `Codex Thread ${row.id.slice(0, 8)}`
+  }
+
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
     let db: any
     try {
       db = this.getDb(true)
       const rows = db.prepare(`
-        SELECT id, rollout_path, created_at, updated_at, created_at_ms, updated_at_ms, cwd, title, first_user_message, model, model_provider, tokens_used, archived, preview
+        SELECT id, name, rollout_path, created_at, updated_at, created_at_ms, updated_at_ms, cwd, title, first_user_message, model, model_provider, tokens_used, archived, preview
         FROM threads
+        WHERE (archived = 0 OR archived IS NULL)
         ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC
       `).all()
 
@@ -73,7 +108,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
           id: row.id,
           cli: 'codex',
           category: 'app',
-          title: row.title || row.first_user_message || row.preview || `Codex Thread ${row.id.slice(0, 8)}`,
+          title: this.formatTitle(row),
           cwd: row.cwd || '',
           createdAt,
           updatedAt,
@@ -198,7 +233,9 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     let db: any
     try {
       db = this.getDb(false)
-      db.prepare(`UPDATE threads SET archived = 1 WHERE id = ?`).run(id)
+      const nowSec = Math.floor(Date.now() / 1000)
+      const nowMs = Date.now()
+      db.prepare(`UPDATE threads SET archived = 1, archived_at = ?, updated_at = ?, updated_at_ms = ? WHERE id = ?`).run(nowSec, nowSec, nowMs, id)
       return true
     } finally {
       if (db) db.close()
