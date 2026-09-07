@@ -10,6 +10,11 @@ interface CachedToolItem {
   inputSchema?: Record<string, unknown>
 }
 
+interface CachedServerEntry {
+  tools?: CachedToolItem[]
+  instructions?: string
+}
+
 export class PiMcpProvider implements McpProvider {
   readonly platform = 'pi'
   readonly platformName = 'Pi CLI'
@@ -24,7 +29,7 @@ export class PiMcpProvider implements McpProvider {
     const servers: UnifiedMcpServer[] = []
     if (!this.isAvailable()) return servers
 
-    let cacheData: Record<string, CachedToolItem[]> = {}
+    let cacheData: Record<string, CachedServerEntry | CachedToolItem[]> = {}
     if (fs.existsSync(this.cachePath)) {
       try {
         const raw = fs.readFileSync(this.cachePath, 'utf-8')
@@ -59,8 +64,22 @@ export class PiMcpProvider implements McpProvider {
           type = 'http'
         }
 
-        const cachedTools = cacheData[id] || []
-        const tools: McpToolSchema[] = cachedTools.map(t => ({
+        const serverEntry = cacheData[id]
+        let rawTools: CachedToolItem[] = []
+        let instructions: string | undefined
+
+        if (Array.isArray(serverEntry)) {
+          rawTools = serverEntry
+        } else if (serverEntry && typeof serverEntry === 'object') {
+          if (Array.isArray(serverEntry.tools)) {
+            rawTools = serverEntry.tools
+          }
+          if (serverEntry.instructions) {
+            instructions = serverEntry.instructions
+          }
+        }
+
+        const tools: McpToolSchema[] = rawTools.map(t => ({
           name: t.name,
           description: t.description || '',
           inputSchema: t.inputSchema
@@ -80,7 +99,8 @@ export class PiMcpProvider implements McpProvider {
           disabled: false,
           configPath: this.filePath,
           toolsCount: tools.length,
-          tools: tools.length > 0 ? tools : undefined
+          tools: tools.length > 0 ? tools : undefined,
+          instructions
         })
       }
     } catch (e) {
