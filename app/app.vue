@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const isMcpModalOpen = ref(false)
+const isLlmModalOpen = ref(false)
 
 useHead({
   title: 'AI Session Hub - 会话与知识管理',
@@ -59,6 +60,19 @@ useHead({
               <span class="text-zinc-400">/api/mcp/sse</span>
               <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
             </button>
+
+            <!-- LLM Provider Settings Button -->
+            <UButton
+              size="sm"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-bot"
+              title="配置 AI 诊断与评估大模型 Provider"
+              @click="isLlmModalOpen = true"
+            >
+              <span class="hidden md:inline text-xs">模型配置</span>
+            </UButton>
+
             <UColorModeButton />
           </div>
         </div>
@@ -74,8 +88,9 @@ useHead({
         AI Session Hub • 极简、高效的多源会话与知识资产沉淀平台 • 支持 MCP SSE 协议
       </footer>
 
-      <!-- MCP Configuration & Logs Modal -->
+      <!-- Modals -->
       <McpModal v-model:open="isMcpModalOpen" />
+      <LlmSettingsModal v-model:open="isLlmModalOpen" />
     </div>
   </UApp>
 </template>

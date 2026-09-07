@@ -20,6 +20,7 @@ export interface UnifiedSession {
 export interface SessionMessage {
   id?: string
   role: 'user' | 'assistant' | 'system' | 'tool'
+  name?: string
   content: string
   timestamp?: number
   model?: string
