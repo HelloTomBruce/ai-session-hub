@@ -12,6 +12,8 @@ interface ADRItem {
 
 interface DistillReport {
   title: string
+  isAiGenerated?: boolean
+  providerModel?: string
   sessionCount: number
   actionsDone: string[]
   keyLearnings: string[]
@@ -194,7 +196,22 @@ const copyAdrMarkdown = () => {
         <div v-if="report" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 space-y-4 shadow-sm">
           <div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <div>
-              <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">{{ report.title }}</h2>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">{{ report.title }}</h2>
+                <span
+                  v-if="report.isAiGenerated"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400 border border-purple-200 dark:border-purple-800 flex items-center gap-1"
+                >
+                  <UIcon name="i-lucide-sparkles" class="w-3 h-3" />
+                  AI 提炼 ({{ report.providerModel || 'LLM' }})
+                </span>
+                <span
+                  v-else
+                  class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"
+                >
+                  本地规则提炼
+                </span>
+              </div>
               <p class="text-xs text-zinc-400 mt-0.5">已聚合解析 {{ report.sessionCount }} 个历史会话</p>
             </div>
 

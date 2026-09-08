@@ -16,7 +16,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'None of the requested sessions were found' })
   }
 
-  const report = distillSessionsContent(fullData)
+  const provider = getLLMProviderSettings()
+  const report = await distillSessionsContent(fullData, provider)
   return {
     success: true,
     data: report

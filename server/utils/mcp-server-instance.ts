@@ -255,7 +255,8 @@ export function createMcpServer() {
           return { session: s, messages }
         })
 
-        const report = distillSessionsContent(fullData)
+        const provider = getLLMProviderSettings()
+        const report = await distillSessionsContent(fullData, provider)
 
         mcpLogger.addLog({
           type: 'tool',
