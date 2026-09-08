@@ -115,9 +115,11 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
     try {
       db = this.getDb(false)
       if (payload.title) {
-        db.prepare(`UPDATE sessions SET custom_title = ?, updated_at = ? WHERE id = ?`).run(payload.title, Date.now(), id)
-        return true
+        const res = db.prepare(`UPDATE sessions SET custom_title = ?, title = ?, updated_at = ? WHERE id = ?`).run(payload.title, payload.title, Date.now(), id)
+        return res.changes > 0
       }
+    } catch (e) {
+      console.error('[WorkBuddySessionAdapter] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }

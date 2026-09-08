@@ -179,14 +179,25 @@ const saveEdit = async () => {
   if (!selectedSession.value) return
   isSavingEdit.value = true
   try {
-    await $fetch(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
+    const res = await $fetch<{ success: boolean, message?: string }>(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
       method: 'PUT',
       body: { title: editingTitle.value }
     })
-    isEditOpen.value = false
-    handleRefresh()
+    if (res.success) {
+      if (selectedSession.value) {
+        selectedSession.value.title = editingTitle.value
+      }
+      const itemInList = sessionData.value?.data?.find(s => s.id === selectedSession.value?.id)
+      if (itemInList) {
+        itemInList.title = editingTitle.value
+      }
+      isEditOpen.value = false
+      await handleRefresh()
+    } else {
+      alert(res.message || '修改失败')
+    }
   } catch (err: any) {
-    alert(err?.data?.message || '修改失败')
+    alert(err?.data?.message || err?.message || '修改失败')
   } finally {
     isSavingEdit.value = false
   }

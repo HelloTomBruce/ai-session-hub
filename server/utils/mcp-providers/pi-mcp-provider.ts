@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { BaseJsonMcpProvider, homeDir } from './base-mcp-provider'
+import os from 'node:os'
+import { BaseJsonMcpProvider } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpServerType, McpToolSchema } from '../mcp-manager-types'
 
 interface CachedToolItem {
@@ -15,13 +16,13 @@ interface CachedServerEntry {
 }
 
 export class PiMcpProvider extends BaseJsonMcpProvider {
-  readonly cachePath = path.join(homeDir, '.pi', 'agent', 'mcp-cache.json')
+  readonly cachePath = path.join(os.homedir(), '.pi', 'agent', 'mcp-cache.json')
 
   constructor() {
     super({
       platform: 'pi',
       platformName: 'Pi CLI',
-      configPath: path.join(homeDir, '.pi', 'agent', 'mcp.json'),
+      configPath: path.join(os.homedir(), '.pi', 'agent', 'mcp.json'),
       rootKey: 'mcpServers'
     })
   }

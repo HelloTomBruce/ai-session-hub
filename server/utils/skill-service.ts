@@ -16,6 +16,3 @@ export class SkillService {
 }
 
 export const skillService = new SkillService()
-export * from './skill-types'
-export { skillRegistry } from './skill-providers/skill-provider-registry'
-export { DirectorySkillProvider, type SkillProvider } from './skill-providers/directory-skill-provider'

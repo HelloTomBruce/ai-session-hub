@@ -40,7 +40,11 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
               const lines = this.readJsonl(filePath)
               for (const parsed of lines) {
                 if (parsed.cwd && !cwd) cwd = parsed.cwd
-                if (parsed.type === 'user' || parsed.role === 'user' || parsed.type === 'human') {
+                if (parsed.type === 'custom_title' && parsed.title) {
+                  title = parsed.title
+                } else if (parsed.type === 'session_init' && (parsed.title || parsed.custom_title)) {
+                  title = parsed.title || parsed.custom_title
+                } else if (parsed.type === 'user' || parsed.role === 'user' || parsed.type === 'human') {
                   messageCount++
                   if (!title) {
                     const text = typeof parsed.message === 'string' 
@@ -143,6 +147,48 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
       updatedAt: now,
       messageCount: payload.initialPrompt ? 1 : 0,
       rawLocation: filePath
+    }
+  }
+
+  override updateSession(id: string, payload: UpdateSessionPayload): boolean {
+    if (!payload.title) return false
+    const session = this.getSessions().find(s => s.id === id)
+    if (!session || !fs.existsSync(session.rawLocation)) return false
+
+    try {
+      const raw = fs.readFileSync(session.rawLocation, 'utf-8')
+      const lines = raw.split('\n').filter(Boolean)
+      let customTitleFound = false
+      const updatedLines = lines.map(line => {
+        try {
+          const parsed = JSON.parse(line)
+          if (parsed.type === 'custom_title') {
+            customTitleFound = true
+            parsed.title = payload.title
+            parsed.updatedAt = Date.now()
+            return JSON.stringify(parsed)
+          } else if (parsed.type === 'session_init') {
+            parsed.title = payload.title
+            return JSON.stringify(parsed)
+          }
+        } catch {}
+        return line
+      })
+
+      if (!customTitleFound) {
+        const customTitleObj = {
+          type: 'custom_title',
+          title: payload.title,
+          updatedAt: Date.now()
+        }
+        updatedLines.unshift(JSON.stringify(customTitleObj))
+      }
+
+      fs.writeFileSync(session.rawLocation, updatedLines.join('\n') + '\n', 'utf-8')
+      return true
+    } catch (e) {
+      console.error('[ClaudeSessionAdapter] Failed updating session title:', e)
+      return false
     }
   }
 }

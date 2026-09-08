@@ -56,8 +56,9 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
   }
 
   private formatTitle(row: any): string {
+    if (row.title && row.title.trim()) return row.title.trim()
     if (row.name && row.name.trim()) return row.name.trim()
-    let raw = row.title || row.first_user_message || row.preview || ''
+    let raw = row.first_user_message || row.preview || ''
 
     // If it contains a transcript wrapper
     if (raw.includes('TRANSCRIPT START')) {
@@ -190,8 +191,9 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
                 }
               } else if (item.type === 'Reasoning' && item.summary_text?.length) {
                 const thought = item.summary_text.join('\n')
-                if (messages.length && messages[messages.length - 1].role === 'assistant') {
-                  messages[messages.length - 1].thought = thought
+                const lastMsg = messages[messages.length - 1]
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  lastMsg.thought = thought
                 }
               }
             }
@@ -219,9 +221,11 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     try {
       db = this.getDb(false)
       if (payload.title) {
-        db.prepare(`UPDATE threads SET title = ?, updated_at_ms = ? WHERE id = ?`).run(payload.title, Date.now(), id)
-        return true
+        const res = db.prepare(`UPDATE threads SET title = ?, name = ?, updated_at_ms = ? WHERE id = ?`).run(payload.title, payload.title, Date.now(), id)
+        return res.changes > 0
       }
+    } catch (e) {
+      console.error('[CodexSessionAdapter] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }

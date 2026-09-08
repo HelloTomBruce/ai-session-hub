@@ -42,6 +42,3 @@ export function createCliSession(cli: PlatformType, payload: CreateSessionPayloa
 export function getStats() {
   return adapterRegistry.getStats()
 }
-
-export * from './types'
-export { adapterRegistry }

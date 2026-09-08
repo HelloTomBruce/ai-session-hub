@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import type { SkillProvider } from './base-skill-provider'
-import { homeDir } from './base-skill-provider'
 import { DirectorySkillProvider } from './directory-skill-provider'
 import { ClaudePluginSkillProvider } from './claude-plugin-skill-provider'
 import type { UnifiedSkill, SkillStats, SkillDetailResponse } from '../skill-types'
+
+const homeDir = os.homedir()
 
 function getGlobalLockInfo(): Record<string, { version?: string, sourceUrl?: string }> {
   const lockPath = path.join(homeDir, '.agents', '.skill-lock.json')

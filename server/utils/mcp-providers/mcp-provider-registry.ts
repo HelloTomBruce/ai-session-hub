@@ -1,6 +1,7 @@
 import path from 'node:path'
+import os from 'node:os'
 import type { McpProvider, McpConfigFileInfo } from './base-mcp-provider'
-import { BaseJsonMcpProvider, homeDir } from './base-mcp-provider'
+import { BaseJsonMcpProvider } from './base-mcp-provider'
 import { PiMcpProvider } from './pi-mcp-provider'
 import { ReasonixMcpProvider } from './reasonix-mcp-provider'
 import { AgyMcpProvider } from './agy-mcp-provider'
@@ -75,7 +76,9 @@ export class McpProviderRegistry {
     for (const s of all) {
       uniqueIds.add(s.id)
       counts[s.platform] = (counts[s.platform] || 0) + 1
-      if (protocolCounts[s.type] !== undefined) protocolCounts[s.type]++
+      if (s.type && protocolCounts[s.type] !== undefined) {
+        protocolCounts[s.type] = (protocolCounts[s.type] ?? 0) + 1
+      }
     }
 
     let filtered = all
@@ -222,13 +225,13 @@ mcpRegistry
   .register(new BaseJsonMcpProvider({
     platform: 'claude',
     platformName: 'Claude Code',
-    configPath: path.join(homeDir, '.claude.json'),
+    configPath: path.join(os.homedir(), '.claude.json'),
     rootKey: 'mcpServers'
   }))
   .register(new BaseJsonMcpProvider({
     platform: 'workbuddy',
     platformName: 'WorkBuddy',
-    configPath: path.join(homeDir, '.workbuddy', 'mcp.json'),
+    configPath: path.join(os.homedir(), '.workbuddy', 'mcp.json'),
     rootKey: 'mcpServers'
   }))
   .register(new ReasonixMcpProvider())

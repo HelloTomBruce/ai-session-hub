@@ -1,13 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import type { McpProvider, McpConfigFileInfo } from './base-mcp-provider'
-import { homeDir } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
 
 export class ReasonixMcpProvider implements McpProvider {
   readonly platform = 'reasonix'
   readonly platformName = 'Reasonix'
-  readonly filePath = path.join(homeDir, '.reasonix', 'config.toml')
+  readonly filePath = path.join(os.homedir(), '.reasonix', 'config.toml')
 
   isAvailable(): boolean {
     return fs.existsSync(this.filePath)

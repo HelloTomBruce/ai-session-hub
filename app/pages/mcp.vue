@@ -181,7 +181,7 @@ const openConfigModal = async (defaultPlatform?: string) => {
     configList.value = res.data
     if (defaultPlatform && configList.value.some(c => c.platform === defaultPlatform)) {
       selectedConfigPlatform.value = defaultPlatform
-    } else if (configList.value.length > 0) {
+    } else if (configList.value.length > 0 && configList.value[0]) {
       selectedConfigPlatform.value = configList.value[0].platform
     }
     loadSelectedConfigContent()
@@ -215,10 +215,10 @@ const saveRawConfigFile = async () => {
     })
     configSaveSuccess.value = '配置文件保存成功！'
     // Update local item
-    const idx = configList.value.findIndex(c => c.platform === selectedConfigPlatform.value)
-    if (idx !== -1) {
-      configList.value[idx].content = rawConfigContent.value
-      configList.value[idx].isAvailable = true
+    const targetItem = configList.value.find(c => c.platform === selectedConfigPlatform.value)
+    if (targetItem) {
+      targetItem.content = rawConfigContent.value
+      targetItem.isAvailable = true
     }
     refresh()
     setTimeout(() => {
@@ -433,7 +433,7 @@ const deleteServer = async (server: UnifiedMcpServer, event: Event) => {
           size="sm"
           icon="i-lucide-refresh-cw"
           :loading="pending"
-          @click="refresh"
+          @click="() => refresh()"
         >
           刷新
         </UButton>

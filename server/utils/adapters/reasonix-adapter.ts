@@ -282,8 +282,10 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
       try {
         const lines = fs.readFileSync(jsonlPath, 'utf-8').split('\n').filter(Boolean)
         for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]
+          if (!line) continue
           try {
-            const parsed = JSON.parse(lines[i])
+            const parsed = JSON.parse(line)
             const role = parsed.role
             if (role === 'system') continue
             if (role === 'tool' && parsed.local_only) continue
@@ -411,6 +413,19 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             }
           }
         }
+      } catch {}
+    }
+
+    // Update in meta files
+    const session = this.getSessions().find(s => s.id === id || s.extra?.topic_id === id)
+    if (session?.extra?.metaPath && fs.existsSync(session.extra.metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(session.extra.metaPath, 'utf-8'))
+        meta.topic_title = payload.title
+        meta.title = payload.title
+        meta.updated_at = new Date().toISOString()
+        fs.writeFileSync(session.extra.metaPath, JSON.stringify(meta, null, 2), 'utf-8')
+        updated = true
       } catch {}
     }
 

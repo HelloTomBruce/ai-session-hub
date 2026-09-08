@@ -1,13 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import type { McpProvider } from './base-mcp-provider'
-import { homeDir } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpToolSchema } from '../mcp-manager-types'
 
 export class AgyMcpProvider implements McpProvider {
   readonly platform = 'agy'
   readonly platformName = 'AGY CLI'
-  readonly baseDir = path.join(homeDir, '.gemini', 'antigravity-cli', 'mcp')
+  readonly baseDir = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'mcp')
 
   isAvailable(): boolean {
     return fs.existsSync(this.baseDir)

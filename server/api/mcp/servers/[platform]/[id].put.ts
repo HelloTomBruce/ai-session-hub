@@ -1,4 +1,4 @@
-import { mcpRegistry } from '~~/server/utils/mcp-manager-service'
+import { mcpRegistry } from '~~/server/utils/mcp-providers/mcp-provider-registry'
 import type { McpServerType } from '~~/server/utils/mcp-manager-types'
 
 interface UpdateServerBody {

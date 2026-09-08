@@ -31,6 +31,42 @@ const handleRefresh = async () => {
   isRefreshing.value = false
 }
 
+// Edit Title Modal
+const isEditOpen = ref(false)
+const editingTitle = ref('')
+const isSavingEdit = ref(false)
+
+const openEditModal = () => {
+  if (session.value) {
+    editingTitle.value = session.value.title || ''
+    isEditOpen.value = true
+  }
+}
+
+const saveEditTitle = async () => {
+  if (!session.value || !sessionId.value || !platform.value) return
+  isSavingEdit.value = true
+  try {
+    const res = await $fetch<{ success: boolean, message?: string }>(`/api/sessions/${sessionId.value}?cli=${platform.value}`, {
+      method: 'PUT',
+      body: { title: editingTitle.value }
+    })
+    if (res.success) {
+      if (session.value) {
+        session.value.title = editingTitle.value
+      }
+      isEditOpen.value = false
+      await refresh()
+    } else {
+      alert(res.message || '修改失败')
+    }
+  } catch (err: any) {
+    alert(err?.data?.message || err?.message || '修改失败')
+  } finally {
+    isSavingEdit.value = false
+  }
+}
+
 const formatTime = (ts?: number) => {
   if (!ts) return '-'
   const d = new Date(ts)
@@ -518,9 +554,19 @@ const thinkingTimeline = computed(() => {
               </span>
               <span class="text-xs text-zinc-400 font-mono">ID: {{ sessionId }}</span>
             </div>
-            <h1 class="text-base font-bold text-zinc-900 dark:text-zinc-100">
-              {{ session?.title || '会话详情' }}
-            </h1>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                {{ session?.title || '会话详情' }}
+              </h1>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-edit-3"
+                title="修改会话标题"
+                @click="openEditModal"
+              />
+            </div>
           </div>
         </div>
 
@@ -1137,6 +1183,22 @@ const thinkingTimeline = computed(() => {
             <UButton size="xs" color="neutral" class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" @click="isEfficiencyModalOpen = false">
               我知道了
             </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Edit Title Modal -->
+    <UModal v-model:open="isEditOpen" :ui="{ content: 'max-w-md' }">
+      <template #content>
+        <div class="p-4 space-y-3.5">
+          <h3 class="text-sm font-bold text-zinc-900 dark:text-white">编辑会话标题</h3>
+          <UFormField label="会话标题">
+            <UInput v-model="editingTitle" size="sm" class="w-full" placeholder="输入新的会话标题" />
+          </UFormField>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton variant="ghost" color="neutral" size="sm" @click="isEditOpen = false">取消</UButton>
+            <UButton color="neutral" size="sm" class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" :loading="isSavingEdit" @click="saveEditTitle">保存修改</UButton>
           </div>
         </div>
       </template>

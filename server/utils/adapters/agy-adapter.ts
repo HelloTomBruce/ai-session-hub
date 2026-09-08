@@ -98,9 +98,11 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
     try {
       db = this.getDb(false)
       if (payload.title) {
-        db.prepare(`UPDATE conversation_summaries SET title = ? WHERE conversation_id = ?`).run(payload.title, id)
-        return true
+        const res = db.prepare(`UPDATE conversation_summaries SET title = ? WHERE conversation_id = ?`).run(payload.title, id)
+        return res.changes > 0
       }
+    } catch (e) {
+      console.error('[AgySessionAdapter] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }

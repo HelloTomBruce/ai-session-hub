@@ -326,7 +326,7 @@ export function createMcpServer() {
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri
     const match = uri.match(/^session:\/\/([^/]+)\/(.+)$/)
-    if (!match) {
+    if (!match || !match[1] || !match[2]) {
       throw new Error(`Invalid resource URI: ${uri}`)
     }
 

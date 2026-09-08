@@ -1,4 +1,4 @@
-import { mcpRegistry } from '~~/server/utils/mcp-manager-service'
+import { mcpRegistry } from '~~/server/utils/mcp-providers/mcp-provider-registry'
 
 export default defineEventHandler(() => {
   return {

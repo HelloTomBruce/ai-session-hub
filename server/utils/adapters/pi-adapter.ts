@@ -44,6 +44,9 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
                 if (parsed.type === 'session') {
                   id = parsed.id || id
                   cwd = parsed.cwd || cwd
+                  if (parsed.title) title = parsed.title
+                } else if (parsed.type === 'custom_title' && parsed.title) {
+                  title = parsed.title
                 } else if (parsed.type === 'model_change') {
                   model = parsed.modelId || model
                 } else if (parsed.type === 'message') {
@@ -160,6 +163,49 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
       updatedAt: now,
       messageCount: payload.initialPrompt ? 1 : 0,
       rawLocation: filePath
+    }
+  }
+
+  override updateSession(id: string, payload: UpdateSessionPayload): boolean {
+    if (!payload.title) return false
+    const session = this.getSessions().find(s => s.id === id)
+    if (!session || !fs.existsSync(session.rawLocation)) return false
+
+    try {
+      const raw = fs.readFileSync(session.rawLocation, 'utf-8')
+      const lines = raw.split('\n').filter(Boolean)
+      let customTitleFound = false
+      const updatedLines = lines.map(line => {
+        try {
+          const parsed = JSON.parse(line)
+          if (parsed.type === 'session') {
+            parsed.title = payload.title
+            return JSON.stringify(parsed)
+          } else if (parsed.type === 'custom_title') {
+            customTitleFound = true
+            parsed.title = payload.title
+            parsed.updatedAt = Date.now()
+            return JSON.stringify(parsed)
+          }
+        } catch {}
+        return line
+      })
+
+      if (!customTitleFound) {
+        // Insert custom_title after first line
+        const customTitleObj = {
+          type: 'custom_title',
+          title: payload.title,
+          updatedAt: Date.now()
+        }
+        updatedLines.splice(1, 0, JSON.stringify(customTitleObj))
+      }
+
+      fs.writeFileSync(session.rawLocation, updatedLines.join('\n') + '\n', 'utf-8')
+      return true
+    } catch (e) {
+      console.error('[PiSessionAdapter] Failed updating session title:', e)
+      return false
     }
   }
 }

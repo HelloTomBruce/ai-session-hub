@@ -119,9 +119,11 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
     try {
       db = this.getDb(false)
       if (payload.title) {
-        db.prepare(`UPDATE session SET title = ?, time_updated = ? WHERE id = ?`).run(payload.title, Date.now(), id)
-        return true
+        const res = db.prepare(`UPDATE session SET title = ?, time_updated = ? WHERE id = ?`).run(payload.title, Date.now(), id)
+        return res.changes > 0
       }
+    } catch (e) {
+      console.error('[OpenCodeSessionAdapter] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }

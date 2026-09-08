@@ -1,12 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { BaseJsonMcpProvider, homeDir, parseJsonSafe } from './base-mcp-provider'
+import os from 'node:os'
+import { BaseJsonMcpProvider, parseJsonSafe } from './base-mcp-provider'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
 
 export class OpenCodeMcpProvider extends BaseJsonMcpProvider {
   constructor() {
-    const jsoncPath = path.join(homeDir, '.config', 'opencode', 'opencode.jsonc')
-    const jsonPath = path.join(homeDir, '.config', 'opencode', 'opencode.json')
+    const jsoncPath = path.join(os.homedir(), '.config', 'opencode', 'opencode.jsonc')
+    const jsonPath = path.join(os.homedir(), '.config', 'opencode', 'opencode.json')
     const resolvedPath = fs.existsSync(jsoncPath) ? jsoncPath : (fs.existsSync(jsonPath) ? jsonPath : jsoncPath)
 
     super({

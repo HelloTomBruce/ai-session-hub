@@ -1,13 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import type { SkillProvider } from './base-skill-provider'
-import { homeDir, extractSkillTags } from './base-skill-provider'
+import { extractSkillTags } from './base-skill-provider'
 import type { UnifiedSkill } from '../skill-types'
 
 export class ClaudePluginSkillProvider implements SkillProvider {
   readonly platform = 'claude'
   readonly platformName = 'Claude Code'
-  readonly pluginFile = path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json')
+  readonly pluginFile = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json')
 
   isAvailable(): boolean {
     return fs.existsSync(this.pluginFile)
@@ -25,7 +26,7 @@ export class ClaudePluginSkillProvider implements SkillProvider {
         const list = pList
         if (Array.isArray(list) && list.length > 0) {
           const pInfo = (list[0] || {}) as { installPath?: string, version?: string }
-          const name = pKey.split('@')[0]
+          const name = pKey.split('@')[0] || pKey
           const installPath = pInfo.installPath || ''
           const readmePath = path.join(installPath, 'README.md')
           let description = 'Claude Plugin: ' + name

@@ -1,7 +1,7 @@
 import os from 'node:os'
 import type { UnifiedSkill } from '../skill-types'
 
-export const homeDir = os.homedir()
+const homeDir = os.homedir()
 
 export interface SkillProvider {
   readonly platform: string
@@ -12,7 +12,7 @@ export interface SkillProvider {
 
 export function parseFrontmatter(content: string): { meta: Record<string, string>, body: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
-  if (!match) return { meta: {}, body: content }
+  if (!match || !match[1]) return { meta: {}, body: content }
   const yamlBlock = match[1]
   const body = content.slice(match[0].length).trim()
   const meta: Record<string, string> = {}
@@ -22,7 +22,7 @@ export function parseFrontmatter(content: string): { meta: Record<string, string
 
   for (const line of yamlBlock.split('\n')) {
     const keyMatch = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/)
-    if (keyMatch) {
+    if (keyMatch && keyMatch[1]) {
       if (currentKey) {
         meta[currentKey] = currentValue.trim().replace(/^['"]|['"]$/g, '')
       }

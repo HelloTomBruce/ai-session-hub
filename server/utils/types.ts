@@ -1,4 +1,5 @@
 export type PlatformType = 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'workbuddy' | 'reasonix' | string
+export type CliType = PlatformType
 export type CategoryType = 'cli' | 'app'
 
 export interface UnifiedSession {
