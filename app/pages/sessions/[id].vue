@@ -914,10 +914,10 @@ const thinkingTimeline = computed(() => {
               <table class="w-full text-left text-xs">
                 <thead class="bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 font-medium border-b border-zinc-200 dark:border-zinc-800 font-mono">
                   <tr>
-                    <th class="py-2.5 px-3 w-14 text-center">#</th>
-                    <th class="py-2.5 px-3 w-36">时间</th>
-                    <th class="py-2.5 px-3 min-w-[200px]">核心参数摘要</th>
-                    <th class="py-2.5 px-3">完整调用参数 (Arguments JSON)</th>
+                    <th class="py-2.5 px-3 w-12 text-center">#</th>
+                    <th class="py-2.5 px-3 w-36 whitespace-nowrap">时间</th>
+                    <th class="py-2.5 px-3 w-1/2">核心参数与推导动机</th>
+                    <th class="py-2.5 px-3 w-1/2">完整调用参数 (Arguments JSON)</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-200/70 dark:divide-zinc-800/70 font-sans">
@@ -937,13 +937,19 @@ const thinkingTimeline = computed(() => {
                     </td>
 
                     <!-- Summary & Thought Context -->
-                    <td class="py-3 px-3 space-y-1.5">
+                    <td class="py-3 px-3 space-y-1.5 w-1/2">
                       <div class="font-medium text-zinc-800 dark:text-zinc-200 font-mono text-[11px] break-all">
                         {{ call.summary }}
                       </div>
-                      <div v-if="call.associatedThought" class="p-1.5 rounded bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/15 text-[10px] text-zinc-600 dark:text-zinc-400 leading-relaxed font-sans line-clamp-2" :title="call.associatedThought">
-                        <span class="font-semibold text-amber-600 dark:text-amber-400">推导动机:</span>
-                        {{ call.associatedThought }}
+                      <div
+                        v-if="call.associatedThought"
+                        class="p-2 rounded-md bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 text-[11px] text-zinc-700 dark:text-zinc-300 leading-relaxed font-sans max-h-40 overflow-y-auto whitespace-pre-wrap break-words"
+                      >
+                        <div class="font-semibold text-amber-600 dark:text-amber-400 mb-1 flex items-center gap-1">
+                          <UIcon name="i-lucide-sparkles" class="w-3.5 h-3.5" />
+                          <span>推导动机 / 思维链:</span>
+                        </div>
+                        <div class="text-[10.5px] leading-relaxed">{{ call.associatedThought }}</div>
                       </div>
                     </td>
 

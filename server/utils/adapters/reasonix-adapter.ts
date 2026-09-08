@@ -434,23 +434,86 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     let deleted = false
+    const session = this.getSessions().find(s => s.id === id || s.extra?.topic_id === id || s.extra?.sessionId === id)
+    const topicId = session?.extra?.topic_id || id
+    const sessionId = session?.extra?.sessionId || session?.id || id
 
-    // Delete in global db
+    // 1. Delete specific file paths from session metadata
+    if (session?.extra?.metaPath && fs.existsSync(session.extra.metaPath)) {
+      try {
+        fs.unlinkSync(session.extra.metaPath)
+        deleted = true
+      } catch (e) {
+        console.error('[ReasonixAdapter] Error deleting metaPath:', e)
+      }
+    }
+    if (session?.extra?.jsonlPath && fs.existsSync(session.extra.jsonlPath)) {
+      try {
+        fs.unlinkSync(session.extra.jsonlPath)
+        deleted = true
+      } catch (e) {
+        console.error('[ReasonixAdapter] Error deleting jsonlPath:', e)
+      }
+    }
+    if (session?.rawLocation && fs.existsSync(session.rawLocation)) {
+      try {
+        fs.unlinkSync(session.rawLocation)
+        deleted = true
+      } catch (e) {
+        console.error('[ReasonixAdapter] Error deleting rawLocation:', e)
+      }
+    }
+
+    // 2. Scan and delete matching files across ~/.reasonix/projects and ~/.reasonix/sessions
+    const scanAndRemoveFiles = (dir: string) => {
+      if (!fs.existsSync(dir)) return
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            scanAndRemoveFiles(full)
+          } else if (entry.isFile()) {
+            if (
+              entry.name.includes(sessionId) ||
+              entry.name.includes(topicId) ||
+              entry.name === `${sessionId}.jsonl` ||
+              entry.name === `${sessionId}.jsonl.meta` ||
+              entry.name === `${topicId}.jsonl` ||
+              entry.name === `${topicId}.jsonl.meta`
+            ) {
+              try {
+                fs.unlinkSync(full)
+                deleted = true
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const projectsDir = path.join(reasonixDir, 'projects')
+    scanAndRemoveFiles(projectsDir)
+
+    const globalSessionsDir = path.join(reasonixDir, 'sessions')
+    scanAndRemoveFiles(globalSessionsDir)
+
+    // 3. Delete in global db
     const globalDbPath = path.join(reasonixDir, 'desktop', 'topic-state-v1.sqlite')
     if (fs.existsSync(globalDbPath)) {
       let db: any
       try {
         db = new Database(globalDbPath)
-        const res = db.prepare('DELETE FROM topics WHERE topic_id = ?').run(id)
+        const res = db.prepare('DELETE FROM topics WHERE topic_id = ? OR topic_id = ?').run(topicId, sessionId)
         if (res.changes > 0) deleted = true
-      } catch {}
-      finally {
+      } catch (e) {
+        console.error('[ReasonixAdapter] Error deleting from global db:', e)
+      } finally {
         if (db) db.close()
       }
     }
 
-    // Delete in project dbs
-    const projectsDir = path.join(reasonixDir, 'projects')
+    // 4. Delete in project dbs
     if (fs.existsSync(projectsDir)) {
       try {
         const entries = fs.readdirSync(projectsDir)
@@ -460,15 +523,21 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             let db: any
             try {
               db = new Database(projDbPath)
-              const res = db.prepare('DELETE FROM topics WHERE topic_id = ?').run(id)
+              const res = db.prepare('DELETE FROM topics WHERE topic_id = ? OR topic_id = ?').run(topicId, sessionId)
               if (res.changes > 0) deleted = true
-            } catch {}
-            finally {
+            } catch (e) {
+              console.error(`[ReasonixAdapter] Error deleting from project db ${entry}:`, e)
+            } finally {
               if (db) db.close()
             }
           }
         }
       } catch {}
+    }
+
+    // If session was originally found in registry, treat as deleted
+    if (session) {
+      deleted = true
     }
 
     return deleted

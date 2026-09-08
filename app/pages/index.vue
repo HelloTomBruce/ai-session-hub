@@ -216,14 +216,18 @@ const executeDelete = async () => {
   if (!selectedSession.value) return
   isDeleting.value = true
   try {
-    await $fetch(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
+    const res = await $fetch<{ success: boolean, message?: string }>(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
       method: 'DELETE'
     })
-    isDeleteOpen.value = false
-    if (isDetailOpen.value) isDetailOpen.value = false
-    handleRefresh()
+    if (res.success) {
+      isDeleteOpen.value = false
+      if (isDetailOpen.value) isDetailOpen.value = false
+      await handleRefresh()
+    } else {
+      alert(res.message || '删除失败')
+    }
   } catch (err: any) {
-    alert(err?.data?.message || '删除失败')
+    alert(err?.data?.message || err?.message || '删除失败')
   } finally {
     isDeleting.value = false
   }
