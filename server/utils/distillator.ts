@@ -2,6 +2,7 @@ import type { PlatformType, SessionMessage, UnifiedSession } from './types'
 import { compactSessionForAI } from './session-compactor'
 import { getCachedSessionSummary, saveCachedSessionSummary, type SingleSessionSummary } from './distill-cache'
 import type { LLMProviderSettings } from './llm-provider-config'
+import { streamLLMCompletion } from './llm-stream-client'
 
 export interface ADRItem {
   id: string
@@ -459,6 +460,208 @@ ${uniqueAdrs.map(adr => `### ${adr.id}: ${adr.title}
     rawMarkdown: markdown,
     adrMarkdown
   }
+}
+
+/**
+ * Streaming Map-Reduce Distillation Pipeline
+ */
+export async function distillSessionsContentStream(
+  sessions: Array<{ session: UnifiedSession, messages: SessionMessage[] }>,
+  provider: LLMProviderSettings | undefined,
+  onStatus: (status: { message: string, step?: number, totalSteps?: number, currentSession?: string }) => void,
+  onChunk: (chunk: string) => void,
+  onDone: (report: DistillReport) => void
+): Promise<void> {
+  if (provider && provider.enabled && provider.apiKey) {
+    try {
+      const mapSummaries: SingleSessionSummary[] = []
+      const total = sessions.length
+
+      // 1. Map Phase: Extract micro-summary for each session with status updates
+      for (let i = 0; i < total; i++) {
+        const item = sessions[i]
+        if (!item) continue
+        const sess = item.session
+        const cached = getCachedSessionSummary(sess.cli, sess.id, sess.updatedAt)
+        if (cached) {
+          onStatus({
+            message: `[1/2 Map阶段] 处理会话 (${i + 1}/${total}): ${sess.title} (已命中缓存)`,
+            step: i + 1,
+            totalSteps: total,
+            currentSession: sess.title
+          })
+          mapSummaries.push(cached)
+        } else {
+          onStatus({
+            message: `[1/2 Map阶段] 正在提炼会话 (${i + 1}/${total}): ${sess.title}...`,
+            step: i + 1,
+            totalSteps: total,
+            currentSession: sess.title
+          })
+          const summary = await distillSingleSessionMap(item, provider)
+          mapSummaries.push(summary)
+        }
+      }
+
+      // 2. Reduce Phase: Stream synthesis
+      onStatus({
+        message: `[2/2 Reduce阶段] 正在跨会话全局整合并生成 ADR 架构决策 (流式生成中)...`
+      })
+
+      let minTime = Infinity
+      let maxTime = -Infinity
+      for (const s of sessions) {
+        if (s.session.createdAt && s.session.createdAt < minTime) minTime = s.session.createdAt
+        if (s.session.updatedAt && s.session.updatedAt > maxTime) maxTime = s.session.updatedAt
+      }
+
+      const payloadForReduce = mapSummaries.map((s, idx) => ({
+        sessionIndex: idx + 1,
+        id: s.sessionId,
+        platform: s.platform,
+        title: s.title,
+        cwd: s.cwd,
+        actions: s.actions,
+        decisions: s.decisions,
+        learnings: s.learnings,
+        todos: s.todos,
+        tools: s.tools
+      }))
+
+      const userPrompt = `Here are the distilled summaries from ${mapSummaries.length} AI development sessions:\n\n${JSON.stringify(payloadForReduce, null, 2)}\n\nPlease synthesize them into the final engineering review and ADR report.`
+
+      const fullText = await streamLLMCompletion(
+        provider,
+        REDUCE_SYSTEM_PROMPT,
+        userPrompt,
+        onChunk,
+        0.2
+      )
+
+      let parsed: any = {}
+      try {
+        let cleanedJson = fullText.trim()
+        if (cleanedJson.startsWith('```')) {
+          cleanedJson = cleanedJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+        }
+        parsed = JSON.parse(cleanedJson)
+      } catch (e) {
+        const jsonMatch = fullText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0])
+          } catch {}
+        }
+      }
+
+      const adrs: ADRItem[] = (parsed.adrs || []).map((adr: any, index: number) => {
+        const fallbackSess = mapSummaries[index % mapSummaries.length]
+        return {
+          id: adr.id || `ADR-${String(index + 1).padStart(3, '0')}`,
+          title: adr.title || '架构技术决策',
+          context: adr.context || '未提供上下文背景',
+          decision: adr.decision || '未提供决策内容',
+          consequences: adr.consequences || '功能落地与维护性保障',
+          status: adr.status || 'Accepted',
+          platform: (adr.platform || fallbackSess?.platform || 'cli') as PlatformType,
+          sourceSessionId: adr.sourceSessionId || fallbackSess?.sessionId || ''
+        }
+      })
+
+      const actionsDone = Array.isArray(parsed.actionsDone) && parsed.actionsDone.length > 0
+        ? parsed.actionsDone
+        : mapSummaries.flatMap(s => s.actions)
+
+      const keyLearnings = Array.isArray(parsed.keyLearnings) && parsed.keyLearnings.length > 0
+        ? parsed.keyLearnings
+        : mapSummaries.flatMap(s => s.learnings)
+
+      const technicalDecisions = Array.isArray(parsed.technicalDecisions) && parsed.technicalDecisions.length > 0
+        ? parsed.technicalDecisions
+        : mapSummaries.flatMap(s => s.decisions.map(d => `${d.title}: ${d.decision}`))
+
+      const toolsAndCommands = Array.isArray(parsed.toolsAndCommands) && parsed.toolsAndCommands.length > 0
+        ? parsed.toolsAndCommands
+        : Array.from(new Set(mapSummaries.flatMap(s => s.tools)))
+
+      const todos = Array.isArray(parsed.todos) && parsed.todos.length > 0
+        ? parsed.todos
+        : Array.from(new Set(mapSummaries.flatMap(s => s.todos)))
+
+      const markdown = `# AI Session Hub 知识沉淀与复盘报告
+> 🤖 本报告由 AI 模型 (\`${provider.model || 'LLM'}\`) 基于 ${sessions.length} 个多端开发会话深度智能提炼生成。
+
+## 📊 涉及会话概要 (${sessions.length} 个会话)
+${sessions.map(s => `- **[${s.session.cli.toUpperCase()}]** ${s.session.title} (\`${s.session.cwd}\`)`).join('\n')}
+
+---
+
+## 🛠️ 1. 完成工作与任务主线 (What Was Done)
+${actionsDone.map((a: string) => `- ${a}`).join('\n') || '- 暂无明确操作记录'}
+
+## 💡 2. 关键架构决策与选型 (Architecture & Technical Decisions)
+${technicalDecisions.map((d: string) => `- ${d}`).join('\n') || '- 遵循默认实现，未见重大决策分歧'}
+
+## 🧠 3. 踩坑记录与沉淀经验 (Key Learnings & Gotchas)
+${keyLearnings.map((l: string) => `- ${l}`).join('\n') || '- 暂无明显踩坑记录'}
+
+## 🔧 4. 关键工具链与执行特征 (Tool Usages)
+${toolsAndCommands.map((t: string) => `- \`${t}\``).join('\n') || '- 无外部工具调用'}
+
+## 📋 5. 待办事项与后续演进建议 (Next Steps)
+${todos.map((t: string) => `- [ ] ${t}`).join('\n') || '- [ ] 无未竟待办'}
+`
+
+      const adrMarkdown = `# 架构与方案决策记录 (ADR Collection)
+> 🤖 本文档由 AI 大模型基于 ${sessions.length} 个会话的思维链 (Thinking Rationale) 与架构选型自动生成。
+
+${adrs.map(adr => `### ${adr.id}: ${adr.title}
+- **状态 (Status)**: \`${adr.status}\`
+- **来源会话 (Source)**: \`${adr.platform.toUpperCase()}\` (Session: ${adr.sourceSessionId})
+- **背景与痛点 (Context)**: ${adr.context}
+- **做出的决定 (Decision)**:
+  > ${adr.decision}
+- **影响与后果 (Consequences)**: ${adr.consequences}
+`).join('\n---\n\n') || '> 未检测到足够篇幅的技术决策记录'}
+`
+
+      const report: DistillReport = {
+        title: parsed.summaryTitle || `知识沉淀报告 (${sessions.length} 会话)`,
+        isAiGenerated: true,
+        providerModel: provider.model,
+        timeRange: {
+          from: minTime === Infinity ? Date.now() : minTime,
+          to: maxTime === -Infinity ? Date.now() : maxTime
+        },
+        sessionCount: sessions.length,
+        sessions: sessions.map(s => ({
+          id: s.session.id,
+          title: s.session.title,
+          platform: s.session.cli,
+          cwd: s.session.cwd,
+          updatedAt: s.session.updatedAt
+        })),
+        actionsDone,
+        keyLearnings,
+        technicalDecisions,
+        adrs,
+        toolsAndCommands,
+        todos,
+        rawMarkdown: markdown,
+        adrMarkdown
+      }
+
+      onDone(report)
+      return
+    } catch (e: any) {
+      console.error('[Distillator] Stream AI Distillation failed, falling back to local heuristic:', e)
+      onStatus({ message: 'AI 流式提炼遇到异常，正在切换至本地启发式规则总结...' })
+    }
+  }
+
+  // Fallback heuristic
+  const fallback = distillSessionsHeuristic(sessions)
+  onDone(fallback)
 }
 
 /**

@@ -236,18 +236,85 @@ if (cachedDiagnosisRes.value?.data) {
   aiDiagnosisResult.value = cachedDiagnosisRes.value.data
 }
 
+const diagnoseStatus = ref('')
+const diagnoseStreamText = ref('')
+
 const runAIDiagnosis = async () => {
   isDiagnosing.value = true
+  diagnoseStatus.value = '正在启动 AI 效能诊断引擎...'
+  diagnoseStreamText.value = ''
+
   try {
-    const res = await $fetch<{ success: boolean, source: string, data: any }>(
-      `/api/sessions/${sessionId.value}/diagnose?cli=${platform.value}`,
-      { method: 'POST' }
-    )
-    if (res?.data) {
-      aiDiagnosisResult.value = res.data
+    const response = await fetch(`/api/sessions/${sessionId.value}/diagnose/stream?cli=${platform.value}`, {
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '诊断请求失败' }))
+      throw new Error(err.message || '诊断请求失败')
+    }
+
+    if (!response.body) {
+      throw new Error('未获取到流式响应')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+
+    const handleEventBlock = (block: string) => {
+      if (!block.trim()) return
+      let eventType = 'message'
+      let dataStr = ''
+
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('event:')) {
+          eventType = trimmed.slice(6).trim()
+        } else if (trimmed.startsWith('data:')) {
+          dataStr = trimmed.slice(5).trim()
+        }
+      }
+
+      if (!dataStr) return
+
+      try {
+        const parsed = JSON.parse(dataStr)
+        if (eventType === 'status') {
+          diagnoseStatus.value = parsed.message || ''
+        } else if (eventType === 'chunk') {
+          diagnoseStreamText.value += parsed.text || ''
+        } else if (eventType === 'done') {
+          if (parsed.data) {
+            aiDiagnosisResult.value = parsed.data
+          }
+        } else if (eventType === 'error') {
+          throw new Error(parsed.message || '诊断发生错误')
+        }
+      } catch (jsonErr: any) {
+        if (eventType === 'error') throw jsonErr
+      }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (buffer.trim()) {
+          handleEventBlock(buffer)
+        }
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop() || ''
+
+      for (const block of blocks) {
+        handleEventBlock(block)
+      }
     }
   } catch (err: any) {
-    alert(err?.data?.message || 'AI 诊断失败')
+    alert(err?.message || 'AI 诊断失败')
   } finally {
     isDiagnosing.value = false
   }
@@ -1038,6 +1105,30 @@ const thinkingTimeline = computed(() => {
 
           <!-- Modal Body Content -->
           <div class="flex-1 overflow-y-auto p-5 space-y-5 bg-zinc-50/40 dark:bg-zinc-950/40">
+            <!-- Streaming Diagnosis Progress Banner / Typewriter Box -->
+            <div v-if="isDiagnosing" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 space-y-3 shadow-sm animate-fade-in">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-purple-600 dark:text-purple-400" />
+                  <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100">AI 效能推理诊断中</span>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                  <UIcon name="i-lucide-sparkles" class="w-3 h-3" />
+                  流式分析中
+                </span>
+              </div>
+              <div class="p-2.5 bg-zinc-50 dark:bg-zinc-800/60 rounded border border-zinc-200/70 dark:border-zinc-700/60 text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                </span>
+                <span class="font-medium font-mono text-[11px]">{{ diagnoseStatus || '正在分析会话行为轨迹与决策思考链...' }}</span>
+              </div>
+              <div v-if="diagnoseStreamText" class="p-3.5 bg-zinc-50/90 dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-200 font-mono text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-xs">
+                {{ diagnoseStreamText }}<span class="inline-block w-1.5 h-3.5 bg-purple-600 dark:bg-purple-400 ml-0.5 animate-pulse align-middle"></span>
+              </div>
+            </div>
+
             <!-- 1. Dimension Score Breakdown Grid -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <!-- Directness -->

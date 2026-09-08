@@ -38,6 +38,8 @@ const allSessions = computed(() => sessionData.value?.data || [])
 
 const selectedSessionKeys = ref<string[]>([])
 const isDistilling = ref(false)
+const distillStatus = ref('')
+const streamChunkText = ref('')
 const report = ref<DistillReport | null>(null)
 const copySuccess = ref(false)
 const copyAdrSuccess = ref(false)
@@ -73,14 +75,85 @@ const handleDistill = async () => {
   })
 
   isDistilling.value = true
+  distillStatus.value = '正在准备启动知识提炼引擎...'
+  streamChunkText.value = ''
+  report.value = null
+
   try {
-    const res = await $fetch<{ success: boolean, data: DistillReport }>('/api/distill', {
+    const response = await fetch('/api/distill/stream', {
       method: 'POST',
-      body: { sessions: items }
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ sessions: items })
     })
-    report.value = res.data
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: '提炼请求失败' }))
+      throw new Error(err.message || '提炼请求失败')
+    }
+
+    if (!response.body) {
+      throw new Error('未获取到流式响应')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+
+    const handleEventBlock = (block: string) => {
+      if (!block.trim()) return
+      let eventType = 'message'
+      let dataStr = ''
+
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('event:')) {
+          eventType = trimmed.slice(6).trim()
+        } else if (trimmed.startsWith('data:')) {
+          dataStr = trimmed.slice(5).trim()
+        }
+      }
+
+      if (!dataStr) return
+
+      try {
+        const parsed = JSON.parse(dataStr)
+        if (eventType === 'status') {
+          distillStatus.value = parsed.message || ''
+        } else if (eventType === 'chunk') {
+          streamChunkText.value += parsed.text || ''
+        } else if (eventType === 'done') {
+          if (parsed.report) {
+            report.value = parsed.report
+          }
+        } else if (eventType === 'error') {
+          throw new Error(parsed.message || '提炼发生错误')
+        }
+      } catch (jsonErr: any) {
+        if (eventType === 'error') throw jsonErr
+      }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (buffer.trim()) {
+          handleEventBlock(buffer)
+        }
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop() || ''
+
+      for (const block of blocks) {
+        handleEventBlock(block)
+      }
+    }
   } catch (err: any) {
-    alert(err?.data?.message || '知识提炼失败')
+    alert(err?.message || '知识提炼失败')
   } finally {
     isDistilling.value = false
   }
@@ -185,15 +258,57 @@ const copyAdrMarkdown = () => {
               :disabled="selectedSessionKeys.length === 0"
               @click="handleDistill"
             >
-              开始提炼总结
+              {{ isDistilling ? '知识提炼流式生成中...' : '开始提炼总结' }}
             </UButton>
           </div>
         </div>
       </div>
 
-      <!-- Right: Report Presentation (7 cols) -->
+      <!-- Right: Report Presentation / Streaming View (7 cols) -->
       <div class="lg:col-span-7">
-        <div v-if="report" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 space-y-4 shadow-sm">
+        <!-- Live Streaming State -->
+        <div v-if="isDistilling" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 space-y-4 shadow-sm animate-fade-in">
+          <div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-purple-600 dark:text-purple-400" />
+              <h2 class="text-xs font-bold text-zinc-900 dark:text-zinc-100">AI 正在深度提炼知识与复盘...</h2>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+              <UIcon name="i-lucide-sparkles" class="w-3 h-3" />
+              流式生成中
+            </span>
+          </div>
+
+          <!-- Status indicator -->
+          <div class="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded border border-zinc-200/70 dark:border-zinc-700/60 text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+            </span>
+            <span class="font-medium font-mono">{{ distillStatus || '正在执行 Map-Reduce 提炼任务...' }}</span>
+          </div>
+
+          <!-- Realtime text stream typewriter box -->
+          <div v-if="streamChunkText" class="space-y-1.5">
+            <div class="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
+              <span class="flex items-center gap-1 font-medium">
+                <UIcon name="i-lucide-sparkles" class="w-3.5 h-3.5 text-purple-500" />
+                Reduce 阶段流式输出预览:
+              </span>
+              <span class="font-mono text-[10px]">字符数: {{ streamChunkText.length }}</span>
+            </div>
+            <div class="p-4 bg-zinc-50/90 dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-200 font-mono text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 max-h-[360px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-xs">
+              {{ streamChunkText }}<span class="inline-block w-1.5 h-3.5 bg-purple-600 dark:bg-purple-400 ml-0.5 animate-pulse align-middle"></span>
+            </div>
+          </div>
+          <div v-else class="py-12 flex flex-col items-center justify-center text-zinc-400 space-y-2">
+            <UIcon name="i-lucide-cpu" class="w-8 h-8 opacity-40 animate-pulse" />
+            <p class="text-xs">正在分析会话思维链与工具操作上下文...</p>
+          </div>
+        </div>
+
+        <!-- Render Finished Report -->
+        <div v-else-if="report" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 space-y-4 shadow-sm">
           <div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <div>
               <div class="flex items-center gap-2">
@@ -385,3 +500,4 @@ const copyAdrMarkdown = () => {
     </div>
   </div>
 </template>
+
