@@ -536,7 +536,8 @@ const copyResumeCommand = (session: UnifiedSession) => {
     </div>
 
     <!-- Batch Action Bar -->
-    <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
+    <div v-else>
+      <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
       <span class="font-medium">{{ selectedIds.size }} 个已选</span>
       <span class="opacity-50">|</span>
       <button class="hover:underline" @click="clearSelection">取消选择</button>
@@ -559,9 +560,9 @@ const copyResumeCommand = (session: UnifiedSession) => {
           加标签
         </UButton>
       </div>
-    </div>
+      </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       <div
         v-for="item in sessions"
         :key="`${item.cli}-${item.id}`"
@@ -684,6 +685,7 @@ const copyResumeCommand = (session: UnifiedSession) => {
             />
           </div>
         </div>
+      </div>
       </div>
     </div>
 
