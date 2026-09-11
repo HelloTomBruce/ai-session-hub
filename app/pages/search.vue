@@ -93,9 +93,8 @@ const highlightSnippet = (snippet: string) => {
         v-model="query"
         placeholder="输入搜索关键词，如 登录、bugfix、Nuxt 升级..."
         size="lg"
-        class="flex-1"
+        class="flex-1 w-full"
         icon="i-lucide-search"
-        class="w-full"
         @keyup.enter="handleSearch"
       />
       <UButton

@@ -327,7 +327,7 @@ class CacheService {
       sql += ' ORDER BY updated_at DESC'
 
       const rows = this.db.prepare(sql).all(...params) as any[]
-      return rows.map(this.rowToSession).filter(Boolean) as UnifiedSession[]
+      return rows.map((r: any) => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
     } catch (err) {
       console.error('[Cache] Error reading cached sessions:', err)
       return []
@@ -357,7 +357,7 @@ class CacheService {
 
       return {
         session: this.rowToSession(srow),
-        messages: mrows.map(this.rowToMessage).filter(Boolean) as SessionMessage[]
+        messages: mrows.map((r: any) => this.rowToMessage(r)).filter(Boolean) as SessionMessage[]
       }
     } catch (err) {
       console.error('[Cache] Error reading cached session detail:', err)
