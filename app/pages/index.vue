@@ -458,6 +458,33 @@ const copyResumeCommand = (session: UnifiedSession) => {
       </div>
 
       <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <template v-if="selectedIds.size > 0">
+        <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
+        <span class="font-medium">{{ selectedIds.size }} 个已选</span>
+        <span class="opacity-50">|</span>
+        <button class="hover:underline" @click="clearSelection">取消选择</button>
+        <span class="opacity-50">|</span>
+        <UButton size="xs" color="error" icon="i-lucide-trash-2" :loading="isBatchDeleting" @click="handleBatchDelete">
+        删除
+        </UButton>
+        <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
+        icon="i-lucide-download" @click="handleBatchExport('json')">
+        导出 JSON
+        </UButton>
+        <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
+        icon="i-lucide-file-text" @click="handleBatchExport('markdown')">
+        导出 Markdown
+        </UButton>
+        <div class="flex items-center gap-1 ml-1">
+        <UInput v-model="batchTagInput" size="xs" placeholder="标签名..." class="w-24"
+        @keyup.enter="handleBatchAddTag" />
+        <UButton size="xs" color="neutral" :loading="isBatchTagging" icon="i-lucide-tag" @click="handleBatchAddTag">
+        加标签
+        </UButton>
+        </div>
+        </div>
+        </template>
+        <template v-else>
         <UButton
           icon="i-lucide-database"
           color="neutral"
@@ -482,6 +509,7 @@ const copyResumeCommand = (session: UnifiedSession) => {
         >
           刷新
         </UButton>
+        </template>
       </div>
     </div>
 
@@ -543,30 +571,6 @@ const copyResumeCommand = (session: UnifiedSession) => {
 
     <!-- Batch Action Bar & Sessions Grid -->
     <template v-else>
-      <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
-      <span class="font-medium">{{ selectedIds.size }} 个已选</span>
-      <span class="opacity-50">|</span>
-      <button class="hover:underline" @click="clearSelection">取消选择</button>
-      <span class="opacity-50">|</span>
-      <UButton size="xs" color="error" icon="i-lucide-trash-2" :loading="isBatchDeleting" @click="handleBatchDelete">
-        删除
-      </UButton>
-      <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-        icon="i-lucide-download" @click="handleBatchExport('json')">
-        导出 JSON
-      </UButton>
-      <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-        icon="i-lucide-file-text" @click="handleBatchExport('markdown')">
-        导出 Markdown
-      </UButton>
-      <div class="flex items-center gap-1 ml-1">
-        <UInput v-model="batchTagInput" size="xs" placeholder="标签名..." class="w-24"
-          @keyup.enter="handleBatchAddTag" />
-        <UButton size="xs" color="neutral" :loading="isBatchTagging" icon="i-lucide-tag" @click="handleBatchAddTag">
-          加标签
-        </UButton>
-      </div>
-      </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       <div
