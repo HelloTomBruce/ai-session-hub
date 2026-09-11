@@ -164,10 +164,10 @@ class TagService {
     const db = this.getDb()
     if (!db) return false
     try {
-      db.prepare(
+      const result = db.prepare(
         "UPDATE sessions_cache SET tags = ? WHERE id = ? AND platform = ?"
       ).run(JSON.stringify(tags), sessionId, platform)
-      return true
+      return result.changes > 0
     } catch {
       return false
     }

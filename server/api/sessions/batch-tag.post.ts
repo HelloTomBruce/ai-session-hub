@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
   }
 
   let successCount = 0
+  let syncNeededCount = 0
   const results: Array<{ id: string; cli: string; tags: string[]; ok: boolean }> = []
 
   for (const item of items) {
@@ -30,9 +31,16 @@ export default defineEventHandler(async (event) => {
 
       const ok = tagService.setSessionTags(item.id, item.cli, updated)
       if (ok) successCount++
+      else syncNeededCount++
       results.push({ id: item.id, cli: item.cli, tags: updated, ok })
-    } catch {}
+    } catch {
+      syncNeededCount++
+    }
   }
 
-  return { success: true, data: { successCount, total: items.length, results } }
+  const message = syncNeededCount > 0
+    ? `已标记 ${successCount} 个，${syncNeededCount} 个不在缓存中。请先点击"同步"按钮将会话加载到缓存后重试。`
+    : `已为 ${successCount} 个会话打上标签`
+
+  return { success: true, data: { successCount, syncNeededCount, results }, message }
 })

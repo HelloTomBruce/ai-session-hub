@@ -88,13 +88,14 @@ const handleBatchAddTag = async () => {
   isBatchTagging.value = true
   try {
     const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
-    await $fetch('/api/sessions/batch-tag', {
+    const res = await $fetch<{ success: boolean; message?: string }>('/api/sessions/batch-tag', {
       method: 'POST',
       body: { items, tags: [tag], mode: 'add' }
     })
     batchTagInput.value = ''
     selectedIds.value = new Set()
     await handleRefresh()
+    if (res.message) alert(res.message)
   } catch (err: any) {
     alert('批量打标签失败: ' + (err?.data?.message || err?.message))
   } finally {
