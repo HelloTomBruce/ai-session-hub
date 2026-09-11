@@ -504,13 +504,16 @@ const copyResumeCommand = (session: UnifiedSession) => {
     </div>
 
     <!-- Sessions List -->
-    <div v-if="pending" class="py-16 text-center text-zinc-400">
+    <template v-if="pending">
+    <div class="py-16 text-center text-zinc-400">
       <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500" />
       <p class="text-xs">加载会话数据中...</p>
-
+    </div>
+    </template>
 
     <!-- Tag filter indicator -->
-    <div v-else-if="activeTagFilter && !pending" class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
+    <template v-else-if="activeTagFilter && !pending">
+    <div class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
       <span>筛选标签：</span>
       <span
         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer border"
@@ -526,17 +529,20 @@ const copyResumeCommand = (session: UnifiedSession) => {
       </span>
       <span class="text-zinc-400">({{ sessions.length }})</span>
     </div>
+    </template>
 
-    <div v-else-if="sessions.length === 0" class="py-16 text-center bg-white dark:bg-zinc-900 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
+    <template v-else-if="sessions.length === 0">
+    <div class="py-16 text-center bg-white dark:bg-zinc-900 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
       <div class="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-2.5 text-zinc-400">
         <UIcon name="i-lucide-inbox" class="w-5 h-5" />
       </div>
       <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">未检索到匹配的会话</h3>
       <p class="text-xs text-zinc-400 mt-0.5">请尝试更换上方平台分类或搜索关键字</p>
     </div>
+    </template>
 
-    <!-- Batch Action Bar -->
-    <div v-else>
+    <!-- Batch Action Bar & Sessions Grid -->
+    <template v-else>
       <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
       <span class="font-medium">{{ selectedIds.size }} 个已选</span>
       <span class="opacity-50">|</span>
@@ -686,9 +692,11 @@ const copyResumeCommand = (session: UnifiedSession) => {
           </div>
         </div>
       </div>
-      </div>
-    </div>
 
+      </div>
+    </template>
+
+    <!-- Edit Modal -->
     <!-- Edit Modal -->
     <UModal v-model:open="isEditOpen" :ui="{ content: 'max-w-md' }">
       <template #content>
