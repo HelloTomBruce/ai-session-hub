@@ -1381,17 +1381,21 @@ const thinkingTimeline = computed(() => {
                   <span class="text-[10px] text-zinc-400 font-mono">{{ formatEvidenceDate(c.authorDate) }}</span>
                 </div>
                 <div class="px-3 py-1.5 space-y-0.5">
-                  <div v-for="f in c.files" :key="f.filePath" class="flex items-center gap-2 text-[11px] font-mono">
-                    <span :class="{
-                      'text-emerald-600': f.changeType === 'added',
-                      'text-red-600': f.changeType === 'deleted',
-                      'text-amber-600': f.changeType === 'modified',
-                      'text-blue-600': f.changeType === 'renamed'
-                    }">{{ f.changeType === 'added' ? '+' : f.changeType === 'deleted' ? '-' : f.changeType === 'modified' ? '~' : '→' }}</span>
-                    <span class="text-zinc-700 dark:text-zinc-300 truncate">{{ f.filePath }}</span>
-                    <span v-if="f.additions || f.deletions" class="text-[10px] text-zinc-400">
-                      +{{ f.additions }} -{{ f.deletions }}
-                    </span>
+                  <div v-for="f in c.files" :key="f.filePath">
+                    <div class="flex items-center gap-2 text-[11px] font-mono cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded px-1 -mx-1" @click="f._showDiff = !f._showDiff">
+                      <span :class="{
+                        'text-emerald-600': f.changeType === 'added',
+                        'text-red-600': f.changeType === 'deleted',
+                        'text-amber-600': f.changeType === 'modified',
+                        'text-blue-600': f.changeType === 'renamed'
+                      }">{{ f.changeType === 'added' ? '+' : f.changeType === 'deleted' ? '-' : f.changeType === 'modified' ? '~' : '→' }}</span>
+                      <span class="text-zinc-700 dark:text-zinc-300 truncate flex-1">{{ f.filePath }}</span>
+                      <span v-if="f.additions || f.deletions" class="text-[10px] text-zinc-400 shrink-0">
+                        +{{ f.additions }} -{{ f.deletions }}
+                      </span>
+                      <UIcon v-if="f.diff" :name="f._showDiff ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="w-3 h-3 text-zinc-300 shrink-0" />
+                    </div>
+                    <pre v-if="f._showDiff && f.diff" class="mt-1 p-2 rounded bg-zinc-900 dark:bg-zinc-950 text-[11px] leading-relaxed overflow-x-auto max-h-48 overflow-y-auto"><code class="text-zinc-300" v-text="f.diff" /></pre>
                   </div>
                 </div>
               </div>
