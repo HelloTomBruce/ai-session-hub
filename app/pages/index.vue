@@ -37,6 +37,77 @@ const tagColors: Record<string, string> = {
   performance: '#ec4899', security: '#dc2626', testing: '#14b8a6'
 }
 const activeTagFilter = ref('')
+const selectedIds = ref<Set<string>>(new Set())
+const isBatchDeleting = ref(false)
+const isBatchTagging = ref(false)
+const batchTagInput = ref('')
+
+const toggleSelect = (item: any) => {
+  const key = `${item.cli}::${item.id}`
+  const next = new Set(selectedIds.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selectedIds.value = next
+}
+
+const selectAllOnPage = () => {
+  const next = new Set(selectedIds.value)
+  for (const s of sessions.value) {
+    next.add(`${s.cli}::${s.id}`)
+  }
+  selectedIds.value = next
+}
+
+const clearSelection = () => { selectedIds.value = new Set() }
+
+const selectedSessions = computed(() => {
+  return sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`))
+})
+
+const handleBatchDelete = async () => {
+  if (!confirm(`确认删除 ${selectedSessions.value.length} 个会话？此操作不可撤销。`)) return
+  isBatchDeleting.value = true
+  try {
+    const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
+    const res = await $fetch('/api/sessions/batch-delete', { method: 'POST', body: { items } })
+    if (res.success) {
+      selectedIds.value = new Set()
+      await handleRefresh()
+      if (res.data.failCount > 0) alert(`已删除 ${res.data.successCount} 个，${res.data.failCount} 个失败`)
+    }
+  } catch (err: any) {
+    alert('批量删除失败: ' + (err?.data?.message || err?.message))
+  } finally {
+    isBatchDeleting.value = false
+  }
+}
+
+const handleBatchAddTag = async () => {
+  const tag = batchTagInput.value.trim()
+  if (!tag) return
+  isBatchTagging.value = true
+  try {
+    const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
+    await $fetch('/api/sessions/batch-tag', {
+      method: 'POST',
+      body: { items, tags: [tag], mode: 'add' }
+    })
+    batchTagInput.value = ''
+    selectedIds.value = new Set()
+    await handleRefresh()
+  } catch (err: any) {
+    alert('批量打标签失败: ' + (err?.data?.message || err?.message))
+  } finally {
+    isBatchTagging.value = false
+  }
+}
+
+const handleBatchExport = async (format: string) => {
+  const items = selectedSessions.value.map(s => `${s.cli}::${s.id}`).join(',')
+  const url = `/api/sessions/batch-export?items=${encodeURIComponent(items)}&format=${format}`
+  window.open(url, '_blank')
+  selectedIds.value = new Set()
+}
 
 const getTags = (item: any) => item.extra?.tags || []
 const toggleTagFilter = (tag: string) => {
@@ -414,6 +485,24 @@ const copyResumeCommand = (session: UnifiedSession) => {
       </div>
     </div>
 
+    <!-- Select All Bar -->
+    <div v-if="!pending && sessions.length > 0 && selectedIds.size === 0" class="flex items-center gap-2 text-[11px] text-zinc-400">
+      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="selectAllOnPage">
+        <UIcon name="i-lucide-check-square" class="w-3.5 h-3.5 inline mr-1" />
+        全选本页
+      </button>
+    </div>
+    <div v-if="!pending && sessions.length > 0 && selectedIds.size > 0" class="flex items-center gap-2 text-[11px] text-zinc-400">
+      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="clearSelection">
+        <UIcon name="i-lucide-square" class="w-3.5 h-3.5 inline mr-1" />
+        取消选择
+      </button>
+      <span class="text-zinc-300 dark:text-zinc-600">|</span>
+      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="selectAllOnPage">
+        全选本页 ({{ sessions.length }})
+      </button>
+    </div>
+
     <!-- Sessions List -->
     <div v-if="pending" class="py-16 text-center text-zinc-400">
       <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500" />
@@ -446,6 +535,32 @@ const copyResumeCommand = (session: UnifiedSession) => {
       <p class="text-xs text-zinc-400 mt-0.5">请尝试更换上方平台分类或搜索关键字</p>
     </div>
 
+    <!-- Batch Action Bar -->
+    <div v-if="selectedIds.size > 0" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs shadow-sm">
+      <span class="font-medium">{{ selectedIds.size }} 个已选</span>
+      <span class="opacity-50">|</span>
+      <button class="hover:underline" @click="clearSelection">取消选择</button>
+      <span class="opacity-50">|</span>
+      <UButton size="xs" color="error" icon="i-lucide-trash-2" :loading="isBatchDeleting" @click="handleBatchDelete">
+        删除
+      </UButton>
+      <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
+        icon="i-lucide-download" @click="handleBatchExport('json')">
+        导出 JSON
+      </UButton>
+      <UButton size="xs" color="neutral" class="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
+        icon="i-lucide-file-text" @click="handleBatchExport('markdown')">
+        导出 Markdown
+      </UButton>
+      <div class="flex items-center gap-1 ml-1">
+        <UInput v-model="batchTagInput" size="xs" placeholder="标签名..." class="w-24"
+          @keyup.enter="handleBatchAddTag" />
+        <UButton size="xs" color="neutral" :loading="isBatchTagging" icon="i-lucide-tag" @click="handleBatchAddTag">
+          加标签
+        </UButton>
+      </div>
+    </div>
+
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       <div
         v-for="item in sessions"
@@ -455,10 +570,22 @@ const copyResumeCommand = (session: UnifiedSession) => {
         <div class="p-4 flex-1 cursor-pointer" @click="openDetail(item)">
           <!-- Top Tag & Time -->
           <div class="flex items-center justify-between mb-2.5 gap-2">
-            <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-              <UIcon :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'" class="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
-              {{ sourceMeta[item.cli]?.name || item.cli }}
-            </span>
+            <div class="flex items-center gap-1.5">
+              <div
+                class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
+                :class="selectedIds.has(`${item.cli}::${item.id}`)
+                  ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100'
+                  : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500'"
+                @click.stop="toggleSelect(item)"
+              >
+                <UIcon v-if="selectedIds.has(`${item.cli}::${item.id}`)"
+                  name="i-lucide-check" class="w-3 h-3 text-white dark:text-zinc-900" />
+              </div>
+              <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                <UIcon :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'" class="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
+                {{ sourceMeta[item.cli]?.name || item.cli }}
+              </span>
+            </div>
             <span class="text-[11px] text-zinc-400 font-mono">
               {{ formatTime(item.updatedAt) }}
             </span>
