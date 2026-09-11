@@ -16,6 +16,8 @@ export default defineEventHandler((event) => {
       })
     }
 
+    try { tagService.mergeTagsToSessions(list) } catch {}
+
     return {
       success: true,
       total: list.length,
@@ -39,7 +41,11 @@ export default defineEventHandler((event) => {
       item.id.toLowerCase().includes(search) ||
       (item.model && item.model.toLowerCase().includes(search))
     )
+    // Merge tags from cache
+    try { tagService.mergeTagsToSessions(list) } catch {}
   }
+
+  try { tagService.mergeTagsToSessions(list) } catch {}
 
   return {
     success: true,

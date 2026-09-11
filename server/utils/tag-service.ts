@@ -26,14 +26,7 @@ const DEFAULT_TAGS: TagDef[] = [
   { name: 'ai:诊断', color: '#a855f7', category: 'ai', created_at: Date.now() }
 ]
 
-// 自动标签规则
-interface TagRule {
-  name: string
-  patterns: string[]       // 匹配关键词（大小写不敏感）
-  category: 'auto'
-}
-
-const TAG_RULES: TagRule[] = [
+const TAG_RULES: Array<{ name: string; patterns: string[]; category: 'auto' }> = [
   { name: 'bugfix', patterns: ['fix', 'bug', 'error', '报错', '异常', 'crash', 'broken', 'wrong', 'issue'], category: 'auto' },
   { name: 'refactor', patterns: ['refactor', '重构', 'clean', '简化', '整理', 'reorganize'], category: 'auto' },
   { name: 'feature', patterns: ['feat', 'feature', 'add', '新增', '新功能', 'implement'], category: 'auto' },
@@ -54,8 +47,6 @@ class TagService {
       if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true })
       this.db = new Database(DB_PATH)
       this.db.pragma('journal_mode = WAL')
-
-      // 确保 tag_defs 表存在
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS tag_defs (
           name TEXT PRIMARY KEY,
@@ -64,8 +55,6 @@ class TagService {
           created_at INTEGER NOT NULL
         )
       `)
-
-      // 初始默认标签
       const count = this.db.prepare('SELECT COUNT(*) as c FROM tag_defs').get() as { c: number }
       if (count.c === 0) {
         const insert = this.db.prepare(
@@ -75,7 +64,6 @@ class TagService {
           insert.run(tag.name, tag.color, tag.category, tag.created_at)
         }
       }
-
       return this.db
     } catch {
       return null
@@ -97,8 +85,7 @@ class TagService {
   createTag(name: string, color?: string, category?: string): TagDef {
     const db = this.getDb()
     const tag = {
-      name,
-      color: color || '#6366f1',
+      name, color: color || '#6366f1',
       category: (category || 'manual') as 'auto' | 'manual' | 'ai',
       created_at: Date.now()
     }
@@ -113,35 +100,12 @@ class TagService {
   deleteTag(name: string): void {
     const db = this.getDb()
     if (!db) return
-    try {
-      db.prepare('DELETE FROM tag_defs WHERE name = ?').run(name)
-    } catch {}
+    try { db.prepare('DELETE FROM tag_defs WHERE name = ?').run(name) } catch {}
   }
 
   /**
-   * 根据会话内容自动推断标签
-   */
-  autoDetectTags(title: string, messages: Array<{ role: string; content: string }>): string[] {
-    const matched = new Set<string>()
-    const allText = [
-      title,
-      ...messages.map(m => m.content)
-    ].join(' ').toLowerCase()
-
-    for (const rule of TAG_RULES) {
-      for (const pattern of rule.patterns) {
-        if (allText.includes(pattern.toLowerCase())) {
-          matched.add(rule.name)
-          break
-        }
-      }
-    }
-
-    return Array.from(matched)
-  }
-
-  /**
-   * 获取会话当前标签
+   * 获取会话标签 — 从 sessions_cache 中读取
+   * 无论会话是否同步缓存，只要 tag 被写入过就能返回
    */
   getSessionTags(sessionId: string, platform: string): string[] {
     const db = this.getDb()
@@ -158,29 +122,68 @@ class TagService {
   }
 
   /**
-   * 设置会话标签
+   * 设置会话标签 — 使用 INSERT OR REPLACE，确保即使会话尚未同步也能写入
    */
   setSessionTags(sessionId: string, platform: string, tags: string[]): boolean {
     const db = this.getDb()
     if (!db) return false
     try {
+      const tagsJson = JSON.stringify(tags)
+      const now = Date.now()
+      // 先尝试 UPDATE（会话已在缓存中）
       const result = db.prepare(
-        "UPDATE sessions_cache SET tags = ? WHERE id = ? AND platform = ?"
-      ).run(JSON.stringify(tags), sessionId, platform)
-      return result.changes > 0
+        'UPDATE sessions_cache SET tags = ? WHERE id = ? AND platform = ?'
+      ).run(tagsJson, sessionId, platform)
+      if (result.changes > 0) return true
+      // UPDATE 无影响 → 会话不在缓存中，INSERT 占位行
+      db.prepare(`
+        INSERT INTO sessions_cache (id, platform, title, created_at, updated_at, tags)
+        VALUES (?, ?, '', ?, ?, ?)
+      `).run(sessionId, platform, now, now, tagsJson)
+      return true
     } catch {
       return false
     }
   }
 
   /**
-   * 在缓存同步时自动对所有新会话打标签
+   * 批量合并标签到会话列表（从而在 adapter 数据上也能展示标签）
    */
+  mergeTagsToSessions(sessions: Array<{ id: string; cli: string; extra?: Record<string, any> }>): void {
+    if (sessions.length === 0) return
+    const db = this.getDb()
+    if (!db) return
+    try {
+      const allTags = db.prepare(
+        "SELECT id, platform, tags FROM sessions_cache WHERE tags IS NOT NULL AND tags != '[]'"
+      ).all() as Array<{ id: string; platform: string; tags: string }>
+      const tagMap = new Map<string, string[]>()
+      for (const row of allTags) {
+        try { tagMap.set(`${row.platform}::${row.id}`, JSON.parse(row.tags)) } catch {}
+      }
+      for (const s of sessions) {
+        const tags = tagMap.get(`${s.cli}::${s.id}`)
+        if (tags?.length) {
+          s.extra = { ...(s.extra || {}), tags }
+        }
+      }
+    } catch {}
+  }
+
+  autoDetectTags(title: string, messages: Array<{ role: string; content: string }>): string[] {
+    const matched = new Set<string>()
+    const allText = [title, ...messages.map(m => m.content)].join(' ').toLowerCase()
+    for (const rule of TAG_RULES) {
+      for (const pattern of rule.patterns) {
+        if (allText.includes(pattern.toLowerCase())) { matched.add(rule.name); break }
+      }
+    }
+    return Array.from(matched)
+  }
+
   autoTagSession(sessionId: string, platform: string, title: string, messages: Array<{ role: string; content: string }>): string[] {
     const tags = this.autoDetectTags(title, messages)
-    if (tags.length > 0) {
-      this.setSessionTags(sessionId, platform, tags)
-    }
+    if (tags.length > 0) this.setSessionTags(sessionId, platform, tags)
     return tags
   }
 }
