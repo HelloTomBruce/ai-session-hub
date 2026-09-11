@@ -121,8 +121,8 @@ const isLoadingEvidence = ref(false)
 const loadEvidence = async () => {
   if (!sessionId.value || !platform.value) return
   isLoadingEvidence.value = true
-  const res = await $fetch('/api/sessions/' + sessionId.value + '/evidence?cli=' + platform.value).catch(() => null)
-  if (res?.success) evidenceData.value = res.data
+  const fetchRes: any = await $fetch('/api/sessions/' + sessionId.value + '/evidence?cli=' + platform.value).catch(() => null)
+  if (fetchRes?.success) evidenceData.value = fetchRes.data
   isLoadingEvidence.value = false
 }
 const openEvidence = () => { isEvidenceOpen.value = true; if (!evidenceData.value) loadEvidence() }
