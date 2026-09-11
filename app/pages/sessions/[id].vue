@@ -15,7 +15,11 @@ const sourceMeta: Record<string, { name: string; type: string; icon: string }> =
   claude: { name: 'Claude Code', type: 'CLI', icon: 'i-lucide-bot' },
   codex: { name: 'Codex App', type: 'APP', icon: 'i-lucide-cpu' },
   workbuddy: { name: 'WorkBuddy', type: 'APP', icon: 'i-lucide-briefcase' },
-  reasonix: { name: 'Reasonix', type: 'APP', icon: 'i-lucide-brain-circuit' }
+  reasonix: { name: 'Reasonix', type: 'APP', icon: 'i-lucide-brain-circuit' },
+  kimi: { name: 'Kimi CLI', type: 'CLI', icon: 'i-lucide-bot' },
+  trae: { name: 'Trae', type: 'APP', icon: 'i-lucide-pen-tool' },
+  cursor: { name: 'Cursor', type: 'APP', icon: 'i-lucide-cursor-arrow' },
+  mimo: { name: 'Mimo CLI', type: 'CLI', icon: 'i-lucide-smartphone' }
 }
 
 const { data: sessionRes, pending, refresh } = await useFetch<{ success: boolean, data: any }>(
@@ -94,6 +98,14 @@ const copyResumeCommand = () => {
     cmd = `open -a "WorkBuddy"`
   } else if (cli === 'reasonix') {
     cmd = `open -a "Reasonix"`
+  } else if (cli === 'kimi') {
+    cmd = `cd "${cwd}" && kimi resume`
+  } else if (cli === 'trae') {
+    cmd = `open -a "Trae"`
+  } else if (cli === 'cursor') {
+    cmd = `open -a "Cursor"`
+  } else if (cli === 'mimo') {
+    cmd = `cd "${cwd}" && mimo`
   }
 
   navigator.clipboard.writeText(cmd)

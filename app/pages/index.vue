@@ -91,6 +91,26 @@ const sourceMeta = {
     name: 'Reasonix',
     type: 'APP',
     icon: 'i-lucide-brain-circuit'
+  },
+  kimi: {
+    name: 'Kimi CLI',
+    type: 'CLI',
+    icon: 'i-lucide-bot'
+  },
+  trae: {
+    name: 'Trae',
+    type: 'APP',
+    icon: 'i-lucide-pen-tool'
+  },
+  cursor: {
+    name: 'Cursor',
+    type: 'APP',
+    icon: 'i-lucide-cursor-arrow'
+  },
+  mimo: {
+    name: 'Mimo CLI',
+    type: 'CLI',
+    icon: 'i-lucide-smartphone'
   }
 }
 
@@ -250,6 +270,14 @@ const copyResumeCommand = (session: UnifiedSession) => {
     cmd = `open -a "WorkBuddy"`
   } else if (session.cli === 'reasonix') {
     cmd = `open -a "Reasonix"`
+  } else if (session.cli === 'kimi') {
+    cmd = `cd "${session.cwd}" && kimi resume`
+  } else if (session.cli === 'trae') {
+    cmd = `open -a "Trae"`
+  } else if (session.cli === 'cursor') {
+    cmd = `open -a "Cursor"`
+  } else if (session.cli === 'mimo') {
+    cmd = `cd "${session.cwd}" && mimo`
   }
   navigator.clipboard.writeText(cmd)
   alert(`已复制启动命令到剪贴板：\n${cmd}`)

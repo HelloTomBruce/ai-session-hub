@@ -6,6 +6,10 @@ import { ClaudeSessionAdapter } from './adapters/claude-adapter'
 import { CodexSessionAdapter } from './adapters/codex-adapter'
 import { WorkBuddySessionAdapter } from './adapters/workbuddy-adapter'
 import { ReasonixSessionAdapter } from './adapters/reasonix-adapter'
+import { KimiSessionAdapter } from './adapters/kimi-adapter'
+import { TraeSessionAdapter } from './adapters/trae-adapter'
+import { CursorSessionAdapter } from './adapters/cursor-adapter'
+import { MimoSessionAdapter } from './adapters/mimo-adapter'
 
 import type { PlatformType, CreateSessionPayload, UpdateSessionPayload } from './types'
 
@@ -17,6 +21,12 @@ adapterRegistry.register(new ClaudeSessionAdapter())
 adapterRegistry.register(new CodexSessionAdapter())
 adapterRegistry.register(new WorkBuddySessionAdapter())
 adapterRegistry.register(new ReasonixSessionAdapter())
+
+// New adapter registrations
+adapterRegistry.register(new KimiSessionAdapter())
+adapterRegistry.register(new TraeSessionAdapter())
+adapterRegistry.register(new CursorSessionAdapter())
+adapterRegistry.register(new MimoSessionAdapter())
 
 // Export standard service wrappers
 export function getAllSessions(cliFilter?: string) {

@@ -150,6 +150,66 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
       mcp: '~/.config/opencode/opencode.jsonc'
     }
   },
+  kimi: {
+    id: 'kimi',
+    name: 'Kimi CLI',
+    category: 'cli',
+    icon: 'i-heroicons-fire',
+    color: 'text-blue-400',
+    badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    description: '月之暗面（Moonshot AI）研发的终端智能编程 Agent，基于 Python、支持 JSONL 会话与 ACP 协议交互',
+    hasSessions: true,
+    hasSkills: false,
+    hasMcp: false,
+    configPaths: {
+      sessions: '~/.kimi/sessions/'
+    }
+  },
+  trae: {
+    id: 'trae',
+    name: 'Trae',
+    category: 'app',
+    icon: 'i-heroicons-swatch',
+    color: 'text-sky-400',
+    badgeBg: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+    description: '字节跳动出品的 AI 原生集成开发环境，支持对话式编程与多模型协作',
+    hasSessions: true,
+    hasSkills: false,
+    hasMcp: false,
+    configPaths: {
+      sessions: '~/Library/Application Support/trae/'
+    }
+  },
+  cursor: {
+    id: 'cursor',
+    name: 'Cursor',
+    category: 'app',
+    icon: 'i-heroicons-cursor-arrow-rays',
+    color: 'text-indigo-400',
+    badgeBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    description: 'Anysphere 出品的 AI-First 集成开发环境，深度集成多模型对话与 Composer 模式',
+    hasSessions: true,
+    hasSkills: false,
+    hasMcp: false,
+    configPaths: {
+      sessions: '~/Library/Application Support/Cursor/'
+    }
+  },
+  mimo: {
+    id: 'mimo',
+    name: 'Mimo CLI',
+    category: 'cli',
+    icon: 'i-heroicons-cpu-chip',
+    color: 'text-rose-400',
+    badgeBg: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+    description: '小米大模型驱动的终端编码 Agent CLI，支持多项目会话管理与 JSONL 日志格式',
+    hasSessions: true,
+    hasSkills: false,
+    hasMcp: false,
+    configPaths: {
+      sessions: '~/.mimocode/sessions/'
+    }
+  },
   hub: {
     id: 'hub',
     name: 'Session Hub (内置)',
