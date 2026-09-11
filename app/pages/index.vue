@@ -418,9 +418,7 @@ const copyResumeCommand = (session: UnifiedSession) => {
     <div v-if="pending" class="py-16 text-center text-zinc-400">
       <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500" />
       <p class="text-xs">加载会话数据中...</p>
-    </div>
 
-    </div>
 
     <!-- Tag filter indicator -->
     <div v-if="activeTagFilter && !pending" class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
