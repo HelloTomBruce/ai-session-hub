@@ -460,6 +460,26 @@ class CacheService {
   private safeJsonParse(str: string): any {
     try { return JSON.parse(str) } catch { return str }
   }
+
+  /**
+   * 从缓存中删除会话及相关消息和 FTS 索引
+   */
+  deleteFromCache(sessionId: string, platform: string): boolean {
+    this.init()
+    if (!this.db) return false
+    try {
+      const tx = this.db.transaction(() => {
+        this.db!.prepare('DELETE FROM fts_messages WHERE session_id = ?').run(sessionId)
+        this.db!.prepare('DELETE FROM messages_cache WHERE session_id = ? AND platform = ?').run(sessionId, platform)
+        this.db!.prepare('DELETE FROM sessions_cache WHERE id = ? AND platform = ?').run(sessionId, platform)
+      })
+      tx()
+      return true
+    } catch (err) {
+      console.error('[Cache] Error deleting from cache:', err)
+      return false
+    }
+  }
 }
 
 // 导出单例

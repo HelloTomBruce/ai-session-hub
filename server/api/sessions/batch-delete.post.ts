@@ -13,8 +13,13 @@ export default defineEventHandler(async (event) => {
   for (const item of items) {
     try {
       const ok = deleteCliSession(item.cli as any, item.id)
-      if (ok) successCount++
-      else {
+      if (ok) {
+        successCount++
+        // Clean up cache
+        if (cacheService.isAvailable()) {
+          cacheService.deleteFromCache(item.id, item.cli)
+        }
+      } else {
         failCount++
         errors.push(`${item.cli}/${item.id}: not found`)
       }
