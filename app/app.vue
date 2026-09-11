@@ -45,6 +45,9 @@ useHead({
               <NuxtLink to="/distill">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
               </NuxtLink>
+              <NuxtLink to="/search">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-search">全文搜索</UButton>
+              </NuxtLink>
             </nav>
           </div>
 

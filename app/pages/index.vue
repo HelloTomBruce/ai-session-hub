@@ -31,6 +31,37 @@ interface StatsData {
 const currentTab = ref('all')
 const searchQuery = ref('')
 const isRefreshing = ref(false)
+const isSyncing = ref(false)
+const lastSyncTime = ref('')
+
+// Load cache status on mount
+onMounted(async () => {
+  try {
+    const res = await $fetch('/api/cache/status')
+    if (res.success && res.data.last_sync_at) {
+      const d = new Date(res.data.last_sync_at)
+      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    }
+  } catch {}
+})
+
+// Cache sync
+const handleCacheSync = async () => {
+  isSyncing.value = true
+  try {
+    const res = await $fetch('/api/cache/sync', { method: 'POST' })
+    if (res.success && res.data.stats?.last_sync_at) {
+      const d = new Date(res.data.stats.last_sync_at)
+      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    }
+    await handleRefresh()
+  } catch (err: any) {
+    const msg = err?.data?.message || err?.message || '未知错误'
+    alert('同步失败: ' + msg)
+  } finally {
+    isSyncing.value = false
+  }
+}
 
 // Data fetching
 const { data: statsData, refresh: refreshStats } = await useFetch<{ success: boolean, data: StatsData }>('/api/cli/stats')
@@ -345,6 +376,20 @@ const copyResumeCommand = (session: UnifiedSession) => {
       </div>
 
       <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <UButton
+          icon="i-lucide-database"
+          color="neutral"
+          size="sm"
+          variant="outline"
+          :loading="isSyncing"
+          :disabled="isSyncing"
+          @click="handleCacheSync"
+        >
+          同步
+        </UButton>
+        <span v-if="lastSyncTime" class="text-[10px] text-zinc-400 font-mono whitespace-nowrap hidden md:inline">
+          {{ lastSyncTime }}
+        </span>
         <UButton
           icon="i-lucide-rotate-cw"
           color="neutral"
