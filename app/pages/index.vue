@@ -421,7 +421,7 @@ const copyResumeCommand = (session: UnifiedSession) => {
 
 
     <!-- Tag filter indicator -->
-    <div v-if="activeTagFilter && !pending" class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
+    <div v-else-if="activeTagFilter && !pending" class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
       <span>筛选标签：</span>
       <span
         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer border"
