@@ -114,6 +114,21 @@ const copyResumeCommand = () => {
 
 // Tool & Skill analytics computation
 const isToolModalOpen = ref(false)
+const isEvidenceOpen = ref(false)
+const evidenceData = ref<any>(null)
+const isLoadingEvidence = ref(false)
+
+const loadEvidence = async () => {
+  if (!sessionId.value || !platform.value) return
+  isLoadingEvidence.value = true
+  const res = await $fetch('/api/sessions/' + sessionId.value + '/evidence?cli=' + platform.value).catch(() => null)
+  if (res?.success) evidenceData.value = res.data
+  isLoadingEvidence.value = false
+}
+const openEvidence = () => { isEvidenceOpen.value = true; if (!evidenceData.value) loadEvidence() }
+const shortSha = (sha: string) => sha.slice(0, 7)
+const formatEvidenceDate = (iso: string) => { const d = new Date(iso); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') }
+
 const selectedToolName = ref('')
 const selectedToolCalls = ref<Array<{
   index: number
@@ -668,6 +683,15 @@ const thinkingTimeline = computed(() => {
             @click="copyResumeCommand"
           >
             复制启动命令
+          </UButton>
+          <UButton
+            size="sm"
+            color="neutral"
+            class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+            icon="i-lucide-git-branch"
+            @click="openEvidence"
+          >
+            代码证据
           </UButton>
         </div>
       </div>
@@ -1293,6 +1317,96 @@ const thinkingTimeline = computed(() => {
               我知道了
             </UButton>
           </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Code Evidence Modal -->
+    <UModal v-model:open="isEvidenceOpen" :ui="{ content: 'max-w-3xl' }">
+      <template #content>
+        <div class="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+              <UIcon name="i-lucide-git-branch" class="w-4 h-4" />
+              代码变更证据链
+            </h3>
+            <span class="text-[10px] text-zinc-400 font-mono">{{ session?.cwd }}</span>
+          </div>
+
+          <template v-if="isLoadingEvidence">
+            <div class="py-8 text-center text-zinc-400 text-xs">
+              <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin mx-auto mb-2" />
+              正在分析代码变更...
+            </div>
+          </template>
+
+          <template v-else-if="evidenceData">
+            <div class="flex items-center gap-3 text-xs">
+              <span :class="evidenceData.isGitRepo ? 'text-emerald-600' : 'text-zinc-400'">
+                <UIcon :name="evidenceData.isGitRepo ? 'i-lucide-check-circle' : 'i-lucide-x-circle'" class="w-3.5 h-3.5 inline mr-1" />
+                {{ evidenceData.isGitRepo ? 'Git 仓库' : '非 Git 仓库' }}
+              </span>
+              <span v-if="evidenceData.totalCommits > 0" class="text-zinc-600 dark:text-zinc-300">
+                {{ evidenceData.totalCommits }} 个提交 · {{ evidenceData.totalFilesChanged }} 个文件
+              </span>
+            </div>
+
+            <div v-for="err in evidenceData.errors" :key="err" class="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+              {{ err }}
+            </div>
+
+            <div v-if="evidenceData.matchedToolCalls?.length" class="space-y-1">
+              <h4 class="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                <UIcon name="i-lucide-toy-brick" class="w-3.5 h-3.5" />
+                检测到 {{ evidenceData.matchedToolCalls.length }} 个文件修改工具调用
+              </h4>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="(tc, i) in evidenceData.matchedToolCalls" :key="i"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-mono text-zinc-600 dark:text-zinc-300">
+                  {{ tc.toolName.replace(/^default_api:/, '') }}
+                  <span class="text-zinc-400">({{ tc.filePaths.length }})</span>
+                </span>
+              </div>
+            </div>
+
+            <div v-if="evidenceData.commits?.length" class="space-y-3">
+              <h4 class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">相关提交</h4>
+              <div v-for="c in evidenceData.commits" :key="c.sha"
+                class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                <div class="bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
+                  <div class="flex items-center gap-2">
+                    <code class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">{{ shortSha(c.sha) }}</code>
+                    <span class="text-xs font-medium text-zinc-800 dark:text-zinc-200 line-clamp-1">{{ c.message }}</span>
+                  </div>
+                  <span class="text-[10px] text-zinc-400 font-mono">{{ formatEvidenceDate(c.authorDate) }}</span>
+                </div>
+                <div class="px-3 py-1.5 space-y-0.5">
+                  <div v-for="f in c.files" :key="f.filePath" class="flex items-center gap-2 text-[11px] font-mono">
+                    <span :class="{
+                      'text-emerald-600': f.changeType === 'added',
+                      'text-red-600': f.changeType === 'deleted',
+                      'text-amber-600': f.changeType === 'modified',
+                      'text-blue-600': f.changeType === 'renamed'
+                    }">{{ f.changeType === 'added' ? '+' : f.changeType === 'deleted' ? '-' : f.changeType === 'modified' ? '~' : '→' }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-300 truncate">{{ f.filePath }}</span>
+                    <span v-if="f.additions || f.deletions" class="text-[10px] text-zinc-400">
+                      +{{ f.additions }} -{{ f.deletions }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="evidenceData.totalCommits === 0 && evidenceData.isGitRepo" class="py-6 text-center text-zinc-400 text-xs">
+              <UIcon name="i-lucide-search-x" class="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>在会话时间窗口内未找到相关代码提交</p>
+              <p class="text-zinc-300 dark:text-zinc-500 mt-1">这可能意味着会话中的操作尚未被提交到 Git</p>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="py-8 text-center text-zinc-400 text-xs">点击"代码证据"按钮查看</div>
+          </template>
         </div>
       </template>
     </UModal>
