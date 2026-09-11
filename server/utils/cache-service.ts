@@ -12,6 +12,7 @@ import {
   DELETE_FTS_SQL,
   REBUILD_FTS_SQL
 } from './cache-schema'
+import { tagService } from './tag-service'
 import type { UnifiedSession, SessionMessage, PlatformType } from './types'
 
 const DB_DIR = path.join(os.homedir(), '.session-hub')
@@ -273,6 +274,12 @@ class CacheService {
               }
             }
 
+            // Auto-tag session
+            try {
+              const msgList = messages.map(m => ({ role: m.role, content: m.content }))
+              tagService.autoTagSession(session.id, session.cli, session.title, msgList)
+            } catch {}
+
             syncedSessions++
           }
         } catch (err) {
@@ -415,6 +422,11 @@ class CacheService {
 
   private rowToSession(row: any): UnifiedSession | null {
     if (!row) return null
+    let extra: any = row.extra ? this.safeJsonParse(row.extra) : {}
+    // Include tags from DB
+    if (row.tags) {
+      try { extra.tags = JSON.parse(row.tags) } catch { extra.tags = [] }
+    }
     return {
       id: row.id,
       cli: row.platform,
@@ -428,7 +440,7 @@ class CacheService {
       cost: row.cost || undefined,
       status: row.status || undefined,
       rawLocation: row.raw_location || '',
-      extra: row.extra ? this.safeJsonParse(row.extra) : undefined
+      extra
     }
   }
 

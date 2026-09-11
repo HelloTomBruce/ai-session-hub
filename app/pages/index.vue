@@ -31,6 +31,17 @@ interface StatsData {
 const currentTab = ref('all')
 const searchQuery = ref('')
 const isRefreshing = ref(false)
+const tagColors: Record<string, string> = {
+  bugfix: '#ef4444', refactor: '#f59e0b', feature: '#22c55e',
+  deploy: '#3b82f6', migration: '#8b5cf6', documentation: '#06b6d4',
+  performance: '#ec4899', security: '#dc2626', testing: '#14b8a6'
+}
+const activeTagFilter = ref('')
+
+const getTags = (item: any) => item.extra?.tags || []
+const toggleTagFilter = (tag: string) => {
+  activeTagFilter.value = activeTagFilter.value === tag ? '' : tag
+}
 const isSyncing = ref(false)
 const lastSyncTime = ref('')
 
@@ -66,7 +77,7 @@ const handleCacheSync = async () => {
 // Data fetching
 const { data: statsData, refresh: refreshStats } = await useFetch<{ success: boolean, data: StatsData }>('/api/cli/stats')
 const { data: sessionData, pending, refresh: refreshSessions } = await useFetch<{ success: boolean, total: number, data: UnifiedSession[] }>(
-  () => `/api/sessions?cli=${currentTab.value}&q=${encodeURIComponent(searchQuery.value)}`
+  () => `/api/sessions?cli=${currentTab.value}&q=${encodeURIComponent(searchQuery.value)}${activeTagFilter.value ? '&tag=' + encodeURIComponent(activeTagFilter.value) : ''}`
 )
 
 const sessions = computed(() => sessionData.value?.data || [])
@@ -409,6 +420,26 @@ const copyResumeCommand = (session: UnifiedSession) => {
       <p class="text-xs">加载会话数据中...</p>
     </div>
 
+    </div>
+
+    <!-- Tag filter indicator -->
+    <div v-if="activeTagFilter && !pending" class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
+      <span>筛选标签：</span>
+      <span
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer border"
+        :style="{
+          backgroundColor: (tagColors[activeTagFilter] || '#6366f1') + '20',
+          color: tagColors[activeTagFilter] || '#6366f1',
+          borderColor: (tagColors[activeTagFilter] || '#6366f1') + '40'
+        }"
+        @click="activeTagFilter = ''"
+      >
+        #{{ activeTagFilter }}
+        <UIcon name="i-lucide-x" class="w-3 h-3" />
+      </span>
+      <span class="text-zinc-400">({{ sessions.length }})</span>
+    </div>
+
     <div v-else-if="sessions.length === 0" class="py-16 text-center bg-white dark:bg-zinc-900 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
       <div class="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-2.5 text-zinc-400">
         <UIcon name="i-lucide-inbox" class="w-5 h-5" />
@@ -436,9 +467,28 @@ const copyResumeCommand = (session: UnifiedSession) => {
           </div>
 
           <!-- Title -->
-          <h3 class="font-medium text-zinc-900 dark:text-zinc-100 text-sm line-clamp-2 mb-2 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
+          <h3 class="font-medium text-zinc-900 dark:text-zinc-100 text-sm line-clamp-2 mb-1.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
             {{ item.title }}
           </h3>
+
+          <!-- Tags -->
+          <div v-if="getTags(item).length" class="flex flex-wrap gap-1 mb-2">
+            <span
+              v-for="tag in getTags(item)" :key="tag"
+              @click.stop="toggleTagFilter(tag)"
+              :class="[
+                'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer select-none border transition-all',
+                activeTagFilter === tag ? 'ring-2 ring-offset-1 dark:ring-offset-zinc-900' : 'hover:opacity-80'
+              ]"
+              :style="{
+                backgroundColor: (tagColors[tag] || '#6366f1') + '20',
+                color: tagColors[tag] || '#6366f1',
+                borderColor: (tagColors[tag] || '#6366f1') + '40',
+              }"
+            >
+              #{{ tag }}
+            </span>
+          </div>
 
           <!-- Details & Path -->
           <div class="space-y-1 text-xs text-zinc-500 dark:text-zinc-400">
