@@ -105,14 +105,13 @@ function getGitEvidence(cwd: string, created: number, updated: number, toolPaths
     // Get per-file diff and line counts
     let totalAdditions = 0, totalDeletions = 0
     for (const f of files) {
-      const diff = runGit(cwd, `git show ${sha} -- "${f.filePath}" --no-color`)
-      const dm = diff.match(/(?:\n|^)(diff --git.*)/s)
-      if (dm && dm[1]) {
-        const dl = dm[1].split('\n')
-        f.diff = dl.length > 50 ? dl.slice(0, 50).join('\n') + '\n... (+' + (dl.length - 50) + ' lines)' : dm[1]
+      const rawDiff = runGit(cwd, `git diff-tree --no-commit-id -r -p ${sha} -- "${f.filePath}"`)
+      if (rawDiff) {
+        const dl = rawDiff.split('\n')
+        f.diff = dl.length > 60 ? dl.slice(0, 60).join('\n') + '\n... (+' + (dl.length - 60) + ' lines)' : rawDiff
+        f.additions = (rawDiff.match(/^\+[^+]/gm)?.length) || 0
+        f.deletions = (rawDiff.match(/^\-[^-]/gm)?.length) || 0
       }
-      f.additions = (f.diff?.match(/^\+[^+]/gm)?.length) || 0
-      f.deletions = (f.diff?.match(/^\-[^-]/gm)?.length) || 0
       totalAdditions += f.additions; totalDeletions += f.deletions
     }
 

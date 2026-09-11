@@ -1390,6 +1390,7 @@ const thinkingTimeline = computed(() => {
                         'text-blue-600': f.changeType === 'renamed'
                       }">{{ f.changeType === 'added' ? '+' : f.changeType === 'deleted' ? '-' : f.changeType === 'modified' ? '~' : '→' }}</span>
                       <span class="text-zinc-700 dark:text-zinc-300 truncate flex-1">{{ f.filePath }}</span>
+                      <span v-if="f.diff && !f._showDiff" class="text-[10px] text-zinc-400 italic">点击查看 diff</span>
                       <span v-if="f.additions || f.deletions" class="text-[10px] text-zinc-400 shrink-0">
                         +{{ f.additions }} -{{ f.deletions }}
                       </span>
