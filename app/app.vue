@@ -36,14 +36,17 @@ useHead({
               <NuxtLink to="/">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list">会话清单</UButton>
               </NuxtLink>
+              <NuxtLink to="/knowledge">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-sparkles">知识资产库</UButton>
+              </NuxtLink>
+              <NuxtLink to="/distill">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
+              </NuxtLink>
               <NuxtLink to="/skills">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-puzzle">技能管理</UButton>
               </NuxtLink>
               <NuxtLink to="/mcp">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-server">MCP 服务</UButton>
-              </NuxtLink>
-              <NuxtLink to="/distill">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
               </NuxtLink>
               <NuxtLink to="/search">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-search">全文搜索</UButton>

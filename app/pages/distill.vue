@@ -172,6 +172,41 @@ const copyAdrMarkdown = () => {
   copyAdrSuccess.value = true
   setTimeout(() => copyAdrSuccess.value = false, 2000)
 }
+
+const isArchiving = ref(false)
+const archiveAllAdrs = async () => {
+  if (!report.value?.adrs || report.value.adrs.length === 0) {
+    alert('当前报告中没有可归档的 ADR 条目')
+    return
+  }
+  isArchiving.value = true
+  try {
+    let count = 0
+    for (const adr of report.value.adrs) {
+      await $fetch('/api/knowledge', {
+        method: 'POST',
+        body: {
+          sessionId: adr.sourceSessionId,
+          platform: adr.platform,
+          type: 'ADR',
+          title: adr.title,
+          context: adr.context,
+          decision: adr.decision,
+          consequence: adr.consequences,
+          tags: ['adr', adr.platform],
+          score: 90,
+          grade: 'S'
+        }
+      })
+      count++
+    }
+    alert(`🎉 成功将 ${count} 条 ADR 架构决策归档至「知识资产库」！可在导航栏「知识资产库」中随时检索与导出。`)
+  } catch (err: any) {
+    alert(`归档失败: ${err.message}`)
+  } finally {
+    isArchiving.value = false
+  }
+}
 </script>
 
 <template>
@@ -367,16 +402,27 @@ const copyAdrMarkdown = () => {
               >
                 {{ copySuccess ? '已复制' : '复制复盘' }}
               </UButton>
-              <UButton
-                v-else
-                size="xs"
-                variant="outline"
-                color="neutral"
-                :icon="copyAdrSuccess ? 'i-lucide-check' : 'i-lucide-copy'"
-                @click="copyAdrMarkdown"
-              >
-                {{ copyAdrSuccess ? '已复制' : '复制 ADR' }}
-              </UButton>
+              <div v-else class="flex items-center gap-1.5">
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  color="neutral"
+                  :icon="copyAdrSuccess ? 'i-lucide-check' : 'i-lucide-copy'"
+                  @click="copyAdrMarkdown"
+                >
+                  {{ copyAdrSuccess ? '已复制' : '复制 ADR' }}
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="primary"
+                  variant="solid"
+                  icon="i-lucide-sparkles"
+                  :loading="isArchiving"
+                  @click="archiveAllAdrs"
+                >
+                  一键归档至知识库
+                </UButton>
+              </div>
             </div>
           </div>
 

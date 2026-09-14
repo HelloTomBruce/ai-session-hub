@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -63,6 +63,44 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_messages USING fts5(
   platform UNINDEXED,
   role UNINDEXED,
   tokenize='unicode61'
+);
+
+-- 知识资产库 (Knowledge Vault / ADRs / Gotchas / Patterns)
+CREATE TABLE IF NOT EXISTS knowledge_vault (
+  id TEXT PRIMARY KEY,
+  session_id TEXT,
+  platform TEXT NOT NULL,
+  type TEXT NOT NULL,                -- 'ADR' | 'Gotcha' | 'Pattern' | 'Milestone'
+  title TEXT NOT NULL,
+  context TEXT DEFAULT '',
+  decision TEXT DEFAULT '',
+  consequence TEXT DEFAULT '',
+  tags TEXT DEFAULT '[]',
+  score INTEGER DEFAULT 0,
+  grade TEXT DEFAULT 'A',
+  source_cwd TEXT DEFAULT '',
+  raw_markdown TEXT DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_type ON knowledge_vault(type);
+CREATE INDEX IF NOT EXISTS idx_knowledge_session ON knowledge_vault(session_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_updated ON knowledge_vault(updated_at);
+
+-- 会话量化评估缓存 (Session Evaluations Cache)
+CREATE TABLE IF NOT EXISTS session_evaluations (
+  session_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  overall_score INTEGER NOT NULL,
+  grade TEXT NOT NULL,
+  category TEXT NOT NULL,
+  is_worth_saving INTEGER NOT NULL,
+  sub_scores_json TEXT DEFAULT '{}',
+  signals_json TEXT DEFAULT '[]',
+  summary_reason TEXT DEFAULT '',
+  evaluated_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, platform)
 );
 `.trim()
 

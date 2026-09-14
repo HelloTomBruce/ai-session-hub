@@ -102,10 +102,11 @@ class CacheService {
     const currentVersion = row ? parseInt(row.value, 10) : 0
 
     if (currentVersion < SCHEMA_VERSION) {
-      // 未来 migration 逻辑放在这里
+      this.db.exec(CREATE_SCHEMA_SQL)
       this.db.prepare(
         'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'
       ).run('schema_version', String(SCHEMA_VERSION))
+      console.log(`[Cache] Database migrated from v${currentVersion} to v${SCHEMA_VERSION}`)
     }
   }
 

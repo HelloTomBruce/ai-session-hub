@@ -5,6 +5,13 @@ export default defineNuxtConfig({
     '@nuxt/ui'
   ],
 
+  fonts: {
+    providers: {
+      google: false,
+      googleicons: false
+    }
+  },
+
   devtools: {
     enabled: true
   },
