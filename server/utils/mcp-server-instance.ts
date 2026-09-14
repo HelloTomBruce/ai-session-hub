@@ -8,6 +8,8 @@ import {
 import { adapterRegistry } from './adapter-registry'
 import { distillSessionsContent } from './distillator'
 import { mcpLogger } from './mcp-logger'
+import { knowledgeService } from './knowledge-service'
+import { evaluateSessionValue } from './evaluator-engine'
 import type { PlatformType } from './types'
 
 export function createMcpServer() {
@@ -106,6 +108,103 @@ export function createMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {}
+          }
+        },
+        {
+          name: 'search_knowledge_vault',
+          description: '检索 Session Hub 知识金库 (Knowledge Vault) 中的架构决策(ADR)、避坑经验(Gotcha)、设计模式(Pattern)与里程碑(Milestone)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: '搜索关键词（匹配标题、摘要、方案或标签）'
+              },
+              type: {
+                type: 'string',
+                description: '按知识类型筛选：all | adr | gotcha | pattern | milestone',
+                enum: ['all', 'adr', 'gotcha', 'pattern', 'milestone']
+              },
+              tag: {
+                type: 'string',
+                description: '按标签筛选（如 nuxt, sqlite, auth 等）'
+              },
+              limit: {
+                type: 'number',
+                description: '返回最大条数（默认 10）'
+              }
+            }
+          }
+        },
+        {
+          name: 'get_project_adrs',
+          description: '获取指定工作区目录或全局所有的架构决策记录 (ADR)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              cwd: {
+                type: 'string',
+                description: '工作区路径关键词或前缀（可选）'
+              }
+            }
+          }
+        },
+        {
+          name: 'capture_session_insight',
+          description: '直接向 Session Hub 知识金库写入一条新的经验资产（ADR/Gotcha/Pattern/Milestone）',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: '资产标题'
+              },
+              type: {
+                type: 'string',
+                description: '资产类型',
+                enum: ['adr', 'gotcha', 'pattern', 'milestone']
+              },
+              summary: {
+                type: 'string',
+                description: '核心摘要与背景说明'
+              },
+              solution: {
+                type: 'string',
+                description: '解决方案/决策细节/规避指南'
+              },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '关联标签'
+              },
+              sessionId: {
+                type: 'string',
+                description: '关联的会话 ID（可选）'
+              },
+              platform: {
+                type: 'string',
+                description: '关联的平台名称（可选）'
+              }
+            },
+            required: ['title', 'type', 'summary', 'solution']
+          }
+        },
+        {
+          name: 'evaluate_session_value',
+          description: '对指定会话调用多维价值量化评估引擎 (ValueScoringEngine)，输出客观价值分、证据归因与入库建议',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              platform: {
+                type: 'string',
+                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix)'
+              },
+              sessionId: {
+                type: 'string',
+                description: '会话唯一标识 ID'
+              }
+            },
+            required: ['platform', 'sessionId']
           }
         }
       ]
@@ -297,6 +396,143 @@ export function createMcpServer() {
         }
       }
 
+      if (name === 'search_knowledge_vault') {
+        const query = (args.query as string) || ''
+        const type = (args.type as string) || 'all'
+        const tag = (args.tag as string) || ''
+        const limit = Number(args.limit) || 10
+
+        const { items } = knowledgeService.listItems({
+          type: type === 'all' ? undefined : type,
+          search: query || undefined,
+          tag: tag || undefined,
+          limit
+        })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Found ${items.length} knowledge items matching "${query || tag || type}"`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(items, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (name === 'get_project_adrs') {
+        const cwd = ((args.cwd as string) || '').toLowerCase().trim()
+        let { items } = knowledgeService.listItems({ type: 'adr', limit: 100 })
+
+        if (cwd) {
+          items = items.filter(i => {
+            if (!i.sessionId) return true
+            const session = adapterRegistry.getSession(i.platform || '', i.sessionId)
+            return !session || session.cwd.toLowerCase().includes(cwd)
+          })
+        }
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Returned ${items.length} ADR items`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(items, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (name === 'capture_session_insight') {
+        const title = args.title as string
+        const type = (args.type as string).toUpperCase() as 'ADR' | 'Gotcha' | 'Pattern' | 'Milestone'
+        const summary = args.summary as string
+        const solution = args.solution as string
+        const tags = (args.tags as string[]) || []
+        const sessionId = args.sessionId as string | undefined
+        const platform = (args.platform as string) || 'hub'
+
+        const created = knowledgeService.saveItem({
+          title,
+          type,
+          context: summary,
+          decision: solution,
+          tags,
+          sessionId,
+          platform
+        })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Created knowledge item [${type}] ${title}`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ success: true, item: created }, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (name === 'evaluate_session_value') {
+        const platform = args.platform as PlatformType
+        const sessionId = args.sessionId as string
+
+        const res = adapterRegistry.getMessages(platform, sessionId)
+        if (!res.session) {
+          throw new Error(`Session not found: platform=${platform}, sessionId=${sessionId}`)
+        }
+
+        const report = await evaluateSessionValue({
+          sessionId: res.session.id,
+          platform: res.session.cli,
+          title: res.session.title,
+          cwd: res.session.cwd,
+          messages: res.messages
+        })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Evaluated ${sessionId}: ${report.overallScore} score, grade ${report.grade}, worthy=${report.isWorthSaving}`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(report, null, 2)
+            }
+          ]
+        }
+      }
+
       throw new Error(`Unknown tool: ${name}`)
     } catch (err: any) {
       mcpLogger.addLog({
@@ -314,18 +550,74 @@ export function createMcpServer() {
   // 3. Resources
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const sessions = adapterRegistry.getAllSessions().slice(0, 30)
-    return {
-      resources: sessions.map(s => ({
-        uri: `session://${s.cli}/${s.id}`,
-        name: `[${s.cli.toUpperCase()}] ${s.title}`,
-        description: `Session at ${s.cwd}`,
+    const sessionResources = sessions.map(s => ({
+      uri: `session://${s.cli}/${s.id}`,
+      name: `[${s.cli.toUpperCase()}] ${s.title}`,
+      description: `Session at ${s.cwd}`,
+      mimeType: 'application/json'
+    }))
+
+    const vaultResources = [
+      {
+        uri: 'vault://all',
+        name: 'Knowledge Vault (All Items)',
+        description: 'Complete JSON list of architectural decisions, gotchas, patterns and milestones',
         mimeType: 'application/json'
-      }))
+      },
+      {
+        uri: 'vault://export.md',
+        name: 'Knowledge Vault (Markdown Export)',
+        description: 'Formatted Markdown repository of all harvested architectural assets',
+        mimeType: 'text/markdown'
+      }
+    ]
+
+    return {
+      resources: [...vaultResources, ...sessionResources]
     }
   })
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri
+
+    if (uri === 'vault://all') {
+      const { items } = knowledgeService.listItems({ limit: 500 })
+      mcpLogger.addLog({
+        type: 'resource',
+        name: uri,
+        status: 'success',
+        responsePreview: `Read ${items.length} vault items`
+      })
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify(items, null, 2)
+          }
+        ]
+      }
+    }
+
+    if (uri === 'vault://export.md') {
+      const md = knowledgeService.exportMarkdown()
+      mcpLogger.addLog({
+        type: 'resource',
+        name: uri,
+        status: 'success',
+        responsePreview: `Read markdown export (${md.length} chars)`
+      })
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'text/markdown',
+            text: md
+          }
+        ]
+      }
+    }
+
     const match = uri.match(/^session:\/\/([^/]+)\/(.+)$/)
     if (!match || !match[1] || !match[2]) {
       throw new Error(`Invalid resource URI: ${uri}`)

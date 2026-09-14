@@ -36,6 +36,12 @@ class SessionAdapterRegistry {
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
+  getSession(platform: string, id: string): UnifiedSession | null {
+    const adapter = this.adapters.get(platform)
+    if (!adapter || !adapter.isAvailable()) return null
+    return adapter.getSessions().find(s => s.id === id) || null
+  }
+
   getMessages(platform: PlatformType, id: string): { session: UnifiedSession | null, messages: SessionMessage[] } {
     const adapter = this.adapters.get(platform)
     if (!adapter) return { session: null, messages: [] }

@@ -80,6 +80,14 @@ class CacheService {
   }
 
   /**
+   * 获取底层 SQLite 数据库连接
+   */
+  getDb(): Database.Database | null {
+    this.init()
+    return this.db
+  }
+
+  /**
    * 创建初始 Schema
    */
   private runSchema(): void {

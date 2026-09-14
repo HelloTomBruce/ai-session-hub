@@ -13,7 +13,7 @@ export interface EvaluationContext {
   createdAt?: number
   updatedAt?: number
   messages: Array<{
-    role: 'user' | 'assistant' | 'system'
+    role: 'user' | 'assistant' | 'system' | 'tool' | string
     content: string
     thought?: string
     toolCalls?: Array<{

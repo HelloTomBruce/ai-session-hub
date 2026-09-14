@@ -36,6 +36,9 @@ useHead({
               <NuxtLink to="/">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list">会话清单</UButton>
               </NuxtLink>
+              <NuxtLink to="/insights">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-line-chart">洞察大盘</UButton>
+              </NuxtLink>
               <NuxtLink to="/knowledge">
                 <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-sparkles">知识资产库</UButton>
               </NuxtLink>
