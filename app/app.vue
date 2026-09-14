@@ -32,27 +32,27 @@ useHead({
             </NuxtLink>
 
             <!-- Nav Links -->
-            <nav class="hidden sm:flex items-center gap-1">
-              <NuxtLink to="/">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list">会话清单</UButton>
+            <nav class="hidden md:flex items-center gap-0.5 lg:gap-1 flex-nowrap whitespace-nowrap">
+              <NuxtLink to="/" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list" class="whitespace-nowrap px-2.5">会话</UButton>
               </NuxtLink>
-              <NuxtLink to="/insights">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-line-chart">洞察大盘</UButton>
+              <NuxtLink to="/insights" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-line-chart" class="whitespace-nowrap px-2.5">洞察</UButton>
               </NuxtLink>
-              <NuxtLink to="/knowledge">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-sparkles">知识资产库</UButton>
+              <NuxtLink to="/knowledge" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-sparkles" class="whitespace-nowrap px-2.5">知识库</UButton>
               </NuxtLink>
-              <NuxtLink to="/distill">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open">知识复盘与提炼</UButton>
+              <NuxtLink to="/distill" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open" class="whitespace-nowrap px-2.5">提炼</UButton>
               </NuxtLink>
-              <NuxtLink to="/skills">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-puzzle">技能管理</UButton>
+              <NuxtLink to="/skills" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-puzzle" class="whitespace-nowrap px-2.5">技能</UButton>
               </NuxtLink>
-              <NuxtLink to="/mcp">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-server">MCP 服务</UButton>
+              <NuxtLink to="/mcp" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-server" class="whitespace-nowrap px-2.5">MCP</UButton>
               </NuxtLink>
-              <NuxtLink to="/search">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-search">全文搜索</UButton>
+              <NuxtLink to="/search" class="flex-shrink-0">
+                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-search" class="whitespace-nowrap px-2.5">搜索</UButton>
               </NuxtLink>
             </nav>
           </div>
