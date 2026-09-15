@@ -28,15 +28,73 @@ interface StatsData {
   }
 }
 
-const currentTab = ref('all')
-const searchQuery = ref('')
+const route = useRoute()
+const router = useRouter()
+
+const currentTab = ref((route.query.cli as string) || (route.query.tab as string) || 'all')
+const searchQuery = ref((route.query.q as string) || '')
+const activeTagFilter = ref((route.query.tag as string) || '')
+
+const syncUrlQuery = () => {
+  const query: Record<string, string | undefined> = { ...route.query }
+  if (currentTab.value && currentTab.value !== 'all') {
+    query.cli = currentTab.value
+  } else {
+    delete query.cli
+    delete query.tab
+  }
+  if (searchQuery.value) {
+    query.q = searchQuery.value
+  } else {
+    delete query.q
+  }
+  if (activeTagFilter.value) {
+    query.tag = activeTagFilter.value
+  } else {
+    delete query.tag
+  }
+
+  const currentCli = (route.query.cli as string) || (route.query.tab as string) || 'all'
+  const currentQ = (route.query.q as string) || ''
+  const currentTag = (route.query.tag as string) || ''
+  if (
+    currentCli !== currentTab.value ||
+    currentQ !== searchQuery.value ||
+    currentTag !== activeTagFilter.value
+  ) {
+    router.replace({ query })
+  }
+}
+
+watch(currentTab, syncUrlQuery)
+watch(searchQuery, syncUrlQuery)
+watch(activeTagFilter, syncUrlQuery)
+
+watch(
+  () => route.query,
+  (newQuery) => {
+    const tab = (newQuery.cli as string) || (newQuery.tab as string) || 'all'
+    if (tab !== currentTab.value) {
+      currentTab.value = tab
+    }
+    const q = (newQuery.q as string) || ''
+    if (q !== searchQuery.value) {
+      searchQuery.value = q
+    }
+    const tag = (newQuery.tag as string) || ''
+    if (tag !== activeTagFilter.value) {
+      activeTagFilter.value = tag
+    }
+  },
+  { deep: true }
+)
+
 const isRefreshing = ref(false)
 const tagColors: Record<string, string> = {
   bugfix: '#ef4444', refactor: '#f59e0b', feature: '#22c55e',
   deploy: '#3b82f6', migration: '#8b5cf6', documentation: '#06b6d4',
   performance: '#ec4899', security: '#dc2626', testing: '#14b8a6'
 }
-const activeTagFilter = ref('')
 const selectedIds = ref<Set<string>>(new Set())
 const isBatchDeleting = ref(false)
 const isBatchTagging = ref(false)

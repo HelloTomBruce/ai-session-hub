@@ -579,6 +579,10 @@ const thinkingTimeline = computed(() => {
   }
   return list
 })
+
+const backUrl = computed(() => {
+  return platform.value ? `/?cli=${platform.value}` : '/'
+})
 </script>
 
 <template>
@@ -587,7 +591,7 @@ const thinkingTimeline = computed(() => {
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 shadow-sm">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div class="flex items-start md:items-center gap-3">
-          <NuxtLink to="/">
+          <NuxtLink :to="backUrl">
             <UButton variant="outline" color="neutral" size="sm" icon="i-lucide-arrow-left">
               返回清单
             </UButton>
