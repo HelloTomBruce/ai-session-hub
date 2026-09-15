@@ -45,7 +45,9 @@ export interface HighValueSessionItem {
 
 export default defineEventHandler(async (event) => {
   try {
-    const allSessions = adapterRegistry.getAllSessions()
+    const allSessions = cacheService.isAvailable()
+      ? cacheService.getCachedSessions()
+      : adapterRegistry.getAllSessions()
     const { items: vaultItems } = knowledgeService.listItems({ limit: 1000 })
     
     // 1. Basic Stats
@@ -107,7 +109,9 @@ export default defineEventHandler(async (event) => {
     const sampleSessions = allSessions.slice(0, 40)
     for (const s of sampleSessions) {
       try {
-        const { messages } = adapterRegistry.getMessages(s.cli, s.id)
+        const { messages } = cacheService.isAvailable()
+          ? cacheService.getCachedSessionDetail(s.cli, s.id)
+          : adapterRegistry.getMessages(s.cli, s.id)
         for (const msg of messages) {
           if (msg.thought) {
             totalThoughtCount++

@@ -223,12 +223,25 @@ class CacheService {
               continue
             }
 
-            // 插入/更新 sessions_cache
+            // 插入/更新 sessions_cache，保留已有 tags, summary, ai_diagnosed, distilled 等业务元数据
             this.db!.prepare(`
-              INSERT OR REPLACE INTO sessions_cache
+              INSERT INTO sessions_cache
                 (id, platform, category, title, cwd, model, cost, status, message_count,
                  created_at, updated_at, raw_location, data_hash, extra)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                platform = excluded.platform,
+                category = excluded.category,
+                title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
+                cwd = excluded.cwd,
+                model = excluded.model,
+                cost = excluded.cost,
+                status = excluded.status,
+                message_count = excluded.message_count,
+                updated_at = excluded.updated_at,
+                raw_location = excluded.raw_location,
+                data_hash = excluded.data_hash,
+                extra = excluded.extra
             `).run(
               session.id, session.cli, session.category,
               session.title, session.cwd,
@@ -351,6 +364,101 @@ class CacheService {
   }
 
   /**
+   * 单会话按需增量同步到缓存
+   */
+  syncSingleSession(platform: PlatformType, id: string): {
+    session: UnifiedSession | null
+    messages: SessionMessage[]
+  } {
+    this.init()
+    const detail = adapterRegistry.getMessages(platform, id)
+    if (!detail.session || !this.db) {
+      return detail
+    }
+
+    const { session, messages } = detail
+    const newHash = this.computeHash(session, messages)
+
+    try {
+      const syncTx = this.db.transaction(() => {
+        this.db!.prepare(`
+          INSERT INTO sessions_cache
+            (id, platform, category, title, cwd, model, cost, status, message_count,
+             created_at, updated_at, raw_location, data_hash, extra)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            platform = excluded.platform,
+            category = excluded.category,
+            title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
+            cwd = excluded.cwd,
+            model = excluded.model,
+            cost = excluded.cost,
+            status = excluded.status,
+            message_count = excluded.message_count,
+            updated_at = excluded.updated_at,
+            raw_location = excluded.raw_location,
+            data_hash = excluded.data_hash,
+            extra = excluded.extra
+        `).run(
+          session.id, session.cli, session.category,
+          session.title, session.cwd,
+          session.model || null,
+          session.cost || null,
+          session.status || null,
+          session.messageCount || 0,
+          session.createdAt, session.updatedAt,
+          session.rawLocation, newHash,
+          session.extra ? JSON.stringify(session.extra) : '{}'
+        )
+
+        this.db!.prepare(
+          'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
+        ).run(session.id, session.cli)
+
+        this.db!.prepare(DELETE_FTS_SQL).run(session.id)
+
+        const insertMsg = this.db!.prepare(`
+          INSERT INTO messages_cache
+            (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+
+        const insertFts = this.db!.prepare(`
+          INSERT INTO fts_messages(content, title, session_id, platform, role)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+
+        for (const msg of messages) {
+          const msgId = msg.id || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+          const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
+
+          insertMsg.run(
+            msgId, session.id, session.cli,
+            msg.role, msg.content,
+            msg.thought || null,
+            toolCallsStr,
+            msg.timestamp || null,
+            msg.model || null
+          )
+
+          if ((msg.role === 'user' || msg.role === 'assistant') && msg.content) {
+            const contentPreview = msg.content.slice(0, 3000)
+            insertFts.run(
+              contentPreview, session.title,
+              session.id, session.cli, msg.role
+            )
+          }
+        }
+      })
+      syncTx()
+    } catch (err) {
+      console.error('[Cache] Error in syncSingleSession:', err)
+    }
+
+    return this.getCachedSessionDetail(platform, id)
+  }
+
+  /**
    * 从缓存中获取单个会话详情
    */
   getCachedSessionDetail(platform: PlatformType, id: string): {
@@ -380,6 +488,7 @@ class CacheService {
       return { session: null, messages: [] }
     }
   }
+
 
   /**
    * FTS5 全文搜索
@@ -468,6 +577,65 @@ class CacheService {
 
   private safeJsonParse(str: string): any {
     try { return JSON.parse(str) } catch { return str }
+  }
+
+  /**
+   * 更新缓存中指定会话的标题
+   */
+  updateSessionTitle(sessionId: string, platform: string, newTitle: string): boolean {
+    this.init()
+    if (!this.db) return false
+    try {
+      const tx = this.db.transaction(() => {
+        this.db!.prepare(
+          'UPDATE sessions_cache SET title = ?, updated_at = ? WHERE id = ? AND platform = ?'
+        ).run(newTitle, Date.now(), sessionId, platform)
+
+        try {
+          this.db!.prepare(
+            'UPDATE fts_messages SET title = ? WHERE session_id = ? AND platform = ?'
+          ).run(newTitle, sessionId, platform)
+        } catch {}
+      })
+      tx()
+      return true
+    } catch (err) {
+      console.error('[Cache] Error updating session title:', err)
+      return false
+    }
+  }
+
+  /**
+   * 从缓存中获取各平台的会话统计数量
+   */
+  getCachedStats(): { total: number, counts: Record<string, number> } {
+    this.init()
+    const counts: Record<string, number> = {}
+    const adapters = adapterRegistry.getAllAdapters()
+    for (const adapter of adapters) {
+      counts[adapter.id] = 0
+    }
+
+    if (!this.db) {
+      return { total: 0, counts }
+    }
+
+    try {
+      const rows = this.db.prepare(
+        'SELECT platform, COUNT(*) as count FROM sessions_cache GROUP BY platform'
+      ).all() as { platform: string, count: number }[]
+
+      let total = 0
+      for (const row of rows) {
+        counts[row.platform] = row.count
+        total += row.count
+      }
+
+      return { total, counts }
+    } catch (err) {
+      console.error('[Cache] Error getting cached platform stats:', err)
+      return { total: 0, counts }
+    }
   }
 
   /**
