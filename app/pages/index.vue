@@ -367,35 +367,6 @@ const executeDelete = async () => {
   }
 }
 
-// Resume command helper
-const copyResumeCommand = (session: UnifiedSession) => {
-  let cmd = ''
-  if (session.cli === 'pi') {
-    cmd = `cd "${session.cwd}" && pi --resume`
-  } else if (session.cli === 'opencode') {
-    cmd = `cd "${session.cwd}" && opencode session ${session.id}`
-  } else if (session.cli === 'agy') {
-    cmd = `agy resume --id ${session.id}`
-  } else if (session.cli === 'claude') {
-    cmd = `cd "${session.cwd}" && claude --resume`
-  } else if (session.cli === 'codex') {
-    cmd = `open -a "Codex" || cd "${session.cwd}" && codex thread ${session.id}`
-  } else if (session.cli === 'workbuddy') {
-    cmd = `open -a "WorkBuddy"`
-  } else if (session.cli === 'reasonix') {
-    cmd = `open -a "Reasonix"`
-  } else if (session.cli === 'kimi') {
-    cmd = `cd "${session.cwd}" && kimi resume`
-  } else if (session.cli === 'trae') {
-    cmd = `open -a "Trae"`
-  } else if (session.cli === 'cursor') {
-    cmd = `open -a "Cursor"`
-  } else if (session.cli === 'mimo') {
-    cmd = `cd "${session.cwd}" && mimo`
-  }
-  navigator.clipboard.writeText(cmd)
-  alert(`已复制启动命令到剪贴板：\n${cmd}`)
-}
 </script>
 
 <template>
@@ -664,16 +635,6 @@ const copyResumeCommand = (session: UnifiedSession) => {
               @click="openDetail(item)"
             >
               查看
-            </UButton>
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-play"
-              @click="copyResumeCommand(item)"
-              title="复制启动/恢复命令"
-            >
-              打开/继续
             </UButton>
           </div>
 

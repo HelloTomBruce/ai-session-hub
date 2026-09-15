@@ -77,40 +77,6 @@ const formatTime = (ts?: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-const copyResumeCommand = () => {
-  if (!session.value) return
-  let cmd = ''
-  const cli = session.value.cli
-  const cwd = session.value.cwd
-  const id = session.value.id
-
-  if (cli === 'pi') {
-    cmd = `cd "${cwd}" && pi --resume`
-  } else if (cli === 'opencode') {
-    cmd = `cd "${cwd}" && opencode session ${id}`
-  } else if (cli === 'agy') {
-    cmd = `agy resume --id ${id}`
-  } else if (cli === 'claude') {
-    cmd = `cd "${cwd}" && claude --resume`
-  } else if (cli === 'codex') {
-    cmd = `open -a "Codex" || cd "${cwd}" && codex thread ${id}`
-  } else if (cli === 'workbuddy') {
-    cmd = `open -a "WorkBuddy"`
-  } else if (cli === 'reasonix') {
-    cmd = `open -a "Reasonix"`
-  } else if (cli === 'kimi') {
-    cmd = `cd "${cwd}" && kimi resume`
-  } else if (cli === 'trae') {
-    cmd = `open -a "Trae"`
-  } else if (cli === 'cursor') {
-    cmd = `open -a "Cursor"`
-  } else if (cli === 'mimo') {
-    cmd = `cd "${cwd}" && mimo`
-  }
-
-  navigator.clipboard.writeText(cmd)
-  alert(`已复制启动命令到剪贴板：\n${cmd}`)
-}
 
 // Tool & Skill analytics computation
 const isToolModalOpen = ref(false)
@@ -661,15 +627,6 @@ const thinkingTimeline = computed(() => {
             @click="handleRefresh"
           >
             刷新
-          </UButton>
-          <UButton
-            size="sm"
-            color="neutral"
-            class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-            icon="i-lucide-play"
-            @click="copyResumeCommand"
-          >
-            复制启动命令
           </UButton>
           <button
             @click="isHarvestModalOpen = true"
