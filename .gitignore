@@ -26,3 +26,6 @@ logs
 # Graphify
 graphify-out
 
+
+# pnpm local store
+.pnpm-store
