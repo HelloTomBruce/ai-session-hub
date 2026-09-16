@@ -4,6 +4,10 @@ export interface StreamChunkCallback {
   (chunk: string): void
 }
 
+// 已知不接受自定义 temperature 的模型（如 kimi-for-coding、o 系列），
+// 进程内记住后后续请求直接不传，避免每次都先撞一次 400 再重试
+const temperatureRejectedModels = new Set<string>()
+
 /**
  * Streams LLM completion chunks from any OpenAI-compatible endpoint.
  * Returns the complete concatenated text once finished.
@@ -17,27 +21,43 @@ export async function streamLLMCompletion(
 ): Promise<string> {
   const baseUrl = (provider.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
   const model = provider.model || 'gpt-4o-mini'
+  const modelKey = `${baseUrl}|${model}`
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const reqBody: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    stream: true,
+    ...(temperatureRejectedModels.has(modelKey) ? {} : { temperature })
+  }
+
+  const doRequest = (body: Record<string, unknown>) => fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${provider.apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature,
-      stream: true
-    })
+    body: JSON.stringify(body)
   })
+
+  let res = await doRequest(reqBody)
 
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(`LLM API responded with ${res.status}: ${errText}`)
+    // 部分模型（如 kimi-for-coding、o 系列）不允许自定义 temperature，
+    // 遇到此类 400 错误时移除 temperature 参数重试，交由服务端默认值处理
+    if (res.status === 400 && /temperature/i.test(errText)) {
+      temperatureRejectedModels.add(modelKey)
+      console.info(`[LLM Stream] Model ${model} does not accept custom temperature, omitting it from now on`)
+      const { temperature: _omit, ...bodyWithoutTemp } = reqBody
+      res = await doRequest(bodyWithoutTemp)
+    }
+    if (!res.ok) {
+      const finalErr = await res.text()
+      throw new Error(`LLM API responded with ${res.status}: ${finalErr || errText}`)
+    }
   }
 
   if (!res.body) {

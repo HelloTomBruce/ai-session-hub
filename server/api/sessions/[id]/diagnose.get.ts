@@ -1,9 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import type { AIEvaluationResult } from '../../../utils/evaluator-rubric'
-
-const DIAGNOSIS_DIR = path.join(os.homedir(), '.session-hub', 'diagnoses')
 
 export default defineEventHandler((event) => {
   const sessionId = getRouterParam(event, 'id')

@@ -17,6 +17,7 @@ export default defineEventHandler((event) => {
     }
 
     try { tagService.mergeTagsToSessions(list) } catch {}
+    try { markDiagnosedSessions(list) } catch {}
 
     return {
       success: true,
@@ -46,6 +47,7 @@ export default defineEventHandler((event) => {
   }
 
   try { tagService.mergeTagsToSessions(list) } catch {}
+  try { markDiagnosedSessions(list) } catch {}
 
   return {
     success: true,

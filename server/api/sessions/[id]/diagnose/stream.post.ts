@@ -1,13 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { adapterRegistry } from '../../../../utils/adapter-registry'
 import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, type AIEvaluationResult } from '../../../../utils/evaluator-rubric'
 import { getLLMProviderSettings } from '../../../../utils/llm-provider-config'
 import { streamLLMCompletion } from '../../../../utils/llm-stream-client'
 import type { PlatformType } from '../../../../utils/types'
-
-const DIAGNOSIS_DIR = path.join(os.homedir(), '.session-hub', 'diagnoses')
 
 export default defineEventHandler(async (event) => {
   const sessionId = getRouterParam(event, 'id')
@@ -47,7 +44,7 @@ export default defineEventHandler(async (event) => {
         (chunk: string) => {
           sendEvent('chunk', { text: chunk })
         },
-        0.1
+        provider.temperature ?? 0.1
       )
 
       // Parse final JSON result
