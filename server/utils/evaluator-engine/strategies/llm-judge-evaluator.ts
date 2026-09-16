@@ -1,6 +1,21 @@
 import type { EvaluationContext, IEvaluatorStrategy, StrategyScoreResult } from '../types'
 import type { LLMProviderSettings } from '../../llm-provider-config'
 
+interface ChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string
+    }
+  }>
+}
+
+interface JudgeResult {
+  score?: number
+  reason?: string
+  valueCategory?: string
+  [key: string]: unknown
+}
+
 /**
  * Optional Deep G-Eval LLM Judge Strategy (activates when LLM Provider is available)
  */
@@ -56,7 +71,7 @@ Output MUST be a JSON object:
   "reason": "string (Concise evaluation rationale in Chinese)"
 }`
 
-      const res = await $fetch<any>(`${baseUrl}/chat/completions`, {
+      const res = await $fetch<ChatCompletionResponse>(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.provider.apiKey}`,
@@ -71,7 +86,7 @@ Output MUST be a JSON object:
       })
 
       const raw = res.choices?.[0]?.message?.content || '{}'
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(raw) as JudgeResult
       const score = typeof parsed.score === 'number' ? Math.min(100, Math.max(0, parsed.score)) : 50
 
       return {
@@ -82,14 +97,15 @@ Output MUST be a JSON object:
         signals: [parsed.reason || `AI Judge 评分: ${score} 分 (${parsed.valueCategory || 'Evaluated'})`],
         details: parsed
       }
-    } catch (e: any) {
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
       return {
         strategyName: this.name,
         rawScore: 50,
         weight: this.defaultWeight,
         confidence: 0.5,
-        signals: [`AI Judge 调用失败: ${e.message}`],
-        details: { error: e.message }
+        signals: [`AI Judge 调用失败: ${message}`],
+        details: { error: message }
       }
     }
   }

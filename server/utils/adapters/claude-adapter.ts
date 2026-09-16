@@ -2,9 +2,32 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { BaseJsonlAdapter } from '../base-jsonl-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+interface ClaudeMessageContentBlock {
+  text?: string
+}
+
+interface ClaudeJsonlMessage {
+  content?: string | ClaudeMessageContentBlock[]
+}
+
+interface ClaudeJsonlLine {
+  type?: string
+  role?: string
+  cwd?: string
+  title?: string
+  custom_title?: string
+  message?: string | ClaudeJsonlMessage
+  text?: string
+  id?: string
+  messageId?: string
+  timestamp?: string
+  updatedAt?: number
+  tool_use?: SessionToolCall
+}
 
 export class ClaudeSessionAdapter extends BaseJsonlAdapter {
   constructor() {
@@ -37,19 +60,19 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
               let messageCount = 0
               let cwd = ''
 
-              const lines = this.readJsonl(filePath)
+              const lines = this.readJsonl<ClaudeJsonlLine>(filePath)
               for (const parsed of lines) {
                 if (parsed.cwd && !cwd) cwd = parsed.cwd
                 if (parsed.type === 'custom_title' && parsed.title) {
                   title = parsed.title
                 } else if (parsed.type === 'session_init' && (parsed.title || parsed.custom_title)) {
-                  title = parsed.title || parsed.custom_title
+                  title = parsed.title || parsed.custom_title || ''
                 } else if (parsed.type === 'user' || parsed.role === 'user' || parsed.type === 'human') {
                   messageCount++
                   if (!title) {
-                    const text = typeof parsed.message === 'string' 
-                      ? parsed.message 
-                      : parsed.message?.content || parsed.text || ''
+                    const text = typeof parsed.message === 'string'
+                      ? parsed.message
+                      : (parsed.message?.content as string | undefined) || parsed.text || ''
                     if (text) title = text.slice(0, 100).replace(/\n/g, ' ')
                   }
                 } else if (parsed.type === 'assistant' || parsed.role === 'assistant') {
@@ -68,18 +91,22 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
                 messageCount,
                 rawLocation: filePath
               })
-            } catch {}
+            } catch {
+              // skip session files that cannot be read or parsed
+            }
           }
         }
       }
-    } catch {}
+    } catch {
+      // return whatever sessions were collected before the failure
+    }
 
     return sessions
   }
 
   getMessages(_id: string, session?: UnifiedSession): SessionMessage[] {
     if (!session || !fs.existsSync(session.rawLocation)) return []
-    const lines = this.readJsonl(session.rawLocation)
+    const lines = this.readJsonl<ClaudeJsonlLine>(session.rawLocation)
     const messages: SessionMessage[] = []
 
     for (const parsed of lines) {
@@ -89,7 +116,7 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
       else if (parsed.message?.content) {
         if (typeof parsed.message.content === 'string') content = parsed.message.content
         else if (Array.isArray(parsed.message.content)) {
-          content = parsed.message.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
+          content = parsed.message.content.map(c => c.text || JSON.stringify(c)).join('\n')
         }
       } else if (parsed.text) {
         content = parsed.text
@@ -98,7 +125,7 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
       if (content || parsed.tool_use) {
         messages.push({
           id: parsed.id || parsed.messageId,
-          role: role as any,
+          role,
           content: content || '',
           timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined,
           toolCalls: parsed.tool_use ? [parsed.tool_use] : undefined
@@ -159,9 +186,9 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
       const raw = fs.readFileSync(session.rawLocation, 'utf-8')
       const lines = raw.split('\n').filter(Boolean)
       let customTitleFound = false
-      const updatedLines = lines.map(line => {
+      const updatedLines = lines.map((line) => {
         try {
-          const parsed = JSON.parse(line)
+          const parsed = JSON.parse(line) as ClaudeJsonlLine
           if (parsed.type === 'custom_title') {
             customTitleFound = true
             parsed.title = payload.title
@@ -171,7 +198,9 @@ export class ClaudeSessionAdapter extends BaseJsonlAdapter {
             parsed.title = payload.title
             return JSON.stringify(parsed)
           }
-        } catch {}
+        } catch {
+          // leave lines that fail to parse untouched
+        }
         return line
       })
 

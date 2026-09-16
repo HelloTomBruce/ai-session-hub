@@ -229,10 +229,10 @@ export function createMcpServer() {
           sessions = sessions.filter(s => s.cwd.toLowerCase().includes(cwd))
         }
         if (search) {
-          sessions = sessions.filter(s => 
-            s.title.toLowerCase().includes(search) || 
-            s.id.toLowerCase().includes(search) ||
-            s.cwd.toLowerCase().includes(search)
+          sessions = sessions.filter(s =>
+            s.title.toLowerCase().includes(search)
+            || s.id.toLowerCase().includes(search)
+            || s.cwd.toLowerCase().includes(search)
           )
         }
 
@@ -349,7 +349,7 @@ export function createMcpServer() {
           }
         }
 
-        const fullData = targetSessions.map(s => {
+        const fullData = targetSessions.map((s) => {
           const { messages } = adapterRegistry.getMessages(s.cli, s.id)
           return { session: s, messages }
         })
@@ -433,7 +433,7 @@ export function createMcpServer() {
         let { items } = knowledgeService.listItems({ type: 'adr', limit: 100 })
 
         if (cwd) {
-          items = items.filter(i => {
+          items = items.filter((i) => {
             if (!i.sessionId) return true
             const session = adapterRegistry.getSession(i.platform || '', i.sessionId)
             return !session || session.cwd.toLowerCase().includes(cwd)
@@ -534,14 +534,14 @@ export function createMcpServer() {
       }
 
       throw new Error(`Unknown tool: ${name}`)
-    } catch (err: any) {
+    } catch (err) {
       mcpLogger.addLog({
         type: 'tool',
         name,
         params: args,
         status: 'error',
         durationMs: Date.now() - startTime,
-        error: err?.message || String(err)
+        error: err instanceof Error ? err.message : String(err)
       })
       throw err
     }

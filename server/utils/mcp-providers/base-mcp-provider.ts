@@ -1,9 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
-
-const homeDir = os.homedir()
 
 export function parseJsonSafe(raw: string): Record<string, unknown> {
   try {

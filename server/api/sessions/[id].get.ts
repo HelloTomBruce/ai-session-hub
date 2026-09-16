@@ -21,7 +21,9 @@ export default defineEventHandler((event) => {
           if (stat.mtimeMs > (cached.session.updatedAt || 0) + 1000) {
             needsSync = true
           }
-        } catch {}
+        } catch {
+          // ignore stat errors and treat the cache as fresh
+        }
       }
 
       if (needsSync) {

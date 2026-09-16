@@ -1,9 +1,11 @@
+import type { PlatformType, SessionMessage, UnifiedSession } from '../../utils/types'
+
 export default defineEventHandler((event) => {
   const query = getQuery(event)
   const format = (query.format as string) || 'json'
   const itemsParam = (query.items as string) || ''
 
-  const items: Array<{ id: string; cli: string }> = []
+  const items: Array<{ id: string, cli: string }> = []
   for (const part of itemsParam.split(',').filter(Boolean)) {
     const [cli, ...idParts] = part.split('::')
     const id = idParts.join('::')
@@ -14,10 +16,10 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 400, message: 'No items specified. Use items=cli::id,cli::id' })
   }
 
-  const sessions: any[] = []
+  const sessions: Array<{ session: UnifiedSession, messages: SessionMessage[], messageCount: number }> = []
   for (const item of items) {
     try {
-      const result = getSessionMessages(item.cli as any, item.id)
+      const result = getSessionMessages(item.cli as PlatformType, item.id)
       if (result.session) {
         sessions.push({
           session: result.session,
@@ -25,7 +27,9 @@ export default defineEventHandler((event) => {
           messageCount: result.messages.length
         })
       }
-    } catch {}
+    } catch {
+      // skip sessions that fail to load
+    }
   }
 
   if (format === 'markdown') {

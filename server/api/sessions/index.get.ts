@@ -10,14 +10,22 @@ export default defineEventHandler((event) => {
 
     // 按标签过滤
     if (tagFilter) {
-      list = list.filter(item => {
-        const tags = item.extra?.tags || []
+      list = list.filter((item) => {
+        const tags = (item.extra?.tags as string[] | undefined) || []
         return tags.includes(tagFilter)
       })
     }
 
-    try { tagService.mergeTagsToSessions(list) } catch {}
-    try { markDiagnosedSessions(list) } catch {}
+    try {
+      tagService.mergeTagsToSessions(list)
+    } catch {
+      // ignore tag merge failures
+    }
+    try {
+      markDiagnosedSessions(list)
+    } catch {
+      // ignore diagnosis marker failures
+    }
 
     return {
       success: true,
@@ -37,17 +45,29 @@ export default defineEventHandler((event) => {
 
   if (search) {
     list = list.filter(item =>
-      item.title.toLowerCase().includes(search) ||
-      item.cwd.toLowerCase().includes(search) ||
-      item.id.toLowerCase().includes(search) ||
-      (item.model && item.model.toLowerCase().includes(search))
+      item.title.toLowerCase().includes(search)
+      || item.cwd.toLowerCase().includes(search)
+      || item.id.toLowerCase().includes(search)
+      || (item.model && item.model.toLowerCase().includes(search))
     )
     // Merge tags from cache
-    try { tagService.mergeTagsToSessions(list) } catch {}
+    try {
+      tagService.mergeTagsToSessions(list)
+    } catch {
+      // ignore tag merge failures
+    }
   }
 
-  try { tagService.mergeTagsToSessions(list) } catch {}
-  try { markDiagnosedSessions(list) } catch {}
+  try {
+    tagService.mergeTagsToSessions(list)
+  } catch {
+    // ignore tag merge failures
+  }
+  try {
+    markDiagnosedSessions(list)
+  } catch {
+    // ignore diagnosis marker failures
+  }
 
   return {
     success: true,

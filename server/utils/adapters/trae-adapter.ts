@@ -1,10 +1,39 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+/** Row shape of the session/conversation tables in the Trae SQLite database. */
+interface TraeSessionRow {
+  id: string
+  title?: string
+  name?: string
+  workspace?: string
+  path?: string
+  cwd?: string
+  model?: string
+  created_at?: number
+  updated_at?: number
+  message_count?: number
+  tokens_used?: number
+}
+
+/** Row shape of the messages table in the Trae SQLite database. */
+interface TraeMessageRow {
+  id?: string
+  role?: string
+  content?: string | { text?: string }
+  thought?: string
+  thinking?: string
+  tool_calls_json?: unknown
+  toolCalls?: unknown
+  timestamp?: number
+  created_at?: number
+}
 
 function findTraeDb(): string {
   const candidates = [
@@ -33,31 +62,31 @@ export class TraeSessionAdapter extends BaseSqliteAdapter {
 
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db!: Database.Database
     try {
       db = this.getDb(true)
       // Try different table name possibilities
-      let rows: any[]
+      let rows: TraeSessionRow[]
       try {
         rows = db.prepare(`
           SELECT id, title, workspace, model, created_at, updated_at, message_count, tokens_used
           FROM sessions ORDER BY updated_at DESC
-        `).all()
+        `).all() as TraeSessionRow[]
       } catch {
         try {
           rows = db.prepare(`
             SELECT id, name as title, path as workspace, model, created_at as created_at, updated_at as updated_at
             FROM conversations ORDER BY updated_at DESC
-          `).all()
+          `).all() as TraeSessionRow[]
         } catch {
           rows = db.prepare(`
             SELECT id, title, cwd as workspace, model, created_at, updated_at, message_count
             FROM conversations ORDER BY updated_at DESC
-          `).all()
+          `).all() as TraeSessionRow[]
         }
       }
 
-      return rows.map((row: any) => ({
+      return rows.map(row => ({
         id: row.id,
         cli: 'trae',
         category: 'app',
@@ -78,34 +107,35 @@ export class TraeSessionAdapter extends BaseSqliteAdapter {
 
   getMessages(id: string): SessionMessage[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db!: Database.Database
     const messages: SessionMessage[] = []
     try {
       db = this.getDb(true)
-      let msgs: any[]
+      let msgs: TraeMessageRow[]
       try {
-        msgs = db.prepare(`SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC`).all(id)
+        msgs = db.prepare(`SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC`).all(id) as TraeMessageRow[]
       } catch {
         try {
-          msgs = db.prepare(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`).all(id)
+          msgs = db.prepare(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`).all(id) as TraeMessageRow[]
         } catch {
-          msgs = db.prepare(`SELECT role, content, created_at as timestamp FROM messages WHERE session_id = ? ORDER BY id ASC`).all(id)
+          msgs = db.prepare(`SELECT role, content, created_at as timestamp FROM messages WHERE session_id = ? ORDER BY id ASC`).all(id) as TraeMessageRow[]
         }
       }
 
       for (const m of msgs) {
-        const role = m.role || 'assistant'
+        const role = (m.role || 'assistant') as SessionMessage['role']
         const content = typeof m.content === 'string' ? m.content : (m.content?.text || '')
         const thought = m.thought || m.thinking || ''
-        let toolCalls: any[] = []
+        let toolCalls: SessionToolCall[] = []
 
         // Try parsing JSON content
         if (m.tool_calls_json || m.toolCalls) {
           try {
-            toolCalls = typeof (m.tool_calls_json || m.toolCalls) === 'string'
-              ? JSON.parse(m.tool_calls_json || m.toolCalls)
-              : (m.tool_calls_json || m.toolCalls)
-          } catch {}
+            const rawToolCalls = m.tool_calls_json || m.toolCalls
+            toolCalls = (typeof rawToolCalls === 'string' ? JSON.parse(rawToolCalls) : rawToolCalls) as SessionToolCall[]
+          } catch {
+            // malformed tool call JSON; keep empty tool calls
+          }
         }
 
         messages.push({
@@ -127,7 +157,7 @@ export class TraeSessionAdapter extends BaseSqliteAdapter {
 
   updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!this.isAvailable() || !payload.title) return false
-    let db: any
+    let db!: Database.Database
     try {
       db = this.getDb(false)
       try {
@@ -146,7 +176,7 @@ export class TraeSessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db!: Database.Database
     try {
       db = this.getDb(false)
       try {
@@ -166,7 +196,7 @@ export class TraeSessionAdapter extends BaseSqliteAdapter {
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${now}`
 
     if (this.isAvailable()) {
-      let db: any
+      let db!: Database.Database
       try {
         db = this.getDb(false)
         try {

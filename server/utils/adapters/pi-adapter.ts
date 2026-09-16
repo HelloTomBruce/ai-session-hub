@@ -2,9 +2,42 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { BaseJsonlAdapter } from '../base-jsonl-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession } from '../types'
 
 const homeDir = os.homedir()
+
+interface PiTextPart {
+  type: 'text'
+  text: string
+}
+
+interface PiThinkingPart {
+  type: 'thinking'
+  thinking: string
+}
+
+interface PiToolPart {
+  type: 'toolCall' | 'toolUse'
+  [key: string]: unknown
+}
+
+type PiContentPart = PiTextPart | PiThinkingPart | PiToolPart
+
+/** Shape of a single line in a Pi CLI session JSONL file. */
+interface PiLine {
+  id?: string
+  type?: string
+  timestamp?: string | number
+  model?: string
+  title?: string
+  cwd?: string
+  modelId?: string
+  message?: {
+    role?: string
+    content?: string | PiContentPart[]
+    model?: string
+  }
+}
 
 export class PiSessionAdapter extends BaseJsonlAdapter {
   constructor() {
@@ -32,8 +65,8 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
             const filePath = path.join(fullPDir, file)
             try {
               const stat = fs.statSync(filePath)
-              const lines = this.readJsonl(filePath)
-              
+              const lines = this.readJsonl<PiLine>(filePath)
+
               let id = file.replace('.jsonl', '')
               let cwd = ''
               let title = ''
@@ -55,7 +88,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
                     const text = typeof parsed.message.content === 'string'
                       ? parsed.message.content
                       : Array.isArray(parsed.message.content)
-                        ? parsed.message.content.find((c: any) => c.type === 'text')?.text || ''
+                        ? parsed.message.content.find((c): c is PiTextPart => c.type === 'text')?.text || ''
                         : ''
                     if (text) title = text.slice(0, 100).replace(/\n/g, ' ')
                   }
@@ -74,18 +107,22 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
                 model,
                 rawLocation: filePath
               })
-            } catch {}
+            } catch {
+              // skip session files that fail to read
+            }
           }
         }
       }
-    } catch {}
+    } catch {
+      // ignore errors while scanning pi sessions
+    }
 
     return sessions
   }
 
   getMessages(_id: string, session?: UnifiedSession): SessionMessage[] {
     if (!session || !fs.existsSync(session.rawLocation)) return []
-    const lines = this.readJsonl(session.rawLocation)
+    const lines = this.readJsonl<PiLine>(session.rawLocation)
     const messages: SessionMessage[] = []
 
     for (const parsed of lines) {
@@ -93,7 +130,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
         const role = parsed.message?.role || 'assistant'
         let content = ''
         let thought = ''
-        const toolCalls: any[] = []
+        const toolCalls: SessionToolCall[] = []
 
         if (typeof parsed.message?.content === 'string') {
           content = parsed.message.content
@@ -107,7 +144,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
 
         messages.push({
           id: parsed.id,
-          role,
+          role: role as SessionMessage['role'],
           content: content || (thought ? `*(Thinking)*\n${thought}` : ''),
           timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined,
           model: parsed.model || parsed.message?.model,
@@ -136,7 +173,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
       timestamp: new Date().toISOString(),
       cwd: targetCwd
     })
-    
+
     let content = sessionHeader + '\n'
     if (payload.initialPrompt) {
       content += JSON.stringify({
@@ -175,7 +212,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
       const raw = fs.readFileSync(session.rawLocation, 'utf-8')
       const lines = raw.split('\n').filter(Boolean)
       let customTitleFound = false
-      const updatedLines = lines.map(line => {
+      const updatedLines = lines.map((line) => {
         try {
           const parsed = JSON.parse(line)
           if (parsed.type === 'session') {
@@ -187,7 +224,9 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
             parsed.updatedAt = Date.now()
             return JSON.stringify(parsed)
           }
-        } catch {}
+        } catch {
+          // keep the original line when it is not valid JSON
+        }
         return line
       })
 

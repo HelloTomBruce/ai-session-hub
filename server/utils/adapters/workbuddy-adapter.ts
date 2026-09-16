@@ -1,10 +1,41 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
 import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+interface WorkBuddySessionRow {
+  id: string
+  cwd?: string
+  title?: string
+  custom_title?: string
+  status?: string
+  created_at?: number
+  updated_at?: number
+  last_activity_at?: number
+  model?: string
+  mode?: string
+  expert_id?: string
+}
+
+interface WorkBuddyReasoningChunk {
+  text?: string
+}
+
+interface WorkBuddyLogLine {
+  id?: string
+  type?: string
+  role?: string
+  name?: string
+  arguments?: unknown
+  content?: string
+  message?: string
+  rawContent?: WorkBuddyReasoningChunk[]
+  timestamp?: number
+}
 
 export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
   constructor() {
@@ -18,7 +49,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
 
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(true)
       const rows = db.prepare(`
@@ -26,15 +57,15 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
         FROM sessions
         WHERE deleted_at IS NULL
         ORDER BY updated_at DESC
-      `).all()
+      `).all() as WorkBuddySessionRow[]
 
-      return rows.map((row: any) => ({
+      return rows.map(row => ({
         id: row.id,
         cli: 'workbuddy',
         category: 'app',
         title: row.custom_title || row.title || `WorkBuddy ${row.id.slice(0, 8)}`,
         cwd: row.cwd || '',
-        createdAt: row.created_at,
+        createdAt: row.created_at as number,
         updatedAt: row.last_activity_at || row.updated_at || Date.now(),
         status: row.status,
         model: row.model,
@@ -64,9 +95,9 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
             const lines = fs.readFileSync(jsonlFile, 'utf-8').split('\n').filter(Boolean)
             for (const line of lines) {
               try {
-                const parsed = JSON.parse(line)
+                const parsed = JSON.parse(line) as WorkBuddyLogLine
                 if (parsed.type === 'reasoning' && parsed.rawContent?.length) {
-                  const thought = parsed.rawContent.map((r: any) => r.text).join('\n')
+                  const thought = parsed.rawContent.map(r => r.text).join('\n')
                   messages.push({
                     id: parsed.id,
                     role: 'assistant',
@@ -90,12 +121,16 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
                     timestamp: parsed.timestamp
                   })
                 }
-              } catch {}
+              } catch {
+                // skip malformed log lines
+              }
             }
             break
           }
         }
-      } catch {}
+      } catch {
+        // fall back to the session-summary placeholder below when the log cannot be read
+      }
     }
 
     if (messages.length === 0 && session) {
@@ -111,7 +146,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
 
   updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       if (payload.title) {
@@ -128,7 +163,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       db.prepare(`UPDATE sessions SET deleted_at = ? WHERE id = ?`).run(Date.now(), id)
@@ -144,7 +179,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
     if (this.isAvailable()) {
-      let db: any
+      let db: Database.Database | undefined
       try {
         db = this.getDb(false)
         db.prepare(`

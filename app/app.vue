@@ -21,9 +21,15 @@ useHead({
       <header class="sticky top-0 z-50 bg-white/90 dark:bg-zinc-900/90 backdrop-blur border-b border-zinc-200/80 dark:border-zinc-800/80">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div class="flex items-center gap-6">
-            <NuxtLink to="/" class="flex items-center gap-2.5 group">
+            <NuxtLink
+              to="/"
+              class="flex items-center gap-2.5 group"
+            >
               <div class="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center text-white dark:text-zinc-900 font-bold text-sm shadow-sm transition-transform group-hover:scale-105">
-                <UIcon name="i-lucide-layers" class="w-4 h-4" />
+                <UIcon
+                  name="i-lucide-layers"
+                  class="w-4 h-4"
+                />
               </div>
               <div class="flex items-center gap-2">
                 <span class="font-bold text-sm tracking-tight text-zinc-900 dark:text-zinc-100">AI Session Hub</span>
@@ -33,26 +39,89 @@ useHead({
 
             <!-- Nav Links -->
             <nav class="hidden md:flex items-center gap-0.5 lg:gap-1 flex-nowrap whitespace-nowrap">
-              <NuxtLink to="/" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-list" class="whitespace-nowrap px-2.5">会话</UButton>
+              <NuxtLink
+                to="/"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-list"
+                  class="whitespace-nowrap px-2.5"
+                >会话</UButton>
               </NuxtLink>
-              <NuxtLink to="/insights" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-line-chart" class="whitespace-nowrap px-2.5">洞察</UButton>
+              <NuxtLink
+                to="/insights"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-line-chart"
+                  class="whitespace-nowrap px-2.5"
+                >洞察</UButton>
               </NuxtLink>
-              <NuxtLink to="/knowledge" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-sparkles" class="whitespace-nowrap px-2.5">知识库</UButton>
+              <NuxtLink
+                to="/knowledge"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-sparkles"
+                  class="whitespace-nowrap px-2.5"
+                >知识库</UButton>
               </NuxtLink>
-              <NuxtLink to="/distill" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-book-open" class="whitespace-nowrap px-2.5">提炼</UButton>
+              <NuxtLink
+                to="/distill"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-book-open"
+                  class="whitespace-nowrap px-2.5"
+                >提炼</UButton>
               </NuxtLink>
-              <NuxtLink to="/skills" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-puzzle" class="whitespace-nowrap px-2.5">技能</UButton>
+              <NuxtLink
+                to="/skills"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-puzzle"
+                  class="whitespace-nowrap px-2.5"
+                >技能</UButton>
               </NuxtLink>
-              <NuxtLink to="/mcp" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-server" class="whitespace-nowrap px-2.5">MCP</UButton>
+              <NuxtLink
+                to="/mcp"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-server"
+                  class="whitespace-nowrap px-2.5"
+                >MCP</UButton>
               </NuxtLink>
-              <NuxtLink to="/search" class="flex-shrink-0">
-                <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-search" class="whitespace-nowrap px-2.5">搜索</UButton>
+              <NuxtLink
+                to="/search"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-search"
+                  class="whitespace-nowrap px-2.5"
+                >搜索</UButton>
               </NuxtLink>
             </nav>
           </div>
@@ -60,14 +129,17 @@ useHead({
           <div class="flex items-center gap-2.5">
             <!-- Clickable MCP Status Bar -->
             <button
-              @click="isMcpModalOpen = true"
               class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-100 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 transition-colors cursor-pointer select-none group"
               title="点击查看 MCP 配置示例与调用日志"
+              @click="isMcpModalOpen = true"
             >
-              <span class="w-2 h-2 rounded-full bg-emerald-500 group-hover:animate-ping"></span>
+              <span class="w-2 h-2 rounded-full bg-emerald-500 group-hover:animate-ping" />
               <span class="font-medium">MCP SSE</span>
               <span class="text-zinc-400">/api/mcp/sse</span>
-              <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
+              <UIcon
+                name="i-lucide-chevron-right"
+                class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform"
+              />
             </button>
 
             <!-- LLM Provider Settings Button -->

@@ -1,5 +1,4 @@
 import fs from 'node:fs'
-import path from 'node:path'
 import type { BaseSessionAdapter, CategoryType, CreateSessionPayload, PlatformType, SessionMessage, UnifiedSession, UpdateSessionPayload } from './types'
 
 export interface JsonlAdapterConfig {
@@ -26,17 +25,18 @@ export abstract class BaseJsonlAdapter implements BaseSessionAdapter {
     return fs.existsSync(this.baseDir)
   }
 
-  protected readJsonl(filePath: string): any[] {
+  protected readJsonl<T = Record<string, unknown>>(filePath: string): T[] {
     if (!fs.existsSync(filePath)) return []
     try {
       const content = fs.readFileSync(filePath, 'utf-8')
-      return content.split('\n').filter(Boolean).map(line => {
+      return content.split('\n').filter(Boolean).map((line): T | null => {
         try {
-          return JSON.parse(line)
+          return JSON.parse(line) as T
         } catch {
+          // skip malformed lines
           return null
         }
-      }).filter(Boolean)
+      }).filter((line): line is T => line !== null)
     } catch (e) {
       console.error(`Error reading jsonl at ${filePath}:`, e)
       return []
@@ -59,7 +59,7 @@ export abstract class BaseJsonlAdapter implements BaseSessionAdapter {
     }
   }
 
-  updateSession(id: string, _payload: UpdateSessionPayload): boolean {
+  updateSession(_id: string, _payload: UpdateSessionPayload): boolean {
     return true
   }
 

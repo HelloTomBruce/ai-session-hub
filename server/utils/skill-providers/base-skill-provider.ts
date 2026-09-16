@@ -1,7 +1,4 @@
-import os from 'node:os'
 import type { UnifiedSkill } from '../skill-types'
-
-const homeDir = os.homedir()
 
 export interface SkillProvider {
   readonly platform: string

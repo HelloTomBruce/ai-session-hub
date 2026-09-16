@@ -19,10 +19,10 @@ export interface EvaluationContext {
     toolCalls?: Array<{
       name?: string
       type?: string
-      arguments?: any
-      args?: any
-      input?: any
-      output?: any
+      arguments?: unknown
+      args?: unknown
+      input?: unknown
+      output?: unknown
     }>
   }>
   gitDiffs?: Array<{
@@ -38,11 +38,11 @@ export interface EvaluationContext {
  */
 export interface StrategyScoreResult {
   strategyName: string
-  rawScore: number          // 0 ~ 100
-  weight: number            // 0 ~ 1.0
-  confidence: number        // 0 ~ 1.0 (confidence of the judgment)
-  signals: string[]         // Positive/Negative detected signals and evidence
-  details?: Record<string, any>
+  rawScore: number // 0 ~ 100
+  weight: number // 0 ~ 1.0
+  confidence: number // 0 ~ 1.0 (confidence of the judgment)
+  signals: string[] // Positive/Negative detected signals and evidence
+  details?: Record<string, unknown>
 }
 
 /**
@@ -50,10 +50,10 @@ export interface StrategyScoreResult {
  */
 export interface QuantitativeEvaluationReport {
   sessionId: string
-  overallScore: number       // 0 ~ 100 (weighted aggregate score)
-  grade: GradeLevel          // S (90+), A (75-89), B (60-74), C (<60)
-  category: ValueCategory    // Main detected value category
-  isWorthSaving: boolean     // Core decision boolean
+  overallScore: number // 0 ~ 100 (weighted aggregate score)
+  grade: GradeLevel // S (90+), A (75-89), B (60-74), C (<60)
+  category: ValueCategory // Main detected value category
+  isWorthSaving: boolean // Core decision boolean
   suggestedAction: SuggestedAction
   subScores: {
     astImpact: number
@@ -61,8 +61,8 @@ export interface QuantitativeEvaluationReport {
     topologyCentrality: number
     llmJudgeQuality?: number
   }
-  signals: string[]          // Key rationale signals detected
-  summaryReason: string      // Human-readable summary explanation
+  signals: string[] // Key rationale signals detected
+  summaryReason: string // Human-readable summary explanation
   evaluatedAt: number
 }
 

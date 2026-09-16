@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const items: Array<{ id: string; cli: string }> = body?.items || []
+  const items: Array<{ id: string, cli: string }> = body?.items || []
   const tags: string[] = body?.tags || []
   const mode: 'add' | 'set' | 'remove' = body?.mode || 'add'
 
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   let successCount = 0
   let syncNeededCount = 0
-  const results: Array<{ id: string; cli: string; tags: string[]; ok: boolean }> = []
+  const results: Array<{ id: string, cli: string, tags: string[], ok: boolean }> = []
 
   for (const item of items) {
     try {

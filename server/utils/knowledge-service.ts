@@ -30,13 +30,43 @@ export interface ListKnowledgeOptions {
   offset?: number
 }
 
+interface KnowledgeRow {
+  id: string
+  session_id?: string
+  platform: string
+  type: string
+  title: string
+  context?: string
+  decision?: string
+  consequence?: string
+  tags?: string
+  score?: number
+  grade?: string
+  source_cwd?: string
+  raw_markdown?: string
+  created_at: number
+  updated_at: number
+}
+
+interface EvaluationRow {
+  session_id: string
+  overall_score: number
+  grade: string
+  category: string
+  is_worth_saving: number
+  sub_scores_json?: string
+  signals_json?: string
+  summary_reason?: string
+  evaluated_at: number
+}
+
 class KnowledgeService {
   /**
    * Save or update a knowledge item in the vault
    */
-  saveItem(item: Partial<KnowledgeItem> & { title: string; type: ValueCategory; platform: string }): KnowledgeItem {
+  saveItem(item: Partial<KnowledgeItem> & { title: string, type: ValueCategory, platform: string }): KnowledgeItem {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) throw new Error('Database not initialized')
 
     const now = Date.now()
@@ -92,14 +122,14 @@ class KnowledgeService {
   /**
    * List knowledge items with filtering and search
    */
-  listItems(options: ListKnowledgeOptions = {}): { items: KnowledgeItem[]; total: number } {
+  listItems(options: ListKnowledgeOptions = {}): { items: KnowledgeItem[], total: number } {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) return { items: [], total: 0 }
 
     try {
       const conditions: string[] = []
-      const params: any[] = []
+      const params: unknown[] = []
 
       if (options.type && options.type !== 'all') {
         conditions.push('type = ?')
@@ -137,7 +167,7 @@ class KnowledgeService {
         ORDER BY updated_at DESC
         LIMIT ? OFFSET ?
       `
-      const rows = db.prepare(selectSql).all(...params, limit, offset) as any[]
+      const rows = db.prepare(selectSql).all(...params, limit, offset) as KnowledgeRow[]
 
       const items = rows.map(r => this.rowToItem(r)).filter(Boolean) as KnowledgeItem[]
       return { items, total }
@@ -152,11 +182,11 @@ class KnowledgeService {
    */
   getItem(id: string): KnowledgeItem | null {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) return null
 
     try {
-      const row = db.prepare('SELECT * FROM knowledge_vault WHERE id = ?').get(id) as any
+      const row = db.prepare('SELECT * FROM knowledge_vault WHERE id = ?').get(id) as KnowledgeRow | undefined
       return this.rowToItem(row)
     } catch (err) {
       console.error('[Knowledge] Error getting item:', err)
@@ -169,7 +199,7 @@ class KnowledgeService {
    */
   deleteItem(id: string): boolean {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) return false
 
     try {
@@ -186,7 +216,7 @@ class KnowledgeService {
    */
   saveEvaluation(report: QuantitativeEvaluationReport, platform: string): void {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) return
 
     try {
@@ -217,13 +247,13 @@ class KnowledgeService {
    */
   getEvaluation(sessionId: string, platform: string): QuantitativeEvaluationReport | null {
     cacheService.init()
-    const db = (cacheService as any).db
+    const db = cacheService.getDb()
     if (!db) return null
 
     try {
       const row = db.prepare(
         'SELECT * FROM session_evaluations WHERE session_id = ? AND platform = ?'
-      ).get(sessionId, platform) as any
+      ).get(sessionId, platform) as EvaluationRow | undefined
 
       if (!row) return null
 
@@ -234,8 +264,8 @@ class KnowledgeService {
         category: row.category as ValueCategory,
         isWorthSaving: row.is_worth_saving === 1,
         suggestedAction: row.is_worth_saving === 1 ? 'auto_archive_adr' : 'search_index_only',
-        subScores: JSON.parse(row.sub_scores_json || '{}'),
-        signals: JSON.parse(row.signals_json || '[]'),
+        subScores: JSON.parse(row.sub_scores_json || '{}') as QuantitativeEvaluationReport['subScores'],
+        signals: JSON.parse(row.signals_json || '[]') as string[],
         summaryReason: row.summary_reason || '',
         evaluatedAt: row.evaluated_at
       }
@@ -335,13 +365,17 @@ ${item.consequences || item.consequence || '正常落地与维护'}
     return `# AI Session Hub — 知识资产库汇总导出
 > 导出时间：${new Date().toLocaleString()} · 共 ${targetItems.length} 条资产
 
-` + targetItems.map(item => this.formatItemToMarkdown(item)).join('\n\n---\n\n')
+  ` + targetItems.map(item => this.formatItemToMarkdown(item)).join('\n\n---\n\n')
   }
 
-  private rowToItem(row: any): KnowledgeItem | null {
+  private rowToItem(row: KnowledgeRow | undefined): KnowledgeItem | null {
     if (!row) return null
     let tags: string[] = []
-    try { tags = JSON.parse(row.tags || '[]') } catch {}
+    try {
+      tags = JSON.parse(row.tags || '[]') as string[]
+    } catch {
+      // corrupted tags json — default to empty
+    }
     const csq = row.consequence || ''
 
     return {

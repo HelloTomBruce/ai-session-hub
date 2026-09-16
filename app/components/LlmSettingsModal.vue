@@ -9,7 +9,7 @@ const emit = defineEmits<{
 
 const isOpen = computed({
   get: () => props.open,
-  set: (v) => emit('update:open', v)
+  set: v => emit('update:open', v)
 })
 
 interface LLMSettingsForm {
@@ -59,7 +59,7 @@ watch(() => props.open, (open) => {
   }
 })
 
-const providerPresets: Record<string, { baseUrl: string; model: string }> = {
+const providerPresets: Record<string, { baseUrl: string, model: string }> = {
   'openai-compatible': { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   'deepseek': { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   'gemini': { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
@@ -79,7 +79,7 @@ const toast = useToast()
 const saveSettings = async () => {
   isSaving.value = true
   try {
-    const payload: any = {
+    const payload: Partial<LLMSettingsForm> & Pick<LLMSettingsForm, 'enabled' | 'providerType' | 'baseUrl' | 'model' | 'temperature'> = {
       enabled: form.value.enabled,
       providerType: form.value.providerType,
       baseUrl: form.value.baseUrl,
@@ -91,7 +91,7 @@ const saveSettings = async () => {
       payload.apiKey = form.value.apiKey.trim()
     }
 
-    const res = await $fetch<{ success: boolean, data: any }>('/api/settings/llm', {
+    const res = await $fetch<{ success: boolean, data: { apiKeyMasked?: string, hasKey?: boolean } }>('/api/settings/llm', {
       method: 'PUT',
       body: payload
     })
@@ -107,8 +107,8 @@ const saveSettings = async () => {
       saveSuccess.value = false
       isOpen.value = false
     }, 1200)
-  } catch (err: any) {
-    toast.add({ title: err?.data?.message || '保存设置失败', color: 'error', icon: 'i-lucide-alert-triangle' })
+  } catch (err) {
+    toast.add({ title: (err as { data?: { message?: string } } | null | undefined)?.data?.message || '保存设置失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSaving.value = false
   }
@@ -116,21 +116,37 @@ const saveSettings = async () => {
 </script>
 
 <template>
-  <UModal v-model:open="isOpen" :ui="{ content: 'max-w-lg' }">
+  <UModal
+    v-model:open="isOpen"
+    :ui="{ content: 'max-w-lg' }"
+  >
     <template #content>
       <div class="p-5 space-y-4">
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20">
-              <UIcon name="i-lucide-cpu" class="w-4 h-4" />
+              <UIcon
+                name="i-lucide-cpu"
+                class="w-4 h-4"
+              />
             </div>
             <div>
-              <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">大模型 Provider 设置 (LLM Judge)</h3>
-              <p class="text-[11px] text-zinc-400 mt-0.5">配置用于会话效能诊断、知识提炼的自定义大模型服务</p>
+              <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                大模型 Provider 设置 (LLM Judge)
+              </h3>
+              <p class="text-[11px] text-zinc-400 mt-0.5">
+                配置用于会话效能诊断、知识提炼的自定义大模型服务
+              </p>
             </div>
           </div>
-          <UButton size="sm" variant="ghost" color="neutral" icon="i-lucide-x" @click="isOpen = false" />
+          <UButton
+            size="sm"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-x"
+            @click="isOpen = false"
+          />
         </div>
 
         <!-- Form Body -->
@@ -138,8 +154,12 @@ const saveSettings = async () => {
           <!-- Enable Toggle -->
           <div class="flex items-center justify-between p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
             <div>
-              <div class="font-semibold text-zinc-900 dark:text-zinc-100">启用自定义模型进行诊断</div>
-              <div class="text-[11px] text-zinc-400">开启后将优先通过用户配置的模型调用评估准则做审计</div>
+              <div class="font-semibold text-zinc-900 dark:text-zinc-100">
+                启用自定义模型进行诊断
+              </div>
+              <div class="text-[11px] text-zinc-400">
+                开启后将优先通过用户配置的模型调用评估准则做审计
+              </div>
             </div>
             <USwitch v-model="form.enabled" />
           </div>
@@ -152,8 +172,8 @@ const saveSettings = async () => {
                 v-for="(meta, pKey) in providerPresets"
                 :key="pKey"
                 type="button"
-                @click="applyPreset(pKey)"
                 class="px-2 py-1 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono text-[10px] transition-colors border border-zinc-200/60 dark:border-zinc-700"
+                @click="applyPreset(pKey)"
               >
                 {{ pKey }}
               </button>
@@ -162,7 +182,12 @@ const saveSettings = async () => {
 
           <!-- Base URL -->
           <UFormField label="Base URL (兼容 OpenAI 规范)">
-            <UInput v-model="form.baseUrl" placeholder="https://api.openai.com/v1" size="sm" class="w-full font-mono text-xs" />
+            <UInput
+              v-model="form.baseUrl"
+              placeholder="https://api.openai.com/v1"
+              size="sm"
+              class="w-full font-mono text-xs"
+            />
           </UFormField>
 
           <!-- API Key -->
@@ -175,7 +200,10 @@ const saveSettings = async () => {
                 size="sm"
                 class="w-full font-mono text-xs"
               />
-              <span v-if="form.hasKey" class="text-[10px] text-emerald-600 dark:text-emerald-400 block font-mono">
+              <span
+                v-if="form.hasKey"
+                class="text-[10px] text-emerald-600 dark:text-emerald-400 block font-mono"
+              >
                 ✔ 当前已保存有效 Key: {{ form.apiKeyMasked }}
               </span>
             </div>
@@ -184,24 +212,53 @@ const saveSettings = async () => {
           <!-- Model Name -->
           <div class="grid grid-cols-2 gap-3">
             <UFormField label="Model 模型名称">
-              <UInput v-model="form.model" placeholder="gpt-4o-mini / deepseek-chat" size="sm" class="w-full font-mono text-xs" />
+              <UInput
+                v-model="form.model"
+                placeholder="gpt-4o-mini / deepseek-chat"
+                size="sm"
+                class="w-full font-mono text-xs"
+              />
             </UFormField>
 
             <UFormField label="Temperature 温度">
-              <UInput v-model.number="form.temperature" type="number" step="0.05" min="0" max="1" size="sm" class="w-full font-mono text-xs" />
+              <UInput
+                v-model.number="form.temperature"
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                size="sm"
+                class="w-full font-mono text-xs"
+              />
             </UFormField>
           </div>
         </div>
 
         <!-- Footer Actions -->
         <div class="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800">
-          <span v-if="saveSuccess" class="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
-            <UIcon name="i-lucide-check-circle" class="w-3.5 h-3.5" /> 保存成功！
+          <span
+            v-if="saveSuccess"
+            class="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium"
+          >
+            <UIcon
+              name="i-lucide-check-circle"
+              class="w-3.5 h-3.5"
+            /> 保存成功！
           </span>
-          <span v-else class="text-[10px] text-zinc-400 font-mono">配置保存在本地 ~/.session-hub</span>
+          <span
+            v-else
+            class="text-[10px] text-zinc-400 font-mono"
+          >配置保存在本地 ~/.session-hub</span>
 
           <div class="flex items-center gap-2">
-            <UButton variant="ghost" color="neutral" size="sm" @click="isOpen = false">取消</UButton>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="isOpen = false"
+            >
+              取消
+            </UButton>
             <UButton
               color="neutral"
               size="sm"

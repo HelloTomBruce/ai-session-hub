@@ -102,7 +102,7 @@ const platformIcons: Record<string, string> = {
   mimo: 'i-lucide-smartphone'
 }
 
-const colorClassMap: Record<string, { bar: string; text: string; bg: string }> = {
+const colorClassMap: Record<string, { bar: string, text: string, bg: string }> = {
   blue: { bar: 'bg-blue-500', text: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/30' },
   emerald: { bar: 'bg-emerald-500', text: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
   purple: { bar: 'bg-purple-500', text: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950/30' },
@@ -118,7 +118,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-          <UIcon name="i-lucide-line-chart" class="w-6 h-6 text-blue-500" />
+          <UIcon
+            name="i-lucide-line-chart"
+            class="w-6 h-6 text-blue-500"
+          />
           会话洞察与效能大盘 (Session Insights)
         </h1>
         <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
@@ -141,20 +144,34 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
     </div>
 
     <!-- Loading State -->
-    <div v-if="pending" class="py-20 text-center text-zinc-400">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin mx-auto mb-3 text-blue-500" />
-      <p class="text-xs font-medium">正在聚合全局会话指标与知识资产...</p>
+    <div
+      v-if="pending"
+      class="py-20 text-center text-zinc-400"
+    >
+      <UIcon
+        name="i-lucide-loader-2"
+        class="w-8 h-8 animate-spin mx-auto mb-3 text-blue-500"
+      />
+      <p class="text-xs font-medium">
+        正在聚合全局会话指标与知识资产...
+      </p>
     </div>
 
     <!-- Main Content -->
-    <div v-else-if="insights" class="space-y-6">
+    <div
+      v-else-if="insights"
+      class="space-y-6"
+    >
       <!-- 1. KPI Top Summary Grid -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <!-- Sessions Count -->
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div class="flex items-center justify-between text-zinc-400 mb-2">
             <span class="text-xs font-medium">管理会话总数</span>
-            <UIcon name="i-lucide-messages-square" class="w-4 h-4 text-blue-500" />
+            <UIcon
+              name="i-lucide-messages-square"
+              class="w-4 h-4 text-blue-500"
+            />
           </div>
           <div class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
             {{ formatNumber(insights.summary.totalSessions) }}
@@ -168,7 +185,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div class="flex items-center justify-between text-zinc-400 mb-2">
             <span class="text-xs font-medium">累计交互消息</span>
-            <UIcon name="i-lucide-message-circle" class="w-4 h-4 text-purple-500" />
+            <UIcon
+              name="i-lucide-message-circle"
+              class="w-4 h-4 text-purple-500"
+            />
           </div>
           <div class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
             {{ formatNumber(insights.summary.totalMessages) }}
@@ -182,7 +202,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div class="flex items-center justify-between text-zinc-400 mb-2">
             <span class="text-xs font-medium">深度思考决策点</span>
-            <UIcon name="i-lucide-brain" class="w-4 h-4 text-amber-500" />
+            <UIcon
+              name="i-lucide-brain"
+              class="w-4 h-4 text-amber-500"
+            />
           </div>
           <div class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
             {{ formatNumber(insights.summary.totalThoughtCount) }}
@@ -196,7 +219,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div class="flex items-center justify-between text-zinc-400 mb-2">
             <span class="text-xs font-medium">知识金库资产</span>
-            <UIcon name="i-lucide-gem" class="w-4 h-4 text-emerald-500" />
+            <UIcon
+              name="i-lucide-gem"
+              class="w-4 h-4 text-emerald-500"
+            />
           </div>
           <div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
             {{ formatNumber(insights.summary.totalVaultItems) }}
@@ -215,11 +241,18 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
               <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <UIcon name="i-lucide-wrench" class="w-4 h-4" />
+                  <UIcon
+                    name="i-lucide-wrench"
+                    class="w-4 h-4"
+                  />
                 </div>
                 <div>
-                  <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">AI 研发工具使用画像 (Tool Invocation Radar)</h2>
-                  <p class="text-[11px] text-zinc-400">基于活跃会话的工具调用分类与执行频率分布</p>
+                  <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                    AI 研发工具使用画像 (Tool Invocation Radar)
+                  </h2>
+                  <p class="text-[11px] text-zinc-400">
+                    基于活跃会话的工具调用分类与执行频率分布
+                  </p>
                 </div>
               </div>
               <span class="text-xs font-mono text-zinc-400">
@@ -236,7 +269,11 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
               >
                 <div class="flex items-center justify-between text-xs">
                   <span class="font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <UIcon :name="cat.icon" class="w-3.5 h-3.5" :class="colorClassMap[cat.color]?.text || 'text-zinc-400'" />
+                    <UIcon
+                      :name="cat.icon"
+                      class="w-3.5 h-3.5"
+                      :class="colorClassMap[cat.color]?.text || 'text-zinc-400'"
+                    />
                     {{ cat.label }}
                   </span>
                   <span class="font-mono text-zinc-500 dark:text-zinc-400 text-[11px]">
@@ -257,8 +294,14 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
 
           <div class="mt-5 pt-3 border-t border-zinc-100 dark:border-zinc-800/60 text-[11px] text-zinc-400 flex items-center justify-between">
             <span>💡 观察：检索排障与代码修改构成了 AI 研发的核心双循环</span>
-            <NuxtLink to="/search" class="text-blue-500 hover:underline flex items-center gap-1">
-              探索全文检索 <UIcon name="i-lucide-arrow-right" class="w-3 h-3" />
+            <NuxtLink
+              to="/search"
+              class="text-blue-500 hover:underline flex items-center gap-1"
+            >
+              探索全文检索 <UIcon
+                name="i-lucide-arrow-right"
+                class="w-3 h-3"
+              />
             </NuxtLink>
           </div>
         </div>
@@ -269,11 +312,18 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
               <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-                  <UIcon name="i-lucide-layout-grid" class="w-4 h-4" />
+                  <UIcon
+                    name="i-lucide-layout-grid"
+                    class="w-4 h-4"
+                  />
                 </div>
                 <div>
-                  <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">平台接入矩阵 (Platform Matrix)</h2>
-                  <p class="text-[11px] text-zinc-400">各客户端会话沉淀与活跃分布</p>
+                  <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                    平台接入矩阵 (Platform Matrix)
+                  </h2>
+                  <p class="text-[11px] text-zinc-400">
+                    各客户端会话沉淀与活跃分布
+                  </p>
                 </div>
               </div>
             </div>
@@ -285,7 +335,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
                 class="flex items-center justify-between p-2 rounded-lg bg-zinc-50 dark:bg-zinc-850/60 border border-zinc-100 dark:border-zinc-800/60"
               >
                 <div class="flex items-center gap-2">
-                  <UIcon :name="platformIcons[item.platform] || 'i-lucide-box'" class="w-4 h-4 text-zinc-500" />
+                  <UIcon
+                    :name="platformIcons[item.platform] || 'i-lucide-box'"
+                    class="w-4 h-4 text-zinc-500"
+                  />
                   <span class="text-xs font-medium text-zinc-800 dark:text-zinc-200">{{ item.name }}</span>
                 </div>
                 <div class="flex items-center gap-3">
@@ -301,8 +354,14 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
 
           <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400">
             <span>支持 11+ 种 AI 编程工具与 CLI</span>
-            <NuxtLink to="/mcp" class="text-purple-500 hover:underline flex items-center gap-1">
-              配置 MCP 集成 <UIcon name="i-lucide-arrow-right" class="w-3 h-3" />
+            <NuxtLink
+              to="/mcp"
+              class="text-purple-500 hover:underline flex items-center gap-1"
+            >
+              配置 MCP 集成 <UIcon
+                name="i-lucide-arrow-right"
+                class="w-3 h-3"
+              />
             </NuxtLink>
           </div>
         </div>
@@ -313,19 +372,35 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
         <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
           <div class="flex items-center gap-2">
             <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <UIcon name="i-lucide-flame" class="w-4 h-4" />
+              <UIcon
+                name="i-lucide-flame"
+                class="w-4 h-4"
+              />
             </div>
             <div>
-              <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">技术避坑与高频热点 (Gotcha & Topic Hotspots)</h2>
-              <p class="text-[11px] text-zinc-400">从知识金库与历史会话中提炼的高频踩坑与核心架构领域标签</p>
+              <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                技术避坑与高频热点 (Gotcha & Topic Hotspots)
+              </h2>
+              <p class="text-[11px] text-zinc-400">
+                从知识金库与历史会话中提炼的高频踩坑与核心架构领域标签
+              </p>
             </div>
           </div>
-          <NuxtLink to="/knowledge" class="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
-            查看知识金库 <UIcon name="i-lucide-arrow-right" class="w-3 h-3" />
+          <NuxtLink
+            to="/knowledge"
+            class="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+          >
+            查看知识金库 <UIcon
+              name="i-lucide-arrow-right"
+              class="w-3 h-3"
+            />
           </NuxtLink>
         </div>
 
-        <div v-if="insights.hotspotTags.length" class="flex flex-wrap gap-2.5">
+        <div
+          v-if="insights.hotspotTags.length"
+          class="flex flex-wrap gap-2.5"
+        >
           <div
             v-for="item in insights.hotspotTags"
             :key="item.tag"
@@ -342,7 +417,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
             </div>
           </div>
         </div>
-        <div v-else class="py-8 text-center text-xs text-zinc-400">
+        <div
+          v-else
+          class="py-8 text-center text-xs text-zinc-400"
+        >
           暂无标签沉淀，前往会话详情页一键「沉淀资产」即可在此生成技术热点分析
         </div>
       </div>
@@ -352,19 +430,35 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
         <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800/80 mb-4">
           <div class="flex items-center gap-2">
             <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <UIcon name="i-lucide-trophy" class="w-4 h-4" />
+              <UIcon
+                name="i-lucide-trophy"
+                class="w-4 h-4"
+              />
             </div>
             <div>
-              <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">高价值会话精选榜 (High-Value Sessions)</h2>
-              <p class="text-[11px] text-zinc-400">经 ValueScoringEngine 量化打分达到入库标准（≥70分）的优质开发会话</p>
+              <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                高价值会话精选榜 (High-Value Sessions)
+              </h2>
+              <p class="text-[11px] text-zinc-400">
+                经 ValueScoringEngine 量化打分达到入库标准（≥70分）的优质开发会话
+              </p>
             </div>
           </div>
-          <NuxtLink to="/distill" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1">
-            前往批量提炼 <UIcon name="i-lucide-arrow-right" class="w-3 h-3" />
+          <NuxtLink
+            to="/distill"
+            class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+          >
+            前往批量提炼 <UIcon
+              name="i-lucide-arrow-right"
+              class="w-3 h-3"
+            />
           </NuxtLink>
         </div>
 
-        <div v-if="insights.highValueSessions.length" class="divide-y divide-zinc-100 dark:divide-zinc-800/70">
+        <div
+          v-if="insights.highValueSessions.length"
+          class="divide-y divide-zinc-100 dark:divide-zinc-800/70"
+        >
           <div
             v-for="s in insights.highValueSessions"
             :key="s.id"
@@ -375,9 +469,9 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
                 <span
                   :class="[
                     'px-2 py-0.5 rounded font-mono font-bold text-xs',
-                    s.grade === 'S' ? 'bg-emerald-500 text-white' :
-                    s.grade === 'A' ? 'bg-blue-500 text-white' :
-                    'bg-amber-500 text-white'
+                    s.grade === 'S' ? 'bg-emerald-500 text-white'
+                    : s.grade === 'A' ? 'bg-blue-500 text-white'
+                      : 'bg-amber-500 text-white'
                   ]"
                 >
                   {{ s.grade }} ({{ s.score }}分)
@@ -386,7 +480,10 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
               </div>
               <div class="flex items-center gap-3 text-[11px] text-zinc-400 font-mono">
                 <span class="flex items-center gap-1">
-                  <UIcon :name="platformIcons[s.platform] || 'i-lucide-box'" class="w-3.5 h-3.5" />
+                  <UIcon
+                    :name="platformIcons[s.platform] || 'i-lucide-box'"
+                    class="w-3.5 h-3.5"
+                  />
                   {{ s.platform }}
                 </span>
                 <span>{{ formatTime(s.updatedAt) }}</span>
@@ -399,12 +496,18 @@ const colorClassMap: Record<string, { bar: string; text: string; bg: string }> =
                 :to="`/sessions/${s.id}?cli=${s.platform}`"
                 class="px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-all flex items-center gap-1"
               >
-                查看会话 <UIcon name="i-lucide-external-link" class="w-3 h-3" />
+                查看会话 <UIcon
+                  name="i-lucide-external-link"
+                  class="w-3 h-3"
+                />
               </NuxtLink>
             </div>
           </div>
         </div>
-        <div v-else class="py-8 text-center text-xs text-zinc-400">
+        <div
+          v-else
+          class="py-8 text-center text-xs text-zinc-400"
+        >
           暂无已评估的高分会话。在会话详情页点击「沉淀资产」或进行效能评估后，高分会话将自动收录于此。
         </div>
       </div>

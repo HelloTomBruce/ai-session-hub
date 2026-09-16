@@ -2,6 +2,18 @@ export type PlatformType = 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'wor
 export type CliType = PlatformType
 export type CategoryType = 'cli' | 'app'
 
+export interface SessionToolCall {
+  id?: string
+  name?: string
+  type?: string
+  /** Argument payload — concrete shape depends on the originating CLI. */
+  arguments?: unknown
+  args?: unknown
+  input?: unknown
+  output?: unknown
+  [key: string]: unknown
+}
+
 export interface UnifiedSession {
   id: string
   cli: PlatformType
@@ -15,7 +27,7 @@ export interface UnifiedSession {
   model?: string
   status?: string
   rawLocation: string
-  extra?: Record<string, any>
+  extra?: Record<string, unknown>
 }
 
 export interface SessionMessage {
@@ -25,7 +37,7 @@ export interface SessionMessage {
   content: string
   timestamp?: number
   model?: string
-  toolCalls?: any[]
+  toolCalls?: SessionToolCall[]
   thought?: string
 }
 

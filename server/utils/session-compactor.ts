@@ -39,14 +39,15 @@ export function compactSessionForAI(session: UnifiedSession, messages: SessionMe
         for (const tool of msg.toolCalls) {
           const rawName = tool.name || tool.type || 'tool'
           const name = rawName.replace(/^default_api:/, '').replace(/^mcp__.*?__/, '')
-          const args = typeof tool.arguments === 'string' ? safeParseJson(tool.arguments) : (tool.arguments || tool.args || tool.input || {})
+          const rawArgs = typeof tool.arguments === 'string' ? safeParseJson(tool.arguments) : (tool.arguments || tool.args || tool.input || {})
+          const args = (rawArgs && typeof rawArgs === 'object' ? rawArgs : {}) as Record<string, unknown>
 
           let signature = `[Action: ${name}]`
           if (args.CommandLine) {
-            signature += ` command="${args.CommandLine.slice(0, 120)}"`
+            signature += ` command="${String(args.CommandLine).slice(0, 120)}"`
           } else if (args.AbsolutePath || args.TargetFile || args.SearchDirectory || args.SearchPath) {
             const target = args.AbsolutePath || args.TargetFile || args.SearchDirectory || args.SearchPath
-            signature += ` target="${target}"`
+            signature += ` target="${String(target)}"`
           } else if (args.Query || args.Pattern || args.query) {
             signature += ` query="${args.Query || args.Pattern || args.query}"`
           }
@@ -118,7 +119,7 @@ export function compactSessionForAI(session: UnifiedSession, messages: SessionMe
   }
 }
 
-function safeParseJson(str: string): any {
+function safeParseJson(str: string): unknown {
   try {
     return JSON.parse(str)
   } catch {

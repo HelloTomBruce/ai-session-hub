@@ -4,7 +4,7 @@ import { adapterRegistry } from '../../../../utils/adapter-registry'
 import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, type AIEvaluationResult } from '../../../../utils/evaluator-rubric'
 import { getLLMProviderSettings } from '../../../../utils/llm-provider-config'
 import { streamLLMCompletion } from '../../../../utils/llm-stream-client'
-import type { PlatformType } from '../../../../utils/types'
+import type { PlatformType, SessionMessage, SessionToolCall, UnifiedSession } from '../../../../utils/types'
 
 export default defineEventHandler(async (event) => {
   const sessionId = getRouterParam(event, 'id')
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   const res = event.node.res
 
-  const sendEvent = (eventType: string, data: any) => {
+  const sendEvent = (eventType: string, data: unknown) => {
     res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
@@ -74,8 +74,8 @@ export default defineEventHandler(async (event) => {
       })
       res.end()
       return
-    } catch (err: any) {
-      console.warn(`[Evaluator] Stream invocation failed:`, err?.message)
+    } catch (err) {
+      console.warn(`[Evaluator] Stream invocation failed:`, (err as { message?: string })?.message)
       sendEvent('status', { message: 'AI 流式调用中断，正在切换至本地规则引擎诊断...' })
     }
   }
@@ -85,7 +85,9 @@ export default defineEventHandler(async (event) => {
   try {
     if (!fs.existsSync(DIAGNOSIS_DIR)) fs.mkdirSync(DIAGNOSIS_DIR, { recursive: true })
     fs.writeFileSync(path.join(DIAGNOSIS_DIR, `${sessionId}.json`), JSON.stringify(fallbackResult, null, 2), 'utf-8')
-  } catch {}
+  } catch {
+    // ignore diagnosis cache write failures
+  }
 
   sendEvent('done', {
     source: 'rubric_engine',
@@ -94,13 +96,12 @@ export default defineEventHandler(async (event) => {
   res.end()
 })
 
-function runDeterministicRubricEvaluation(session: any, messages: any[]): AIEvaluationResult {
+function runDeterministicRubricEvaluation(session: UnifiedSession, messages: SessionMessage[]): AIEvaluationResult {
   let editCount = 0
   let searchCount = 0
   let commandCount = 0
   let backtrackCount = 0
   let userTurns = 0
-  let assistantTurns = 0
   const deductions: AIEvaluationResult['deductions'] = []
 
   let currentTurn = 1
@@ -109,14 +110,12 @@ function runDeterministicRubricEvaluation(session: any, messages: any[]): AIEval
       userTurns++
       currentTurn++
     } else if (msg.role === 'assistant') {
-      assistantTurns++
-
       // 严格识别真正的自我否定句式
       if (msg.thought) {
         const thought = msg.thought
-        const isTrueBacktrack = 
-          /等等|不对|刚才的改动|改错了|不能这样|放弃这个方案|撤销之前的修改|无法正常工作|wait,\s*(this|my|that)\s*(won't|broke|failed|is wrong)/i.test(thought) &&
-          !/用户报错|用户提到|正常排查|排查该问题/i.test(thought)
+        const isTrueBacktrack
+          = /等等|不对|刚才的改动|改错了|不能这样|放弃这个方案|撤销之前的修改|无法正常工作|wait,\s*(this|my|that)\s*(won't|broke|failed|is wrong)/i.test(thought)
+            && !/用户报错|用户提到|正常排查|排查该问题/i.test(thought)
 
         if (isTrueBacktrack) {
           backtrackCount++
@@ -153,7 +152,7 @@ function runDeterministicRubricEvaluation(session: any, messages: any[]): AIEval
             title: `第 ${currentTurn} 轮: 单轮触发大量密集搜索 (${turnSearches} 次)`,
             deductionPoints: 8,
             reason: '单轮发生高密度盲目搜索，反映出对代码结构缺少先验认知。',
-            evidenceSnippet: msg.toolCalls.map((t: any) => (t.name || t.type || 'tool').replace(/^default_api:/, '')).join(', ')
+            evidenceSnippet: msg.toolCalls.map((t: SessionToolCall) => (t.name || t.type || 'tool').replace(/^default_api:/, '')).join(', ')
           })
         }
       }
@@ -188,20 +187,29 @@ function runDeterministicRubricEvaluation(session: any, messages: any[]): AIEval
   else if (commandCount > 10 && editCount === 0) actionDensity = 60
 
   const totalScore = Math.round(
-    directness * 0.35 +
-    decisionSoundness * 0.30 +
-    turnVelocity * 0.20 +
-    actionDensity * 0.15
+    directness * 0.35
+    + decisionSoundness * 0.30
+    + turnVelocity * 0.20
+    + actionDensity * 0.15
   )
 
   const finalScore = Math.max(20, Math.min(100, totalScore))
 
-  let grade: 'S' | 'A' | 'B' | 'C' = 'A'
-  let gradeLabel = '稳健高效'
-  if (finalScore >= 90) { grade = 'S'; gradeLabel = '极速闭环 (One-Shot)' }
-  else if (finalScore >= 75) { grade = 'A'; gradeLabel = '稳健高效 (Systematic)' }
-  else if (finalScore >= 60) { grade = 'B'; gradeLabel = '偶有波折 (Friction-heavy)' }
-  else { grade = 'C'; gradeLabel = '低效循环 (Lost in Context)' }
+  let grade: 'S' | 'A' | 'B' | 'C'
+  let gradeLabel: string
+  if (finalScore >= 90) {
+    grade = 'S'
+    gradeLabel = '极速闭环 (One-Shot)'
+  } else if (finalScore >= 75) {
+    grade = 'A'
+    gradeLabel = '稳健高效 (Systematic)'
+  } else if (finalScore >= 60) {
+    grade = 'B'
+    gradeLabel = '偶有波折 (Friction-heavy)'
+  } else {
+    grade = 'C'
+    gradeLabel = '低效循环 (Lost in Context)'
+  }
 
   const strengths: string[] = []
   const bottlenecks: string[] = []
@@ -246,4 +254,3 @@ function runDeterministicRubricEvaluation(session: any, messages: any[]): AIEval
     evaluatedAt: Date.now()
   }
 }
-

@@ -1,10 +1,30 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
 import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+/** Shape of a row in the Codex `threads` table (all optional fields may be NULL). */
+interface CodexThreadRow {
+  id: string
+  title?: string
+  name?: string
+  first_user_message?: string
+  preview?: string
+  rollout_path?: string
+  created_at?: number
+  created_at_ms?: number
+  updated_at?: number
+  updated_at_ms?: number
+  cwd?: string
+  model?: string
+  model_provider?: string
+  tokens_used?: number
+  archived?: number
+}
 
 export class CodexSessionAdapter extends BaseSqliteAdapter {
   constructor() {
@@ -18,7 +38,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
 
   private findRolloutPath(id: string, storedPath?: string): string {
     if (storedPath && fs.existsSync(storedPath)) return storedPath
-    
+
     // Search in ~/.codex/sessions/
     const codexSessionsDir = path.join(homeDir, '.codex', 'sessions')
     if (fs.existsSync(codexSessionsDir)) {
@@ -35,7 +55,9 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
               return full
             }
           }
-        } catch {}
+        } catch {
+          // skip unreadable directories while searching
+        }
       }
     }
 
@@ -49,13 +71,15 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
             return path.join(archDir, f)
           }
         }
-      } catch {}
+      } catch {
+        // skip archived sessions dir if it is unreadable
+      }
     }
 
     return ''
   }
 
-  private formatTitle(row: any): string {
+  private formatTitle(row: CodexThreadRow): string {
     if (row.title && row.title.trim()) return row.title.trim()
     if (row.name && row.name.trim()) return row.name.trim()
     let raw = row.first_user_message || row.preview || ''
@@ -92,7 +116,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
 
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(true)
       const rows = db.prepare(`
@@ -100,11 +124,11 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
         FROM threads
         WHERE (archived = 0 OR archived IS NULL)
         ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC
-      `).all()
+      `).all() as CodexThreadRow[]
 
-      return rows.map((row: any) => {
-        const createdAt = row.created_at_ms || (row.created_at * 1000)
-        const updatedAt = row.updated_at_ms || (row.updated_at * 1000)
+      return rows.map((row: CodexThreadRow) => {
+        const createdAt = row.created_at_ms || (Number(row.created_at) * 1000)
+        const updatedAt = row.updated_at_ms || (Number(row.updated_at) * 1000)
         return {
           id: row.id,
           cli: 'codex',
@@ -131,7 +155,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
   }
 
   getMessages(id: string, session?: UnifiedSession): SessionMessage[] {
-    const rolloutPath = this.findRolloutPath(id, session?.extra?.rollout_path)
+    const rolloutPath = this.findRolloutPath(id, session?.extra?.rollout_path as string | undefined)
     const messages: SessionMessage[] = []
 
     if (rolloutPath && fs.existsSync(rolloutPath)) {
@@ -197,7 +221,9 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
                 }
               }
             }
-          } catch {}
+          } catch {
+            // skip malformed rollout lines
+          }
         }
       } catch (e) {
         console.error('Error reading codex rollout jsonl:', e)
@@ -217,7 +243,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
 
   updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       if (payload.title) {
@@ -234,7 +260,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       const nowSec = Math.floor(Date.now() / 1000)
@@ -252,7 +278,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
     if (this.isAvailable()) {
-      let db: any
+      let db: Database.Database | undefined
       try {
         db = this.getDb(false)
         db.prepare(`

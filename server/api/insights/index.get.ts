@@ -43,17 +43,28 @@ export interface HighValueSessionItem {
   isVaultWorthy: boolean
 }
 
-export default defineEventHandler(async (event) => {
+/** Shape of a row in the `session_evaluations` cache table. */
+interface CachedEvaluationRow {
+  session_id: string
+  platform: string
+  score: number
+  grade: 'S' | 'A' | 'B' | 'C'
+  signals: string
+  is_vault_worthy: number
+  updated_at: number
+}
+
+export default defineEventHandler(async (_event) => {
   try {
     const allSessions = cacheService.isAvailable()
       ? cacheService.getCachedSessions()
       : adapterRegistry.getAllSessions()
     const { items: vaultItems } = knowledgeService.listItems({ limit: 1000 })
-    
+
     // 1. Basic Stats
     const totalSessions = allSessions.length
     const totalMessages = allSessions.reduce((acc, s) => acc + (s.messageCount || 0), 0)
-    
+
     // 2. Vault Breakdown
     const vaultBreakdown = {
       total: vaultItems.length,
@@ -64,7 +75,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 3. Platform Distribution
-    const platformCounts: Record<string, { count: number; messages: number }> = {}
+    const platformCounts: Record<string, { count: number, messages: number }> = {}
     for (const s of allSessions) {
       if (!platformCounts[s.cli]) {
         platformCounts[s.cli] = { count: 0, messages: 0 }
@@ -210,7 +221,7 @@ export default defineEventHandler(async (event) => {
     const toolCategories = allCategories.filter(c => c.count > 0).sort((a, b) => b.count - a.count)
 
     // 5. Hotspot Tags from Knowledge Vault
-    const tagMap: Record<string, { count: number; adr: number; gotcha: number; pattern: number; milestone: number }> = {}
+    const tagMap: Record<string, { count: number, adr: number, gotcha: number, pattern: number, milestone: number }> = {}
     for (const item of vaultItems) {
       if (item.tags && Array.isArray(item.tags)) {
         for (const t of item.tags) {
@@ -248,7 +259,7 @@ export default defineEventHandler(async (event) => {
 
     // 6. High Value Sessions from database cache
     const db = cacheService.getDb()
-    let cachedEvaluations: any[] = []
+    let cachedEvaluations: CachedEvaluationRow[] = []
     if (db) {
       try {
         cachedEvaluations = db.prepare(`
@@ -256,15 +267,15 @@ export default defineEventHandler(async (event) => {
           FROM session_evaluations
           ORDER BY score DESC
           LIMIT 10
-        `).all()
+        `).all() as CachedEvaluationRow[]
       } catch {
         cachedEvaluations = []
       }
     }
 
-    const highValueSessions: HighValueSessionItem[] = cachedEvaluations.map((row: any) => {
+    const highValueSessions: HighValueSessionItem[] = cachedEvaluations.map((row: CachedEvaluationRow) => {
       const session = adapterRegistry.getSession(row.platform, row.session_id)
-      let parsedSignals: string[] = []
+      let parsedSignals: string[]
       try {
         parsedSignals = JSON.parse(row.signals || '[]')
       } catch {
@@ -303,10 +314,10 @@ export default defineEventHandler(async (event) => {
         highValueSessions
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      error: error?.message || String(error)
+      error: (error as { message?: string })?.message || String(error)
     }
   }
 })

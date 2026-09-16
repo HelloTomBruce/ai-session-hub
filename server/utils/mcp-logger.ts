@@ -3,7 +3,7 @@ export interface McpCallLog {
   timestamp: number
   type: 'tool' | 'resource' | 'connection'
   name: string
-  params?: any
+  params?: unknown
   status: 'success' | 'error'
   durationMs?: number
   error?: string

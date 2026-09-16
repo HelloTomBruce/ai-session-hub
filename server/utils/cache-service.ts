@@ -9,14 +9,40 @@ import {
   CREATE_SCHEMA_SQL,
   SEARCH_SQL,
   SEARCH_COUNT_SQL,
-  DELETE_FTS_SQL,
-  REBUILD_FTS_SQL
+  DELETE_FTS_SQL
 } from './cache-schema'
 import { tagService } from './tag-service'
-import type { UnifiedSession, SessionMessage, PlatformType } from './types'
+import type { SessionToolCall, UnifiedSession, SessionMessage, PlatformType } from './types'
 
 const DB_DIR = path.join(os.homedir(), '.session-hub')
 const DB_PATH = path.join(DB_DIR, 'session-hub.db')
+
+interface SessionCacheRow {
+  id: string
+  platform: string
+  category?: string
+  title?: string
+  cwd?: string
+  created_at: number
+  updated_at: number
+  message_count?: number
+  model?: string | null
+  cost?: number | null
+  status?: string | null
+  raw_location?: string
+  extra?: string
+  tags?: string
+}
+
+interface MessageCacheRow {
+  id: string
+  role: string
+  content?: string
+  thought?: string | null
+  tool_calls_json?: string | null
+  timestamp?: number | null
+  model?: string | null
+}
 
 export interface SearchResult {
   rowid: number
@@ -105,7 +131,7 @@ class CacheService {
   private migrateSchema(): void {
     if (!this.db) return
     const row = this.db.prepare(
-      "SELECT value FROM meta WHERE key = 'schema_version'"
+      'SELECT value FROM meta WHERE key = \'schema_version\''
     ).get() as { value: string } | undefined
     const currentVersion = row ? parseInt(row.value, 10) : 0
 
@@ -145,21 +171,22 @@ class CacheService {
       'SELECT COUNT(*) as c FROM messages_cache'
     ).get() as { c: number }).c
 
-    let fts_entries = 0
+    let fts_entries: number
     try {
       fts_entries = (this.db.prepare(
         'SELECT COUNT(*) as c FROM fts_messages'
       ).get() as { c: number }).c
     } catch {
+      // fts table may not exist yet on fresh dbs
       fts_entries = 0
     }
 
     const lastSync = this.db.prepare(
-      "SELECT value FROM meta WHERE key = 'last_sync_at'"
+      'SELECT value FROM meta WHERE key = \'last_sync_at\''
     ).get() as { value: string } | undefined
 
     const sv = this.db.prepare(
-      "SELECT value FROM meta WHERE key = 'schema_version'"
+      'SELECT value FROM meta WHERE key = \'schema_version\''
     ).get() as { value: string } | undefined
 
     return {
@@ -300,7 +327,9 @@ class CacheService {
             try {
               const msgList = messages.map(m => ({ role: m.role, content: m.content }))
               tagService.autoTagSession(session.id, session.cli, session.title, msgList)
-            } catch {}
+            } catch {
+              // tagging is best-effort — never block sync
+            }
 
             syncedSessions++
           }
@@ -335,7 +364,7 @@ class CacheService {
 
     try {
       let sql = 'SELECT * FROM sessions_cache'
-      const params: any[] = []
+      const params: unknown[] = []
       const conditions: string[] = []
 
       if (platformFilter && platformFilter !== 'all') {
@@ -355,8 +384,8 @@ class CacheService {
 
       sql += ' ORDER BY updated_at DESC'
 
-      const rows = this.db.prepare(sql).all(...params) as any[]
-      return rows.map((r: any) => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
+      const rows = this.db.prepare(sql).all(...params) as SessionCacheRow[]
+      return rows.map(r => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
     } catch (err) {
       console.error('[Cache] Error reading cached sessions:', err)
       return []
@@ -471,24 +500,23 @@ class CacheService {
     try {
       const srow = this.db.prepare(
         'SELECT * FROM sessions_cache WHERE id = ? AND platform = ?'
-      ).get(id, platform as string) as any
+      ).get(id, platform) as SessionCacheRow | undefined
 
       if (!srow) return { session: null, messages: [] }
 
       const mrows = this.db.prepare(
         'SELECT * FROM messages_cache WHERE session_id = ? AND platform = ? ORDER BY timestamp ASC'
-      ).all(id, platform as string) as any[]
+      ).all(id, platform) as MessageCacheRow[]
 
       return {
         session: this.rowToSession(srow),
-        messages: mrows.map((r: any) => this.rowToMessage(r)).filter(Boolean) as SessionMessage[]
+        messages: mrows.map(r => this.rowToMessage(r)).filter(Boolean) as SessionMessage[]
       }
     } catch (err) {
       console.error('[Cache] Error reading cached session detail:', err)
       return { session: null, messages: [] }
     }
   }
-
 
   /**
    * FTS5 全文搜索
@@ -528,7 +556,7 @@ class CacheService {
       .trim()
       .split(/\s+/)
       .filter(Boolean)
-      .map(t => {
+      .map((t) => {
         // 对中文不做切分，直接短语查询
         if (/[\u4e00-\u9fff]/.test(t)) {
           return `"${t}"`
@@ -538,17 +566,21 @@ class CacheService {
       .join(' ')
   }
 
-  private rowToSession(row: any): UnifiedSession | null {
+  private rowToSession(row: SessionCacheRow): UnifiedSession | null {
     if (!row) return null
-    let extra: any = row.extra ? this.safeJsonParse(row.extra) : {}
+    const extra = (row.extra ? this.safeJsonParse<Record<string, unknown>>(row.extra) : {}) as Record<string, unknown>
     // Include tags from DB
     if (row.tags) {
-      try { extra.tags = JSON.parse(row.tags) } catch { extra.tags = [] }
+      try {
+        extra.tags = JSON.parse(row.tags) as string[]
+      } catch {
+        extra.tags = []
+      }
     }
     return {
       id: row.id,
       cli: row.platform,
-      category: row.category || 'cli',
+      category: (row.category || 'cli') as UnifiedSession['category'],
       title: row.title || '',
       cwd: row.cwd || '',
       createdAt: row.created_at,
@@ -562,21 +594,25 @@ class CacheService {
     }
   }
 
-  private rowToMessage(row: any): SessionMessage | null {
+  private rowToMessage(row: MessageCacheRow): SessionMessage | null {
     if (!row) return null
     return {
       id: row.id,
-      role: row.role,
+      role: row.role as SessionMessage['role'],
       content: row.content || '',
       thought: row.thought || undefined,
-      toolCalls: row.tool_calls_json ? this.safeJsonParse(row.tool_calls_json) : undefined,
+      toolCalls: row.tool_calls_json ? this.safeJsonParse<SessionToolCall[]>(row.tool_calls_json) as SessionToolCall[] : undefined,
       timestamp: row.timestamp || undefined,
       model: row.model || undefined
     }
   }
 
-  private safeJsonParse(str: string): any {
-    try { return JSON.parse(str) } catch { return str }
+  private safeJsonParse<T = unknown>(str: string): T | string {
+    try {
+      return JSON.parse(str) as T
+    } catch {
+      return str
+    }
   }
 
   /**
@@ -595,7 +631,9 @@ class CacheService {
           this.db!.prepare(
             'UPDATE fts_messages SET title = ? WHERE session_id = ? AND platform = ?'
           ).run(newTitle, sessionId, platform)
-        } catch {}
+        } catch {
+          // fts entry may be missing — title update already succeeded
+        }
       })
       tx()
       return true

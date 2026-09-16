@@ -26,7 +26,7 @@ export abstract class BaseSqliteAdapter implements BaseSessionAdapter {
     return fs.existsSync(this.dbPath)
   }
 
-  protected getDb(readonly = true): any {
+  protected getDb(readonly = true): Database.Database {
     return new Database(this.dbPath, { readonly, fileMustExist: true })
   }
 

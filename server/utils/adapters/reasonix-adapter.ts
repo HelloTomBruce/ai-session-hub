@@ -3,10 +3,64 @@ import path from 'node:path'
 import os from 'node:os'
 import Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
 const reasonixDir = path.join(homeDir, '.reasonix')
+
+/** Row shape of the `topics` table in topic-state-v1.sqlite. */
+interface ReasonixTopicRow {
+  topic_id: string
+  title?: string
+  created_at_ms?: number
+  updated_at_ms?: number
+  auto_meta_json?: string
+}
+
+/** Shape of a `.jsonl.meta` sidecar file. */
+interface ReasonixMetaFile {
+  id?: string
+  topic_id?: string
+  topic_title?: string
+  preview?: string
+  created_at?: string
+  updated_at?: string
+  workspace_root?: string
+  model?: string
+  turns?: number
+}
+
+/** Parsed `auto_meta_json` payload stored on topic rows. */
+interface ReasonixAutoMeta {
+  cwd?: string
+  workspace?: string
+  model?: string
+}
+
+/** A single line in a Reasonix conversation JSONL file. */
+interface ReasonixMessageLine {
+  role?: string
+  name?: string
+  tool_name?: string
+  local_only?: boolean
+  content?: unknown
+  raw_content?: unknown
+  reasoning_content?: unknown
+  thought?: unknown
+  tool_calls?: ReasonixToolCallEntry[]
+  createdAt?: number
+  timestamp?: number
+}
+
+interface ReasonixToolCallEntry {
+  id?: string
+  name?: string
+  arguments?: unknown
+  function?: {
+    name?: string
+    arguments?: unknown
+  }
+}
 
 export class ReasonixSessionAdapter extends BaseSqliteAdapter {
   constructor() {
@@ -44,8 +98,9 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
   }
 
   private findJsonlPath(id: string, session?: UnifiedSession): string {
-    if (session?.extra?.jsonlPath && fs.existsSync(session.extra.jsonlPath)) {
-      return session.extra.jsonlPath
+    const extraJsonlPath = session?.extra?.jsonlPath
+    if (typeof extraJsonlPath === 'string' && extraJsonlPath && fs.existsSync(extraJsonlPath)) {
+      return extraJsonlPath
     }
     if (session?.rawLocation && session.rawLocation.endsWith('.jsonl') && fs.existsSync(session.rawLocation)) {
       return session.rawLocation
@@ -67,7 +122,9 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
               return full
             }
           }
-        } catch {}
+        } catch {
+          // unreadable directory; skip it and keep searching
+        }
       }
     }
 
@@ -82,16 +139,18 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
     const addSession = (sess: UnifiedSession) => {
       if (!sess.id) return
       if (seenIds.has(sess.id)) return
-      if (sess.extra?.jsonlPath && seenJsonlPaths.has(sess.extra.jsonlPath)) return
-      if (sess.extra?.topic_id && seenIds.has(sess.extra.topic_id)) return
+      const jsonlPath = sess.extra?.jsonlPath
+      if (typeof jsonlPath === 'string' && seenJsonlPaths.has(jsonlPath)) return
+      const topicId = sess.extra?.topic_id
+      if (typeof topicId === 'string' && seenIds.has(topicId)) return
 
       seenIds.add(sess.id)
-      if (sess.extra?.topic_id) seenIds.add(sess.extra.topic_id)
-      if (sess.extra?.jsonlPath) seenJsonlPaths.add(sess.extra.jsonlPath)
+      if (typeof topicId === 'string') seenIds.add(topicId)
+      if (typeof jsonlPath === 'string') seenJsonlPaths.add(jsonlPath)
       sessions.push(sess)
     }
 
-    const scanSessionDir = (dir: string, isTrash: boolean, projName: string, topicsMap: Map<string, any>) => {
+    const scanSessionDir = (dir: string, isTrash: boolean, projName: string, topicsMap: Map<string, ReasonixTopicRow>) => {
       try {
         const files = fs.readdirSync(dir)
         for (const f of files) {
@@ -99,7 +158,7 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             const metaPath = path.join(dir, f)
             const jsonlPath = path.join(dir, f.replace(/\.meta$/, ''))
             try {
-              const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+              const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as ReasonixMetaFile
               const topicId = meta.topic_id
               const topicRow = topicId ? topicsMap.get(topicId) : null
               if (topicId) topicsMap.delete(topicId)
@@ -117,7 +176,7 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
               const cwd = meta.workspace_root || this.decodeProjectDir(projName) || path.join(homeDir, '.reasonix', 'global-workspace')
 
               addSession({
-                id: meta.id || topicId,
+                id: meta.id || topicId || '',
                 cli: 'reasonix',
                 category: 'app',
                 title,
@@ -136,13 +195,17 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
                   isTrash
                 }
               })
-            } catch {}
+            } catch {
+              // unreadable or malformed meta file; skip it
+            }
           }
         }
-      } catch {}
+      } catch {
+        // unreadable session directory; skip it
+      }
     }
 
-    const scanTrashDir = (trashDir: string, projName: string, topicsMap: Map<string, any>) => {
+    const scanTrashDir = (trashDir: string, projName: string, topicsMap: Map<string, ReasonixTopicRow>) => {
       try {
         const entries = fs.readdirSync(trashDir)
         for (const entry of entries) {
@@ -154,9 +217,13 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             } else if (entry.endsWith('.jsonl.meta')) {
               scanSessionDir(trashDir, true, projName, topicsMap)
             }
-          } catch {}
+          } catch {
+            // unreadable trash entry; skip it
+          }
         }
-      } catch {}
+      } catch {
+        // unreadable trash directory; skip it
+      }
     }
 
     // 1. Scan projects directory
@@ -173,17 +240,18 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
           }
 
           const projDbPath = path.join(projDir, 'desktop', 'topic-state-v1.sqlite')
-          const topicsMap = new Map<string, any>()
+          const topicsMap = new Map<string, ReasonixTopicRow>()
           if (fs.existsSync(projDbPath)) {
-            let db: any
+            let db!: Database.Database
             try {
               db = new Database(projDbPath, { readonly: true })
-              const rows = db.prepare('SELECT topic_id, title, created_at_ms, updated_at_ms, auto_meta_json FROM topics').all()
+              const rows = db.prepare('SELECT topic_id, title, created_at_ms, updated_at_ms, auto_meta_json FROM topics').all() as ReasonixTopicRow[]
               for (const row of rows) {
                 topicsMap.set(row.topic_id, row)
               }
-            } catch {}
-            finally {
+            } catch {
+              // project database unavailable; fall back to meta file timestamps
+            } finally {
               if (db) db.close()
             }
           }
@@ -203,11 +271,13 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             let model = ''
             try {
               if (row.auto_meta_json) {
-                const meta = JSON.parse(row.auto_meta_json)
+                const meta = JSON.parse(row.auto_meta_json) as ReasonixAutoMeta
                 cwd = meta.cwd || meta.workspace || ''
                 model = meta.model || ''
               }
-            } catch {}
+            } catch {
+              // malformed auto_meta_json; keep empty cwd/model
+            }
 
             addSession({
               id: row.topic_id,
@@ -227,26 +297,30 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             })
           }
         }
-      } catch {}
+      } catch {
+        // projects directory unreadable; rely on the global database only
+      }
     }
 
     // 2. Scan Global Database
     const globalDbPath = path.join(reasonixDir, 'desktop', 'topic-state-v1.sqlite')
     if (fs.existsSync(globalDbPath)) {
-      let db: any
+      let db!: Database.Database
       try {
         db = new Database(globalDbPath, { readonly: true })
-        const rows = db.prepare('SELECT topic_id, title, created_at_ms, updated_at_ms, auto_meta_json FROM topics').all()
+        const rows = db.prepare('SELECT topic_id, title, created_at_ms, updated_at_ms, auto_meta_json FROM topics').all() as ReasonixTopicRow[]
         for (const row of rows) {
           let cwd = ''
           let model = ''
           try {
             if (row.auto_meta_json) {
-              const meta = JSON.parse(row.auto_meta_json)
+              const meta = JSON.parse(row.auto_meta_json) as ReasonixAutoMeta
               cwd = meta.cwd || meta.workspace || ''
               model = meta.model || ''
             }
-          } catch {}
+          } catch {
+            // malformed auto_meta_json; keep empty cwd/model
+          }
 
           addSession({
             id: row.topic_id,
@@ -265,8 +339,9 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             }
           })
         }
-      } catch {}
-      finally {
+      } catch {
+        // global database unavailable; nothing to add
+      } finally {
         if (db) db.close()
       }
     }
@@ -285,7 +360,7 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
           const line = lines[i]
           if (!line) continue
           try {
-            const parsed = JSON.parse(line)
+            const parsed = JSON.parse(line) as ReasonixMessageLine
             const role = parsed.role
             if (role === 'system') continue
             if (role === 'tool' && parsed.local_only) continue
@@ -308,9 +383,9 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
               if (thought) {
                 parsedThought = typeof thought === 'string' ? thought.trim() : JSON.stringify(thought)
               }
-              let formattedTools: any[] | undefined
+              let formattedTools: SessionToolCall[] | undefined
               if (toolCalls && toolCalls.length) {
-                formattedTools = toolCalls.map((tc: any) => {
+                formattedTools = toolCalls.map((tc) => {
                   let args = tc.arguments || tc.function?.arguments || {}
                   if (typeof args === 'string') {
                     try {
@@ -346,16 +421,20 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
               if (cleanContent.includes('<response-language>')) {
                 cleanContent = cleanContent.replace(/<response-language>[\s\S]*?<\/response-language>/g, '').trim()
               }
-              if (!cleanContent && parsed.raw_content) cleanContent = parsed.raw_content
+              if (!cleanContent && parsed.raw_content) {
+                cleanContent = typeof parsed.raw_content === 'string' ? parsed.raw_content : JSON.stringify(parsed.raw_content)
+              }
 
               messages.push({
                 id: `msg_${i}`,
                 role: 'user',
-                content: cleanContent || content,
+                content: cleanContent || (typeof content === 'string' ? content : JSON.stringify(content)),
                 timestamp
               })
             }
-          } catch {}
+          } catch {
+            // malformed jsonl line; skip it
+          }
         }
       } catch (e) {
         console.error('Error reading reasonix jsonl:', e)
@@ -379,15 +458,16 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
     // Update in global db
     const globalDbPath = path.join(reasonixDir, 'desktop', 'topic-state-v1.sqlite')
     if (fs.existsSync(globalDbPath)) {
-      let db: any
+      let db!: Database.Database
       try {
         db = new Database(globalDbPath)
         if (payload.title) {
           const res = db.prepare('UPDATE topics SET title = ?, updated_at_ms = ? WHERE topic_id = ?').run(payload.title, Date.now(), id)
           if (res.changes > 0) updated = true
         }
-      } catch {}
-      finally {
+      } catch {
+        // global database update failed; try the next location
+      } finally {
         if (db) db.close()
       }
     }
@@ -400,33 +480,39 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
         for (const entry of entries) {
           const projDbPath = path.join(projectsDir, entry, 'desktop', 'topic-state-v1.sqlite')
           if (fs.existsSync(projDbPath)) {
-            let db: any
+            let db!: Database.Database
             try {
               db = new Database(projDbPath)
               if (payload.title) {
                 const res = db.prepare('UPDATE topics SET title = ?, updated_at_ms = ? WHERE topic_id = ?').run(payload.title, Date.now(), id)
                 if (res.changes > 0) updated = true
               }
-            } catch {}
-            finally {
+            } catch {
+              // project database update failed; continue with the next project
+            } finally {
               if (db) db.close()
             }
           }
         }
-      } catch {}
+      } catch {
+        // projects directory unreadable; continue
+      }
     }
 
     // Update in meta files
     const session = this.getSessions().find(s => s.id === id || s.extra?.topic_id === id)
-    if (session?.extra?.metaPath && fs.existsSync(session.extra.metaPath)) {
+    const metaPath = session?.extra?.metaPath
+    if (typeof metaPath === 'string' && metaPath && fs.existsSync(metaPath)) {
       try {
-        const meta = JSON.parse(fs.readFileSync(session.extra.metaPath, 'utf-8'))
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>
         meta.topic_title = payload.title
         meta.title = payload.title
         meta.updated_at = new Date().toISOString()
-        fs.writeFileSync(session.extra.metaPath, JSON.stringify(meta, null, 2), 'utf-8')
+        fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
         updated = true
-      } catch {}
+      } catch {
+        // meta file update failed; other updates may still have succeeded
+      }
     }
 
     return updated
@@ -435,21 +521,25 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
   deleteSession(id: string): boolean {
     let deleted = false
     const session = this.getSessions().find(s => s.id === id || s.extra?.topic_id === id || s.extra?.sessionId === id)
-    const topicId = session?.extra?.topic_id || id
-    const sessionId = session?.extra?.sessionId || session?.id || id
+    const extraTopicId = session?.extra?.topic_id
+    const topicId = (typeof extraTopicId === 'string' && extraTopicId) ? extraTopicId : id
+    const extraSessionId = session?.extra?.sessionId
+    const sessionId = (typeof extraSessionId === 'string' && extraSessionId) ? extraSessionId : session?.id || id
 
     // 1. Delete specific file paths from session metadata
-    if (session?.extra?.metaPath && fs.existsSync(session.extra.metaPath)) {
+    const metaPath = session?.extra?.metaPath
+    if (typeof metaPath === 'string' && metaPath && fs.existsSync(metaPath)) {
       try {
-        fs.unlinkSync(session.extra.metaPath)
+        fs.unlinkSync(metaPath)
         deleted = true
       } catch (e) {
         console.error('[ReasonixAdapter] Error deleting metaPath:', e)
       }
     }
-    if (session?.extra?.jsonlPath && fs.existsSync(session.extra.jsonlPath)) {
+    const jsonlPath = session?.extra?.jsonlPath
+    if (typeof jsonlPath === 'string' && jsonlPath && fs.existsSync(jsonlPath)) {
       try {
-        fs.unlinkSync(session.extra.jsonlPath)
+        fs.unlinkSync(jsonlPath)
         deleted = true
       } catch (e) {
         console.error('[ReasonixAdapter] Error deleting jsonlPath:', e)
@@ -475,21 +565,25 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             scanAndRemoveFiles(full)
           } else if (entry.isFile()) {
             if (
-              entry.name.includes(sessionId) ||
-              entry.name.includes(topicId) ||
-              entry.name === `${sessionId}.jsonl` ||
-              entry.name === `${sessionId}.jsonl.meta` ||
-              entry.name === `${topicId}.jsonl` ||
-              entry.name === `${topicId}.jsonl.meta`
+              entry.name.includes(sessionId)
+              || entry.name.includes(topicId)
+              || entry.name === `${sessionId}.jsonl`
+              || entry.name === `${sessionId}.jsonl.meta`
+              || entry.name === `${topicId}.jsonl`
+              || entry.name === `${topicId}.jsonl.meta`
             ) {
               try {
                 fs.unlinkSync(full)
                 deleted = true
-              } catch {}
+              } catch {
+                // file removal failed; continue with remaining matches
+              }
             }
           }
         }
-      } catch {}
+      } catch {
+        // directory unreadable; continue
+      }
     }
 
     const projectsDir = path.join(reasonixDir, 'projects')
@@ -501,7 +595,7 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
     // 3. Delete in global db
     const globalDbPath = path.join(reasonixDir, 'desktop', 'topic-state-v1.sqlite')
     if (fs.existsSync(globalDbPath)) {
-      let db: any
+      let db!: Database.Database
       try {
         db = new Database(globalDbPath)
         const res = db.prepare('DELETE FROM topics WHERE topic_id = ? OR topic_id = ?').run(topicId, sessionId)
@@ -520,7 +614,7 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
         for (const entry of entries) {
           const projDbPath = path.join(projectsDir, entry, 'desktop', 'topic-state-v1.sqlite')
           if (fs.existsSync(projDbPath)) {
-            let db: any
+            let db!: Database.Database
             try {
               db = new Database(projDbPath)
               const res = db.prepare('DELETE FROM topics WHERE topic_id = ? OR topic_id = ?').run(topicId, sessionId)
@@ -532,7 +626,9 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
             }
           }
         }
-      } catch {}
+      } catch {
+        // projects directory unreadable; continue
+      }
     }
 
     // If session was originally found in registry, treat as deleted
@@ -550,15 +646,16 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
 
     const globalDbPath = path.join(reasonixDir, 'desktop', 'topic-state-v1.sqlite')
     if (fs.existsSync(globalDbPath)) {
-      let db: any
+      let db!: Database.Database
       try {
         db = new Database(globalDbPath)
         db.prepare(`
           INSERT INTO topics (topic_id, title, created_at_ms, updated_at_ms, auto_meta_json)
           VALUES (?, ?, ?, ?, ?)
         `).run(id, payload.title || 'New Reasonix Topic', now, now, JSON.stringify({ cwd: targetCwd }))
-      } catch {}
-      finally {
+      } catch {
+        // topic insert failed; session is still returned from the registry scan
+      } finally {
         if (db) db.close()
       }
     }
@@ -575,4 +672,3 @@ export class ReasonixSessionAdapter extends BaseSqliteAdapter {
     }
   }
 }
-

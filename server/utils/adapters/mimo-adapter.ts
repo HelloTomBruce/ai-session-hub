@@ -2,9 +2,33 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { BaseJsonlAdapter } from '../base-jsonl-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+interface MimoToolCall {
+  name?: string
+  arguments?: unknown
+  input?: unknown
+  function?: { name?: string, arguments?: unknown }
+}
+
+interface MimoJsonlLine {
+  type?: string
+  role?: string
+  id?: string
+  timestamp?: number
+  cwd?: string
+  title?: string
+  model?: string
+  content?: unknown
+  message?: unknown
+  text?: unknown
+  thought?: string
+  thinking?: string
+  toolCalls?: MimoToolCall[]
+  tool_calls?: MimoToolCall[]
+}
 
 export class MimoSessionAdapter extends BaseJsonlAdapter {
   constructor() {
@@ -39,7 +63,9 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
           this.collectSessionsFromDir(projSessionsDir, sessions, projDir)
         }
       }
-    } catch {}
+    } catch {
+      // return whatever sessions were collected before the failure
+    }
 
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
   }
@@ -56,7 +82,7 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
           const filePath = path.join(fullDir, file)
           try {
             const stat = fs.statSync(filePath)
-            const lines = this.readJsonl(filePath)
+            const lines = this.readJsonl<MimoJsonlLine>(filePath)
             const id = file.replace('.jsonl', '')
             let title = ''
             let cwd = projectCwd || ''
@@ -73,7 +99,7 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
                 if (!title && (parsed.role === 'user' || parsed.role === 'human')) {
                   const text = typeof parsed.content === 'string'
                     ? parsed.content
-                    : parsed.message || parsed.text || ''
+                    : (parsed.message as string | undefined) || (parsed.text as string | undefined) || ''
                   if (text) title = text.slice(0, 100).replace(/\n/g, ' ')
                 }
               }
@@ -91,10 +117,14 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
               model: model || undefined,
               rawLocation: filePath
             })
-          } catch {}
+          } catch {
+            // skip session files that cannot be read or parsed
+          }
         }
       }
-    } catch {}
+    } catch {
+      // skip directories that cannot be read
+    }
   }
 
   private discoverProjectDirs(): string[] {
@@ -109,14 +139,16 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
           projectDirs.push(full)
         }
       }
-    } catch {}
+    } catch {
+      // ignore directories that cannot be read
+    }
 
     return projectDirs
   }
 
   getMessages(_id: string, session?: UnifiedSession): SessionMessage[] {
     if (!session || !fs.existsSync(session.rawLocation)) return []
-    const lines = this.readJsonl(session.rawLocation)
+    const lines = this.readJsonl<MimoJsonlLine>(session.rawLocation)
     const messages: SessionMessage[] = []
 
     for (const parsed of lines) {
@@ -127,7 +159,7 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
       const role = parsed.role || parsed.type || 'assistant'
       let content: string
       let thought: string | undefined
-      const toolCalls: any[] = []
+      const toolCalls: SessionToolCall[] = []
 
       if (parsed.type === 'message' || parsed.type) {
         const c = parsed.content || parsed.message || parsed.text || ''
@@ -212,12 +244,14 @@ export class MimoSessionAdapter extends BaseJsonlAdapter {
       const lines = raw.split('\n').filter(Boolean)
       const updatedLines = lines.map((line) => {
         try {
-          const parsed = JSON.parse(line)
+          const parsed = JSON.parse(line) as MimoJsonlLine
           if (parsed.type === 'session') {
             parsed.title = payload.title
             return JSON.stringify(parsed)
           }
-        } catch {}
+        } catch {
+          // leave lines that fail to parse untouched
+        }
         return line
       })
       fs.writeFileSync(session.rawLocation, updatedLines.join('\n') + '\n', 'utf-8')

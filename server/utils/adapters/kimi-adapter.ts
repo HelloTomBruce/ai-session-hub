@@ -3,9 +3,31 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
 import { BaseJsonlAdapter } from '../base-jsonl-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+/** Shape of a single line in a Kimi `context.jsonl` session file. */
+interface KimiContextLine {
+  id?: string
+  role?: string
+  content?: unknown
+  timestamp?: number
+  model?: string
+  name?: string
+  tool_name?: string
+  arguments?: unknown
+  args?: unknown
+  input?: unknown
+  tool_calls?: Array<{
+    name?: string
+    arguments?: unknown
+    function?: {
+      name?: string
+      arguments?: unknown
+    }
+  }>
+}
 
 interface KimiWorkDirMeta {
   path: string
@@ -65,7 +87,7 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
 
           try {
             const stat = fs.statSync(ctxFile)
-            const lines = this.readJsonl(ctxFile)
+            const lines = this.readJsonl<KimiContextLine>(ctxFile)
             let title = ''
             let messageCount = 0
             let model = ''
@@ -76,7 +98,9 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
                 const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
                 if (state.custom_title) title = state.custom_title
                 if (state.title_generated) title = state.title_generated
-              } catch {}
+              } catch {
+                // ignore malformed state.json
+              }
             }
 
             for (const parsed of lines) {
@@ -103,24 +127,28 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
               model: model || undefined,
               rawLocation: ctxFile
             })
-          } catch {}
+          } catch {
+            // skip sessions that fail to parse
+          }
         }
       }
-    } catch {}
+    } catch {
+      // ignore errors while scanning kimi sessions
+    }
 
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
   getMessages(_id: string, session?: UnifiedSession): SessionMessage[] {
     if (!session || !fs.existsSync(session.rawLocation)) return []
-    const lines = this.readJsonl(session.rawLocation)
+    const lines = this.readJsonl<KimiContextLine>(session.rawLocation)
     const messages: SessionMessage[] = []
 
     for (const parsed of lines) {
       const role = parsed.role || ''
       let content: string
       let thought: string | undefined
-      const toolCalls: any[] = []
+      const toolCalls: SessionToolCall[] = []
 
       if (role === 'user') {
         content = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content || '')
@@ -171,7 +199,7 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
     fs.mkdirSync(sessDir, { recursive: true })
 
     const ctxFile = path.join(sessDir, 'context.jsonl')
-    const firstLines: any[] = []
+    const firstLines: KimiContextLine[] = []
 
     if (payload.initialPrompt) {
       firstLines.push({ role: 'user', content: payload.initialPrompt, timestamp: now })
@@ -184,7 +212,9 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
       meta.work_dirs.push({ path: targetCwd, kaos: 'local', last_session_id: id })
       try {
         fs.writeFileSync(path.join(this.baseDir, 'kimi.json'), JSON.stringify(meta, null, 2), 'utf-8')
-      } catch {}
+      } catch {
+        // ignore metadata write failures
+      }
     }
 
     return {
@@ -202,7 +232,7 @@ export class KimiSessionAdapter extends BaseJsonlAdapter {
 
     const stateFile = path.join(path.dirname(session.rawLocation), 'state.json')
     try {
-      let state: any = {}
+      let state: Record<string, unknown> = {}
       if (fs.existsSync(stateFile)) {
         state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
       }

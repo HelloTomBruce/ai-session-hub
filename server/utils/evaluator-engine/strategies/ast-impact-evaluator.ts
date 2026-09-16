@@ -32,7 +32,8 @@ export class AstImpactEvaluator implements IEvaluatorStrategy {
         for (const tc of msg.toolCalls) {
           const name = (tc.name || tc.type || '').toLowerCase()
           if (name.includes('write') || name.includes('edit') || name.includes('replace') || name.includes('modify')) {
-            const args = tc.arguments || tc.args || tc.input || {}
+            const rawArgs = tc.arguments || tc.args || tc.input || {}
+            const args = (rawArgs && typeof rawArgs === 'object' ? rawArgs : {}) as Record<string, unknown>
             const targetPath = args.TargetFile || args.path || args.filePath || args.targetFile || ''
             if (targetPath) modifiedFiles.add(String(targetPath))
             if (args.CodeContent) codeDiffSnippets.push(String(args.CodeContent).slice(0, 500))

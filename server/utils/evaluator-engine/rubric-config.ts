@@ -6,11 +6,11 @@ export interface EvaluatorEngineConfig {
     llmJudgeQuality: number
   }
   thresholds: {
-    worthSavingScore: number      // Minimum overall score to recommend saving (default 75)
-    gradeS: number                // S Grade (default 90)
-    gradeA: number                // A Grade (default 75)
-    gradeB: number                // B Grade (default 60)
-    adrCategoryThreshold: number  // Score to classify as ADR (default 85)
+    worthSavingScore: number // Minimum overall score to recommend saving (default 75)
+    gradeS: number // S Grade (default 90)
+    gradeA: number // A Grade (default 75)
+    gradeB: number // B Grade (default 60)
+    adrCategoryThreshold: number // Score to classify as ADR (default 85)
     gotchaCategoryThreshold: number // Score to classify as Gotcha (default 75)
     patternCategoryThreshold: number // Score to classify as Pattern (default 60)
   }

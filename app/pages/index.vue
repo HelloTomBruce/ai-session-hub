@@ -14,7 +14,7 @@ interface UnifiedSession {
   model?: string
   status?: string
   rawLocation: string
-  extra?: Record<string, any>
+  extra?: Record<string, unknown>
 }
 
 interface StatsData {
@@ -60,9 +60,9 @@ const syncUrlQuery = () => {
   const currentQ = (route.query.q as string) || ''
   const currentTag = (route.query.tag as string) || ''
   if (
-    currentCli !== currentTab.value ||
-    currentQ !== searchQuery.value ||
-    currentTag !== activeTagFilter.value
+    currentCli !== currentTab.value
+    || currentQ !== searchQuery.value
+    || currentTag !== activeTagFilter.value
   ) {
     router.replace({ query })
   }
@@ -102,7 +102,7 @@ const isBatchDeleting = ref(false)
 const isBatchTagging = ref(false)
 const batchTagInput = ref('')
 
-const toggleSelect = (item: any) => {
+const toggleSelect = (item: UnifiedSession) => {
   const key = `${item.cli}::${item.id}`
   const next = new Set(selectedIds.value)
   if (next.has(key)) next.delete(key)
@@ -118,7 +118,9 @@ const selectAllOnPage = () => {
   selectedIds.value = next
 }
 
-const clearSelection = () => { selectedIds.value = new Set() }
+const clearSelection = () => {
+  selectedIds.value = new Set()
+}
 
 const selectedSessions = computed(() => {
   return sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`))
@@ -147,8 +149,9 @@ const handleBatchDelete = async () => {
         toast.add({ title: `已删除 ${res.data.successCount} 个会话`, color: 'success', icon: 'i-lucide-check-circle-2' })
       }
     }
-  } catch (err: any) {
-    toast.add({ title: '批量删除失败: ' + (err?.data?.message || err?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    toast.add({ title: '批量删除失败: ' + (fetchErr?.data?.message || fetchErr?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isBatchDeleting.value = false
   }
@@ -160,7 +163,7 @@ const handleBatchAddTag = async () => {
   isBatchTagging.value = true
   try {
     const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
-    const res = await $fetch<{ success: boolean; message?: string }>('/api/sessions/batch-tag', {
+    const res = await $fetch<{ success: boolean, message?: string }>('/api/sessions/batch-tag', {
       method: 'POST',
       body: { items, tags: [tag], mode: 'add' }
     })
@@ -168,8 +171,9 @@ const handleBatchAddTag = async () => {
     selectedIds.value = new Set()
     await handleRefresh()
     if (res.message) toast.add({ title: res.message, color: 'success', icon: 'i-lucide-check-circle-2' })
-  } catch (err: any) {
-    toast.add({ title: '批量打标签失败: ' + (err?.data?.message || err?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    toast.add({ title: '批量打标签失败: ' + (fetchErr?.data?.message || fetchErr?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isBatchTagging.value = false
   }
@@ -182,7 +186,7 @@ const handleBatchExport = async (format: string) => {
   selectedIds.value = new Set()
 }
 
-const getTags = (item: any) => item.extra?.tags || []
+const getTags = (item: UnifiedSession): string[] => (item.extra?.tags as string[]) || []
 const toggleTagFilter = (tag: string) => {
   activeTagFilter.value = activeTagFilter.value === tag ? '' : tag
 }
@@ -195,9 +199,11 @@ onMounted(async () => {
     const res = await $fetch('/api/cache/status')
     if (res.success && res.data.last_sync_at) {
       const d = new Date(res.data.last_sync_at)
-      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     }
-  } catch {}
+  } catch {
+    // 忽略缓存状态加载失败，不影响页面主功能
+  }
 })
 
 // Cache sync
@@ -207,11 +213,12 @@ const handleCacheSync = async () => {
     const res = await $fetch('/api/cache/sync', { method: 'POST' })
     if (res.success && res.data.stats?.last_sync_at) {
       const d = new Date(res.data.stats.last_sync_at)
-      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+      lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     }
     await handleRefresh()
-  } catch (err: any) {
-    const msg = err?.data?.message || err?.message || '未知错误'
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    const msg = fetchErr?.data?.message || fetchErr?.message || '未知错误'
     toast.add({ title: '同步失败: ' + msg, color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSyncing.value = false
@@ -303,72 +310,10 @@ const sourceMeta = {
 // Modal States
 const isDetailOpen = ref(false)
 const selectedSession = ref<UnifiedSession | null>(null)
-const sessionDetail = ref<any>(null)
-const isLoadingDetail = ref(false)
-const detailMode = ref<'chat' | 'thinking'>('chat')
 
 const openDetail = (session: UnifiedSession) => {
   navigateTo(`/sessions/${session.id}?cli=${session.cli}`)
 }
-
-// Extract thinking steps from messages
-const thinkingTimeline = computed(() => {
-  if (!sessionDetail.value?.messages) return []
-  const timeline: Array<{
-    type: 'intent' | 'thought' | 'tool' | 'conclusion'
-    title: string
-    detail?: string
-    timestamp?: number
-    badge?: string
-    role: string
-  }> = []
-
-  for (const msg of sessionDetail.value.messages) {
-    if (msg.role === 'user') {
-      timeline.push({
-        type: 'intent',
-        title: '用户提出意图 / 任务需求',
-        detail: msg.content,
-        timestamp: msg.timestamp,
-        role: 'user'
-      })
-    } else if (msg.role === 'assistant') {
-      if (msg.thought) {
-        timeline.push({
-          type: 'thought',
-          title: '思维链推导与架构选型 (Thinking Rationale)',
-          detail: msg.thought,
-          timestamp: msg.timestamp,
-          role: 'assistant'
-        })
-      }
-      if (msg.toolCalls && msg.toolCalls.length) {
-        for (const tool of msg.toolCalls) {
-          const name = tool.name || tool.type || 'Tool'
-          const args = typeof tool.arguments === 'string' ? tool.arguments : JSON.stringify(tool.arguments || tool.args || tool.input || {})
-          timeline.push({
-            type: 'tool',
-            title: `工具调用: ${name}`,
-            detail: args,
-            badge: name,
-            timestamp: msg.timestamp,
-            role: 'tool'
-          })
-        }
-      }
-      if (msg.content && msg.content.trim()) {
-        timeline.push({
-          type: 'conclusion',
-          title: '方案产出 / 答复反馈',
-          detail: msg.content,
-          timestamp: msg.timestamp,
-          role: 'assistant'
-        })
-      }
-    }
-  }
-  return timeline
-})
 
 // Edit Modal
 const isEditOpen = ref(false)
@@ -402,8 +347,9 @@ const saveEdit = async () => {
     } else {
       toast.add({ title: res.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
     }
-  } catch (err: any) {
-    toast.add({ title: err?.data?.message || err?.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    toast.add({ title: fetchErr?.data?.message || fetchErr?.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSavingEdit.value = false
   }
@@ -432,13 +378,13 @@ const executeDelete = async () => {
     } else {
       toast.add({ title: res.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
     }
-  } catch (err: any) {
-    toast.add({ title: err?.data?.message || err?.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    toast.add({ title: fetchErr?.data?.message || fetchErr?.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isDeleting.value = false
   }
 }
-
 </script>
 
 <template>
@@ -446,37 +392,45 @@ const executeDelete = async () => {
     <!-- Top Stats Tabs -->
     <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
       <!-- All -->
-      <div 
-        @click="currentTab = 'all'"
+      <div
         :class="[
           'p-3 rounded-lg border transition-all cursor-pointer select-none',
-          currentTab === 'all' 
-            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm' 
+          currentTab === 'all'
+            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm'
             : 'bg-white dark:bg-zinc-900 border-zinc-200/90 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
         ]"
+        @click="currentTab = 'all'"
       >
         <div class="flex items-center justify-between">
           <span class="text-xs font-medium opacity-80">全部汇总</span>
-          <UIcon name="i-lucide-grid" class="w-3.5 h-3.5 opacity-60" />
+          <UIcon
+            name="i-lucide-grid"
+            class="w-3.5 h-3.5 opacity-60"
+          />
         </div>
-        <div class="text-xl font-bold mt-1 font-mono tracking-tight">{{ totalCount }}</div>
+        <div class="text-xl font-bold mt-1 font-mono tracking-tight">
+          {{ totalCount }}
+        </div>
       </div>
 
       <!-- Each Source Tab -->
-      <div 
+      <div
         v-for="(meta, key) in sourceMeta"
         :key="key"
-        @click="currentTab = key"
         :class="[
           'p-3 rounded-lg border transition-all cursor-pointer select-none',
-          currentTab === key 
-            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm' 
+          currentTab === key
+            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm'
             : 'bg-white dark:bg-zinc-900 border-zinc-200/90 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
         ]"
+        @click="currentTab = key"
       >
         <div class="flex items-center justify-between">
           <span class="text-xs font-medium truncate flex items-center gap-1.5">
-            <UIcon :name="meta.icon" class="w-3.5 h-3.5 shrink-0 opacity-70" />
+            <UIcon
+              :name="meta.icon"
+              class="w-3.5 h-3.5 shrink-0 opacity-70"
+            />
             <span class="truncate">{{ meta.name }}</span>
           </span>
           <span :class="['text-[9px] uppercase font-mono px-1 py-0.2 rounded', currentTab === key ? 'bg-zinc-800 text-zinc-300 dark:bg-zinc-200 dark:text-zinc-800' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400']">
@@ -503,278 +457,439 @@ const executeDelete = async () => {
 
       <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
         <template v-if="selectedIds.size > 0">
-        <div v-if="selectedIds.size > 0" class="flex items-center gap-2 text-xs">
-        <span class="font-medium">{{ selectedIds.size }} 个已选</span>
-        <span class="opacity-50">|</span>
-        <button class="hover:underline" @click="clearSelection">取消选择</button>
-        <span class="opacity-50">|</span>
-        <UButton size="xs" color="error" variant="outline" icon="i-lucide-trash-2" :loading="isBatchDeleting" @click="handleBatchDelete">
-        删除
-        </UButton>
-        <UButton size="xs" color="neutral" variant="outline"
-        icon="i-lucide-download" @click="handleBatchExport('json')">
-        导出 JSON
-        </UButton>
-        <UButton size="xs" color="neutral" variant="outline"
-        icon="i-lucide-file-text" @click="handleBatchExport('markdown')">
-        导出 Markdown
-        </UButton>
-        <div class="flex items-center gap-1 ml-1">
-        <UInput v-model="batchTagInput" size="xs" placeholder="标签名..." class="w-24"
-        @keyup.enter="handleBatchAddTag" />
-        <UButton size="xs" color="neutral" variant="outline" :loading="isBatchTagging" icon="i-lucide-tag" @click="handleBatchAddTag">
-        加标签
-        </UButton>
-        </div>
-        </div>
+          <div
+            v-if="selectedIds.size > 0"
+            class="flex items-center gap-2 text-xs"
+          >
+            <span class="font-medium">{{ selectedIds.size }} 个已选</span>
+            <span class="opacity-50">|</span>
+            <button
+              class="hover:underline"
+              @click="clearSelection"
+            >
+              取消选择
+            </button>
+            <span class="opacity-50">|</span>
+            <UButton
+              size="xs"
+              color="error"
+              variant="outline"
+              icon="i-lucide-trash-2"
+              :loading="isBatchDeleting"
+              @click="handleBatchDelete"
+            >
+              删除
+            </UButton>
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-download"
+              @click="handleBatchExport('json')"
+            >
+              导出 JSON
+            </UButton>
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-file-text"
+              @click="handleBatchExport('markdown')"
+            >
+              导出 Markdown
+            </UButton>
+            <div class="flex items-center gap-1 ml-1">
+              <UInput
+                v-model="batchTagInput"
+                size="xs"
+                placeholder="标签名..."
+                class="w-24"
+                @keyup.enter="handleBatchAddTag"
+              />
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                :loading="isBatchTagging"
+                icon="i-lucide-tag"
+                @click="handleBatchAddTag"
+              >
+                加标签
+              </UButton>
+            </div>
+          </div>
         </template>
         <template v-else>
-        <UButton
-          icon="i-lucide-database"
-          color="neutral"
-          size="sm"
-          variant="outline"
-          :loading="isSyncing"
-          :disabled="isSyncing"
-          @click="handleCacheSync"
-        >
-          同步
-        </UButton>
-        <span v-if="lastSyncTime" class="text-[10px] text-zinc-400 font-mono whitespace-nowrap hidden md:inline">
-          {{ lastSyncTime }}
-        </span>
-        <UButton
-          icon="i-lucide-rotate-cw"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          :loading="isRefreshing"
-          @click="handleRefresh"
-        >
-          刷新
-        </UButton>
+          <UButton
+            icon="i-lucide-database"
+            color="neutral"
+            size="sm"
+            variant="outline"
+            :loading="isSyncing"
+            :disabled="isSyncing"
+            @click="handleCacheSync"
+          >
+            同步
+          </UButton>
+          <span
+            v-if="lastSyncTime"
+            class="text-[10px] text-zinc-400 font-mono whitespace-nowrap hidden md:inline"
+          >
+            {{ lastSyncTime }}
+          </span>
+          <UButton
+            icon="i-lucide-rotate-cw"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            :loading="isRefreshing"
+            @click="handleRefresh"
+          >
+            刷新
+          </UButton>
         </template>
       </div>
     </div>
 
     <!-- Select All Bar -->
-    <div v-if="!pending && sessions.length > 0 && selectedIds.size === 0" class="flex items-center gap-2 text-[11px] text-zinc-400">
-      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="selectAllOnPage">
-        <UIcon name="i-lucide-check-square" class="w-3.5 h-3.5 inline mr-1" />
+    <div
+      v-if="!pending && sessions.length > 0 && selectedIds.size === 0"
+      class="flex items-center gap-2 text-[11px] text-zinc-400"
+    >
+      <button
+        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        @click="selectAllOnPage"
+      >
+        <UIcon
+          name="i-lucide-check-square"
+          class="w-3.5 h-3.5 inline mr-1"
+        />
         全选本页
       </button>
     </div>
-    <div v-if="!pending && sessions.length > 0 && selectedIds.size > 0" class="flex items-center gap-2 text-[11px] text-zinc-400">
-      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="clearSelection">
-        <UIcon name="i-lucide-square" class="w-3.5 h-3.5 inline mr-1" />
+    <div
+      v-if="!pending && sessions.length > 0 && selectedIds.size > 0"
+      class="flex items-center gap-2 text-[11px] text-zinc-400"
+    >
+      <button
+        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        @click="clearSelection"
+      >
+        <UIcon
+          name="i-lucide-square"
+          class="w-3.5 h-3.5 inline mr-1"
+        />
         取消选择
       </button>
       <span class="text-zinc-300 dark:text-zinc-600">|</span>
-      <button class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" @click="selectAllOnPage">
+      <button
+        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        @click="selectAllOnPage"
+      >
         全选本页 ({{ sessions.length }})
       </button>
     </div>
 
     <!-- Sessions List -->
     <template v-if="pending">
-    <div class="py-16 text-center text-zinc-400">
-      <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500" />
-      <p class="text-xs">加载会话数据中...</p>
-    </div>
+      <div class="py-16 text-center text-zinc-400">
+        <UIcon
+          name="i-lucide-loader-2"
+          class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500"
+        />
+        <p class="text-xs">
+          加载会话数据中...
+        </p>
+      </div>
     </template>
 
     <!-- Tag filter indicator -->
     <template v-else-if="activeTagFilter && !pending">
-    <div class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
-      <span>筛选标签：</span>
-      <span
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer border"
-        :style="{
-          backgroundColor: (tagColors[activeTagFilter] || '#6366f1') + '20',
-          color: tagColors[activeTagFilter] || '#6366f1',
-          borderColor: (tagColors[activeTagFilter] || '#6366f1') + '40'
-        }"
-        @click="activeTagFilter = ''"
-      >
-        #{{ activeTagFilter }}
-        <UIcon name="i-lucide-x" class="w-3 h-3" />
-      </span>
-      <span class="text-zinc-400">({{ sessions.length }})</span>
-    </div>
+      <div class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
+        <span>筛选标签：</span>
+        <span
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer border"
+          :style="{
+            backgroundColor: (tagColors[activeTagFilter] || '#6366f1') + '20',
+            color: tagColors[activeTagFilter] || '#6366f1',
+            borderColor: (tagColors[activeTagFilter] || '#6366f1') + '40'
+          }"
+          @click="activeTagFilter = ''"
+        >
+          #{{ activeTagFilter }}
+          <UIcon
+            name="i-lucide-x"
+            class="w-3 h-3"
+          />
+        </span>
+        <span class="text-zinc-400">({{ sessions.length }})</span>
+      </div>
     </template>
 
     <template v-else-if="sessions.length === 0">
-    <div class="py-16 text-center bg-white dark:bg-zinc-900 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
-      <div class="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-2.5 text-zinc-400">
-        <UIcon name="i-lucide-inbox" class="w-5 h-5" />
+      <div class="py-16 text-center bg-white dark:bg-zinc-900 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
+        <div class="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-2.5 text-zinc-400">
+          <UIcon
+            name="i-lucide-inbox"
+            class="w-5 h-5"
+          />
+        </div>
+        <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+          未检索到匹配的会话
+        </h3>
+        <p class="text-xs text-zinc-400 mt-0.5">
+          请尝试更换上方平台分类或搜索关键字
+        </p>
       </div>
-      <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">未检索到匹配的会话</h3>
-      <p class="text-xs text-zinc-400 mt-0.5">请尝试更换上方平台分类或搜索关键字</p>
-    </div>
     </template>
 
     <!-- Batch Action Bar & Sessions Grid -->
     <template v-else>
-
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-      <div
-        v-for="item in sessions"
-        :key="`${item.cli}-${item.id}`"
-        class="group bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-sm transition-all flex flex-col justify-between overflow-hidden"
-      >
-        <div class="p-4 flex-1 cursor-pointer" @click="openDetail(item)">
-          <!-- Top Tag & Time -->
-          <div class="flex items-center justify-between mb-2.5 gap-2">
-            <div class="flex items-center gap-1.5">
-              <div
-                class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
-                :class="selectedIds.has(`${item.cli}::${item.id}`)
-                  ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100'
-                  : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500'"
-                @click.stop="toggleSelect(item)"
-              >
-                <UIcon v-if="selectedIds.has(`${item.cli}::${item.id}`)"
-                  name="i-lucide-check" class="w-3 h-3 text-white dark:text-zinc-900" />
+        <div
+          v-for="item in sessions"
+          :key="`${item.cli}-${item.id}`"
+          class="group bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-sm transition-all flex flex-col justify-between overflow-hidden"
+        >
+          <div
+            class="p-4 flex-1 cursor-pointer"
+            @click="openDetail(item)"
+          >
+            <!-- Top Tag & Time -->
+            <div class="flex items-center justify-between mb-2.5 gap-2">
+              <div class="flex items-center gap-1.5">
+                <div
+                  class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
+                  :class="selectedIds.has(`${item.cli}::${item.id}`)
+                    ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100'
+                    : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500'"
+                  @click.stop="toggleSelect(item)"
+                >
+                  <UIcon
+                    v-if="selectedIds.has(`${item.cli}::${item.id}`)"
+                    name="i-lucide-check"
+                    class="w-3 h-3 text-white dark:text-zinc-900"
+                  />
+                </div>
+                <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  <UIcon
+                    :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'"
+                    class="w-3 h-3 text-zinc-500 dark:text-zinc-400"
+                  />
+                  {{ sourceMeta[item.cli]?.name || item.cli }}
+                </span>
+                <span
+                  v-if="item.extra?.aiDiagnosed"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-medium border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1 shrink-0"
+                  title="该会话已完成 AI 深度诊断，进入详情页可查看诊断报告"
+                >
+                  <UIcon
+                    name="i-lucide-sparkles"
+                    class="w-3 h-3"
+                  />
+                  AI 已诊断
+                </span>
               </div>
-              <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                <UIcon :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'" class="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
-                {{ sourceMeta[item.cli]?.name || item.cli }}
+              <span class="text-[11px] text-zinc-400 font-mono">
+                {{ formatTime(item.updatedAt) }}
               </span>
+            </div>
+
+            <!-- Title -->
+            <h3 class="font-medium text-zinc-900 dark:text-zinc-100 text-sm line-clamp-2 mb-1.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
+              {{ item.title }}
+            </h3>
+
+            <!-- Tags -->
+            <div
+              v-if="getTags(item).length"
+              class="flex flex-wrap gap-1 mb-2"
+            >
               <span
-                v-if="item.extra?.aiDiagnosed"
-                class="px-1.5 py-0.5 rounded text-[10px] font-medium border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1 shrink-0"
-                title="该会话已完成 AI 深度诊断，进入详情页可查看诊断报告"
+                v-for="tag in getTags(item)"
+                :key="tag"
+                :class="[
+                  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer select-none border transition-all',
+                  activeTagFilter === tag ? 'ring-2 ring-offset-1 dark:ring-offset-zinc-900' : 'hover:opacity-80'
+                ]"
+                :style="{
+                  backgroundColor: (tagColors[tag] || '#6366f1') + '20',
+                  color: tagColors[tag] || '#6366f1',
+                  borderColor: (tagColors[tag] || '#6366f1') + '40'
+                }"
+                @click.stop="toggleTagFilter(tag)"
               >
-                <UIcon name="i-lucide-sparkles" class="w-3 h-3" />
-                AI 已诊断
+                #{{ tag }}
               </span>
             </div>
-            <span class="text-[11px] text-zinc-400 font-mono">
-              {{ formatTime(item.updatedAt) }}
-            </span>
-          </div>
 
-          <!-- Title -->
-          <h3 class="font-medium text-zinc-900 dark:text-zinc-100 text-sm line-clamp-2 mb-1.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
-            {{ item.title }}
-          </h3>
+            <!-- Details & Path -->
+            <div class="space-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <div class="flex items-center gap-1 truncate font-mono text-[11px]">
+                <UIcon
+                  name="i-lucide-folder"
+                  class="w-3.5 h-3.5 shrink-0 text-zinc-400"
+                />
+                <span
+                  class="truncate"
+                  :title="item.cwd"
+                >{{ item.cwd || '默认工作区' }}</span>
+              </div>
 
-          <!-- Tags -->
-          <div v-if="getTags(item).length" class="flex flex-wrap gap-1 mb-2">
-            <span
-              v-for="tag in getTags(item)" :key="tag"
-              @click.stop="toggleTagFilter(tag)"
-              :class="[
-                'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer select-none border transition-all',
-                activeTagFilter === tag ? 'ring-2 ring-offset-1 dark:ring-offset-zinc-900' : 'hover:opacity-80'
-              ]"
-              :style="{
-                backgroundColor: (tagColors[tag] || '#6366f1') + '20',
-                color: tagColors[tag] || '#6366f1',
-                borderColor: (tagColors[tag] || '#6366f1') + '40',
-              }"
-            >
-              #{{ tag }}
-            </span>
-          </div>
-
-          <!-- Details & Path -->
-          <div class="space-y-1 text-xs text-zinc-500 dark:text-zinc-400">
-            <div class="flex items-center gap-1 truncate font-mono text-[11px]">
-              <UIcon name="i-lucide-folder" class="w-3.5 h-3.5 shrink-0 text-zinc-400" />
-              <span class="truncate" :title="item.cwd">{{ item.cwd || '默认工作区' }}</span>
+              <div class="flex items-center gap-3 text-zinc-400 dark:text-zinc-500 pt-1 text-[11px]">
+                <span
+                  v-if="item.messageCount !== undefined"
+                  class="flex items-center gap-1"
+                >
+                  <UIcon
+                    name="i-lucide-message-square"
+                    class="w-3 h-3"
+                  />
+                  {{ item.messageCount }}
+                </span>
+                <span
+                  v-if="item.model"
+                  class="flex items-center gap-1 truncate max-w-[130px] font-mono"
+                >
+                  <UIcon
+                    name="i-lucide-cpu"
+                    class="w-3 h-3"
+                  />
+                  {{ item.model }}
+                </span>
+                <span
+                  v-if="item.cost !== undefined && item.cost > 0"
+                  class="font-mono"
+                >
+                  ${{ item.cost.toFixed(4) }}
+                </span>
+                <span
+                  v-if="item.status"
+                  class="px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] uppercase font-mono"
+                >
+                  {{ item.status }}
+                </span>
+              </div>
             </div>
-            
-            <div class="flex items-center gap-3 text-zinc-400 dark:text-zinc-500 pt-1 text-[11px]">
-              <span v-if="item.messageCount !== undefined" class="flex items-center gap-1">
-                <UIcon name="i-lucide-message-square" class="w-3 h-3" />
-                {{ item.messageCount }}
-              </span>
-              <span v-if="item.model" class="flex items-center gap-1 truncate max-w-[130px] font-mono">
-                <UIcon name="i-lucide-cpu" class="w-3 h-3" />
-                {{ item.model }}
-              </span>
-              <span v-if="item.cost !== undefined && item.cost > 0" class="font-mono">
-                ${{ item.cost.toFixed(4) }}
-              </span>
-              <span v-if="item.status" class="px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] uppercase font-mono">
-                {{ item.status }}
-              </span>
+          </div>
+
+          <!-- Footer Actions -->
+          <div class="bg-zinc-50/70 dark:bg-zinc-900/70 border-t border-zinc-100 dark:border-zinc-800/80 px-3.5 py-1.5 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-1">
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-eye"
+                @click="openDetail(item)"
+              >
+                查看
+              </UButton>
+            </div>
+
+            <div class="flex items-center gap-0.5">
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-edit-3"
+                title="重命名 / 编辑"
+                @click="startEdit(item)"
+              />
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="error"
+                icon="i-lucide-trash-2"
+                title="删除会话"
+                @click="confirmDelete(item)"
+              />
             </div>
           </div>
         </div>
-
-        <!-- Footer Actions -->
-        <div class="bg-zinc-50/70 dark:bg-zinc-900/70 border-t border-zinc-100 dark:border-zinc-800/80 px-3.5 py-1.5 flex items-center justify-between text-xs">
-          <div class="flex items-center gap-1">
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-eye"
-              @click="openDetail(item)"
-            >
-              查看
-            </UButton>
-          </div>
-
-          <div class="flex items-center gap-0.5">
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-edit-3"
-              @click="startEdit(item)"
-              title="重命名 / 编辑"
-            />
-            <UButton
-              size="xs"
-              variant="ghost"
-              color="error"
-              icon="i-lucide-trash-2"
-              @click="confirmDelete(item)"
-              title="删除会话"
-            />
-          </div>
-        </div>
-      </div>
-
       </div>
     </template>
 
     <!-- Edit Modal -->
     <!-- Edit Modal -->
-    <UModal v-model:open="isEditOpen" :ui="{ content: 'max-w-md' }">
+    <UModal
+      v-model:open="isEditOpen"
+      :ui="{ content: 'max-w-md' }"
+    >
       <template #content>
         <div class="p-4 space-y-3.5">
-          <h3 class="text-sm font-bold text-zinc-900 dark:text-white">编辑会话标题</h3>
+          <h3 class="text-sm font-bold text-zinc-900 dark:text-white">
+            编辑会话标题
+          </h3>
           <UFormField label="会话标题">
-            <UInput v-model="editingTitle" size="sm" class="w-full" placeholder="输入新的会话标题" />
+            <UInput
+              v-model="editingTitle"
+              size="sm"
+              class="w-full"
+              placeholder="输入新的会话标题"
+            />
           </UFormField>
           <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" size="sm" @click="isEditOpen = false">取消</UButton>
-            <UButton color="neutral" size="sm" class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" :loading="isSavingEdit" @click="saveEdit">保存修改</UButton>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="isEditOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              color="neutral"
+              size="sm"
+              class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+              :loading="isSavingEdit"
+              @click="saveEdit"
+            >
+              保存修改
+            </UButton>
           </div>
         </div>
       </template>
     </UModal>
 
     <!-- Delete Confirmation Modal -->
-    <UModal v-model:open="isDeleteOpen" :ui="{ content: 'max-w-md' }">
+    <UModal
+      v-model:open="isDeleteOpen"
+      :ui="{ content: 'max-w-md' }"
+    >
       <template #content>
         <div class="p-4 space-y-3.5">
           <div class="flex items-center gap-2.5 text-red-600">
-            <UIcon name="i-lucide-alert-triangle" class="w-5 h-5" />
-            <h3 class="text-sm font-bold text-zinc-900 dark:text-white">确认删除会话？</h3>
+            <UIcon
+              name="i-lucide-alert-triangle"
+              class="w-5 h-5"
+            />
+            <h3 class="text-sm font-bold text-zinc-900 dark:text-white">
+              确认删除会话？
+            </h3>
           </div>
           <p class="text-xs text-zinc-500 dark:text-zinc-400">
             你正在删除来自 <span class="font-bold">{{ selectedSession?.cli.toUpperCase() }}</span> 的会话：
-            <br />
+            <br>
             <span class="font-medium text-zinc-700 dark:text-zinc-200 mt-1 block font-mono text-xs">{{ selectedSession?.title }}</span>
           </p>
           <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" size="sm" @click="isDeleteOpen = false">取消</UButton>
-            <UButton color="error" size="sm" :loading="isDeleting" @click="executeDelete">确认删除</UButton>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="isDeleteOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              color="error"
+              size="sm"
+              :loading="isDeleting"
+              @click="executeDelete"
+            >
+              确认删除
+            </UButton>
           </div>
         </div>
       </template>

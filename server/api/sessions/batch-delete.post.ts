@@ -1,6 +1,8 @@
+import type { PlatformType } from '../../utils/types'
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const items: Array<{ id: string; cli: string }> = body?.items || []
+  const items: Array<{ id: string, cli: string }> = body?.items || []
 
   if (items.length === 0) {
     throw createError({ statusCode: 400, message: 'No items specified for batch delete' })
@@ -12,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   for (const item of items) {
     try {
-      const ok = deleteCliSession(item.cli as any, item.id)
+      const ok = deleteCliSession(item.cli as PlatformType, item.id)
       if (ok) {
         successCount++
         // Clean up cache
@@ -23,9 +25,9 @@ export default defineEventHandler(async (event) => {
         failCount++
         errors.push(`${item.cli}/${item.id}: not found`)
       }
-    } catch (err: any) {
+    } catch (err) {
       failCount++
-      errors.push(`${item.cli}/${item.id}: ${err.message || 'unknown error'}`)
+      errors.push(`${item.cli}/${item.id}: ${(err as { message?: string })?.message || 'unknown error'}`)
     }
   }
 

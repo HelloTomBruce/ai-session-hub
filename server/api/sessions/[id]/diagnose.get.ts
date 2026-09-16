@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AIEvaluationResult } from '../../../utils/evaluator-rubric'
 
 export default defineEventHandler((event) => {
   const sessionId = getRouterParam(event, 'id')
@@ -25,7 +24,7 @@ export default defineEventHandler((event) => {
       hasSavedReport: true,
       data: parsed
     }
-  } catch (err) {
+  } catch {
     return {
       success: true,
       hasSavedReport: false,

@@ -101,11 +101,38 @@ Output MUST be a valid JSON object matching this schema:
 /**
  * Call OpenAI-compatible LLM endpoint
  */
-async function callLLM(provider: LLMProviderSettings, systemPrompt: string, userPrompt: string, temperature = 0.1): Promise<any> {
+interface ChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string
+    }
+  }>
+}
+
+interface FetchErrorShape {
+  data?: { error?: { message?: string } }
+  message?: string
+  status?: number
+  response?: { status?: number }
+  statusCode?: number
+}
+
+interface AdrLLMResult {
+  id?: string
+  title?: string
+  context?: string
+  decision?: string
+  consequences?: string
+  status?: string
+  platform?: string
+  sourceSessionId?: string
+}
+
+async function callLLM(provider: LLMProviderSettings, systemPrompt: string, userPrompt: string, temperature = 0.1): Promise<Record<string, unknown>> {
   const baseUrl = (provider.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
   const model = provider.model || 'gpt-4o-mini'
 
-  const reqBody: any = {
+  const reqBody: Record<string, unknown> = {
     model,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -116,18 +143,22 @@ async function callLLM(provider: LLMProviderSettings, systemPrompt: string, user
 
   // 依次尝试不同参数组合，兼容对 response_format / temperature 有限制的模型端点
   // （如 kimi-for-coding、o 系列模型仅允许 temperature 默认值）
+  const withoutTemperature = () => {
+    const { temperature: _t, ...rest } = reqBody
+    return rest
+  }
   const attempts: Record<string, unknown>[] = [
     { ...reqBody, response_format: { type: 'json_object' } },
     reqBody,
-    (() => { const { temperature: _t, ...rest } = reqBody; return { ...rest, response_format: { type: 'json_object' } } })(),
-    (() => { const { temperature: _t, ...rest } = reqBody; return rest })()
+    { ...withoutTemperature(), response_format: { type: 'json_object' } },
+    withoutTemperature()
   ]
 
   let rawContent = ''
   let lastErr: unknown
   for (const body of attempts) {
     try {
-      const res = await $fetch<any>(`${baseUrl}/chat/completions`, {
+      const res = await $fetch<ChatCompletionResponse>(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${provider.apiKey}`,
@@ -137,11 +168,12 @@ async function callLLM(provider: LLMProviderSettings, systemPrompt: string, user
       })
       rawContent = res.choices?.[0]?.message?.content || ''
       break
-    } catch (err: any) {
+    } catch (err) {
       lastErr = err
-      const errText = String(err?.data?.error?.message || err?.message || '')
+      const errObj = err as FetchErrorShape
+      const errText = String(errObj?.data?.error?.message || errObj?.message || '')
       // 仅在参数被端点拒绝（400）时尝试下一组合，其他错误直接抛出
-      const status = err?.status || err?.response?.status || err?.statusCode
+      const status = errObj?.status || errObj?.response?.status || errObj?.statusCode
       if (Number(status) !== 400) throw err
       console.warn(`[Distillator] LLM request rejected (400): ${errText.slice(0, 120)}，尝试下一参数组合...`)
     }
@@ -297,8 +329,9 @@ async function synthesizeGlobalDistillReportWithAI(
 
   const parsed = await callLLM(provider, REDUCE_SYSTEM_PROMPT, userPrompt, 0.2)
 
-  const adrs: ADRItem[] = (parsed.adrs || []).map((adr: any, index: number) => {
+  const adrs: ADRItem[] = (Array.isArray(parsed.adrs) ? parsed.adrs : []).map((rawAdr, index: number) => {
     // Find matching session if not set
+    const adr = rawAdr as AdrLLMResult
     const fallbackSess = sessionSummaries[index % sessionSummaries.length]
     return {
       id: adr.id || `ADR-${String(index + 1).padStart(3, '0')}`,
@@ -306,7 +339,7 @@ async function synthesizeGlobalDistillReportWithAI(
       context: adr.context || '未提供上下文背景',
       decision: adr.decision || '未提供决策内容',
       consequences: adr.consequences || '功能落地与维护性保障',
-      status: adr.status || 'Accepted',
+      status: (adr.status || 'Accepted') as ADRItem['status'],
       platform: (adr.platform || fallbackSess?.platform || 'cli') as PlatformType,
       sourceSessionId: adr.sourceSessionId || fallbackSess?.sessionId || ''
     }
@@ -371,7 +404,7 @@ ${adrs.map(adr => `### ${adr.id}: ${adr.title}
 `
 
   return {
-    title: parsed.summaryTitle || `知识沉淀报告 (${sessions.length} 会话)`,
+    title: (typeof parsed.summaryTitle === 'string' && parsed.summaryTitle) || `知识沉淀报告 (${sessions.length} 会话)`,
     isAiGenerated: true,
     providerModel: provider.model,
     timeRange: {
@@ -653,23 +686,26 @@ export async function distillSessionsContentStream(
         0.2
       )
 
-      let parsed: any = {}
+      let parsed: Record<string, unknown> = {}
       try {
         let cleanedJson = fullText.trim()
         if (cleanedJson.startsWith('```')) {
           cleanedJson = cleanedJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         }
-        parsed = JSON.parse(cleanedJson)
-      } catch (e) {
+        parsed = JSON.parse(cleanedJson) as Record<string, unknown>
+      } catch {
         const jsonMatch = fullText.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
           try {
-            parsed = JSON.parse(jsonMatch[0])
-          } catch {}
+            parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+          } catch {
+            // unrecoverable LLM output — proceed with empty parsed object
+          }
         }
       }
 
-      const adrs: ADRItem[] = (parsed.adrs || []).map((adr: any, index: number) => {
+      const adrs: ADRItem[] = (Array.isArray(parsed.adrs) ? parsed.adrs : []).map((rawAdr, index: number) => {
+        const adr = rawAdr as AdrLLMResult
         const fallbackSess = mapSummaries[index % mapSummaries.length]
         return {
           id: adr.id || `ADR-${String(index + 1).padStart(3, '0')}`,
@@ -677,7 +713,7 @@ export async function distillSessionsContentStream(
           context: adr.context || '未提供上下文背景',
           decision: adr.decision || '未提供决策内容',
           consequences: adr.consequences || '功能落地与维护性保障',
-          status: adr.status || 'Accepted',
+          status: (adr.status || 'Accepted') as ADRItem['status'],
           platform: (adr.platform || fallbackSess?.platform || 'cli') as PlatformType,
           sourceSessionId: adr.sourceSessionId || fallbackSess?.sessionId || ''
         }
@@ -741,7 +777,7 @@ ${adrs.map(adr => `### ${adr.id}: ${adr.title}
 `
 
       const report: DistillReport = {
-        title: parsed.summaryTitle || `知识沉淀报告 (${sessions.length} 会话)`,
+        title: (typeof parsed.summaryTitle === 'string' && parsed.summaryTitle) || `知识沉淀报告 (${sessions.length} 会话)`,
         isAiGenerated: true,
         providerModel: provider.model,
         timeRange: {
@@ -768,7 +804,7 @@ ${adrs.map(adr => `### ${adr.id}: ${adr.title}
 
       onDone(report)
       return
-    } catch (e: any) {
+    } catch (e) {
       console.error('[Distillator] Stream AI Distillation failed, falling back to local heuristic:', e)
       onStatus({ message: 'AI 流式提炼遇到异常，正在切换至本地启发式规则总结...' })
     }

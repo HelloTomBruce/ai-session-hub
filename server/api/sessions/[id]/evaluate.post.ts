@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     createdAt: activeSession.createdAt,
     updatedAt: activeSession.updatedAt,
     messages: messages.map(m => ({
-      role: m.role as any,
+      role: m.role,
       content: m.content,
       thought: m.thought,
       toolCalls: m.toolCalls

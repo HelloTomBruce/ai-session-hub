@@ -1,9 +1,61 @@
 import path from 'node:path'
 import os from 'node:os'
+import type Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+interface OpenCodeSessionRow {
+  id: string
+  slug?: string
+  directory?: string
+  path?: string
+  title?: string
+  cost?: number
+  model?: string
+  time_created?: number
+  time_updated?: number
+  summary_files?: number
+  summary_additions?: number
+  summary_deletions?: number
+}
+
+interface OpenCodeMessageData {
+  role?: string
+  modelID?: string
+  model?: { modelID?: string }
+  time?: { created?: number }
+}
+
+interface OpenCodeMessageRow {
+  id: string
+  time_created?: number
+  data?: string | OpenCodeMessageData
+}
+
+interface OpenCodePartData {
+  type?: string
+  text?: string
+  content?: string
+  tool?: string
+  name?: string
+  input?: unknown
+  args?: unknown
+  arguments?: unknown
+  output?: unknown
+  state?: { input?: unknown, output?: unknown }
+}
+
+interface OpenCodePartRow {
+  id: string
+  type?: string
+  data?: string | OpenCodePartData
+}
+
+interface OpenCodeProjectRow {
+  id?: string
+}
 
 export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
   constructor() {
@@ -17,16 +69,16 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
 
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(true)
       const rows = db.prepare(`
         SELECT id, slug, directory, path, title, cost, model, time_created, time_updated, summary_files, summary_additions, summary_deletions
         FROM session
         ORDER BY time_updated DESC
-      `).all()
+      `).all() as OpenCodeSessionRow[]
 
-      return rows.map((row: any) => ({
+      return rows.map(row => ({
         id: row.id,
         cli: 'opencode',
         category: 'cli',
@@ -53,30 +105,34 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
 
   getMessages(id: string): SessionMessage[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db: Database.Database | undefined
     const messages: SessionMessage[] = []
     try {
       db = this.getDb(true)
-      const msgs = db.prepare(`SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC`).all(id)
+      const msgs = db.prepare(`SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC`).all(id) as OpenCodeMessageRow[]
       for (const m of msgs) {
-        let msgData: any = {}
+        let msgData: OpenCodeMessageData = {}
         try {
-          msgData = typeof m.data === 'string' ? JSON.parse(m.data) : (m.data || {})
-        } catch {}
+          msgData = typeof m.data === 'string' ? JSON.parse(m.data) as OpenCodeMessageData : (m.data || {})
+        } catch {
+          // fall back to empty message data when the stored JSON is malformed
+        }
 
         const role = msgData.role || 'assistant'
         const model = msgData.model?.modelID || msgData.modelID || ''
 
-        const parts = db.prepare(`SELECT * FROM part WHERE message_id = ? ORDER BY id ASC`).all(m.id)
+        const parts = db.prepare(`SELECT * FROM part WHERE message_id = ? ORDER BY id ASC`).all(m.id) as OpenCodePartRow[]
         let content = ''
         let thought = ''
-        const toolCalls: any[] = []
+        const toolCalls: SessionToolCall[] = []
 
         for (const p of parts) {
-          let pData: any = {}
+          let pData: OpenCodePartData = {}
           try {
-            pData = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {})
-          } catch {}
+            pData = typeof p.data === 'string' ? JSON.parse(p.data) as OpenCodePartData : (p.data || {})
+          } catch {
+            // fall back to empty part data when the stored JSON is malformed
+          }
 
           const pType = pData.type || p.type
           if (pType === 'text') {
@@ -97,7 +153,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
         if (content || thought || toolCalls.length) {
           messages.push({
             id: m.id,
-            role,
+            role: role as SessionMessage['role'],
             content: content || (thought ? `*(Thinking)*\n${thought}` : ''),
             timestamp: msgData.time?.created || m.time_created,
             model,
@@ -115,7 +171,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
 
   updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       if (payload.title) {
@@ -132,7 +188,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       db.prepare(`DELETE FROM session WHERE id = ?`).run(id)
@@ -148,10 +204,10 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
     if (this.isAvailable()) {
-      let db: any
+      let db: Database.Database | undefined
       try {
         db = this.getDb(false)
-        const row = db.prepare(`SELECT id FROM project WHERE worktree = ? LIMIT 1`).get(targetCwd) as any
+        const row = db.prepare(`SELECT id FROM project WHERE worktree = ? LIMIT 1`).get(targetCwd) as OpenCodeProjectRow | undefined
         const projectId = row?.id || 'global'
         db.prepare(`
           INSERT INTO session (id, project_id, slug, directory, title, version, cost, time_created, time_updated)

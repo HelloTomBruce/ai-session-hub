@@ -26,7 +26,7 @@ const DEFAULT_TAGS: TagDef[] = [
   { name: 'ai:诊断', color: '#a855f7', category: 'ai', created_at: Date.now() }
 ]
 
-const TAG_RULES: Array<{ name: string; patterns: string[]; category: 'auto' }> = [
+const TAG_RULES: Array<{ name: string, patterns: string[], category: 'auto' }> = [
   { name: 'bugfix', patterns: ['fix', 'bug', 'error', '报错', '异常', 'crash', 'broken', 'wrong', 'issue'], category: 'auto' },
   { name: 'refactor', patterns: ['refactor', '重构', 'clean', '简化', '整理', 'reorganize'], category: 'auto' },
   { name: 'feature', patterns: ['feat', 'feature', 'add', '新增', '新功能', 'implement'], category: 'auto' },
@@ -93,14 +93,20 @@ class TagService {
       db!.prepare(
         'INSERT OR REPLACE INTO tag_defs (name, color, category, created_at) VALUES (?, ?, ?, ?)'
       ).run(tag.name, tag.color, tag.category, tag.created_at)
-    } catch {}
+    } catch {
+      // duplicate or locked db — tag object is still returned
+    }
     return tag
   }
 
   deleteTag(name: string): void {
     const db = this.getDb()
     if (!db) return
-    try { db.prepare('DELETE FROM tag_defs WHERE name = ?').run(name) } catch {}
+    try {
+      db.prepare('DELETE FROM tag_defs WHERE name = ?').run(name)
+    } catch {
+      // ignore delete failures
+    }
   }
 
   /**
@@ -115,9 +121,15 @@ class TagService {
         'SELECT tags FROM sessions_cache WHERE id = ? AND platform = ?'
       ).get(sessionId, platform) as { tags: string } | undefined
       if (row?.tags) {
-        try { return JSON.parse(row.tags) } catch {}
+        try {
+          return JSON.parse(row.tags) as string[]
+        } catch {
+          // corrupted tags json — fall through to empty
+        }
       }
-    } catch {}
+    } catch {
+      // cache table may not exist yet
+    }
     return []
   }
 
@@ -149,17 +161,21 @@ class TagService {
   /**
    * 批量合并标签到会话列表（从而在 adapter 数据上也能展示标签）
    */
-  mergeTagsToSessions(sessions: Array<{ id: string; cli: string; extra?: Record<string, any> }>): void {
+  mergeTagsToSessions(sessions: Array<{ id: string, cli: string, extra?: Record<string, unknown> }>): void {
     if (sessions.length === 0) return
     const db = this.getDb()
     if (!db) return
     try {
       const allTags = db.prepare(
-        "SELECT id, platform, tags FROM sessions_cache WHERE tags IS NOT NULL AND tags != '[]'"
-      ).all() as Array<{ id: string; platform: string; tags: string }>
+        'SELECT id, platform, tags FROM sessions_cache WHERE tags IS NOT NULL AND tags != \'[]\''
+      ).all() as Array<{ id: string, platform: string, tags: string }>
       const tagMap = new Map<string, string[]>()
       for (const row of allTags) {
-        try { tagMap.set(`${row.platform}::${row.id}`, JSON.parse(row.tags)) } catch {}
+        try {
+          tagMap.set(`${row.platform}::${row.id}`, JSON.parse(row.tags) as string[])
+        } catch {
+          // skip corrupted tag rows
+        }
       }
       for (const s of sessions) {
         const tags = tagMap.get(`${s.cli}::${s.id}`)
@@ -167,21 +183,26 @@ class TagService {
           s.extra = { ...(s.extra || {}), tags }
         }
       }
-    } catch {}
+    } catch {
+      // sessions_cache may not exist yet
+    }
   }
 
-  autoDetectTags(title: string, messages: Array<{ role: string; content: string }>): string[] {
+  autoDetectTags(title: string, messages: Array<{ role: string, content: string }>): string[] {
     const matched = new Set<string>()
     const allText = [title, ...messages.map(m => m.content)].join(' ').toLowerCase()
     for (const rule of TAG_RULES) {
       for (const pattern of rule.patterns) {
-        if (allText.includes(pattern.toLowerCase())) { matched.add(rule.name); break }
+        if (allText.includes(pattern.toLowerCase())) {
+          matched.add(rule.name)
+          break
+        }
       }
     }
     return Array.from(matched)
   }
 
-  autoTagSession(sessionId: string, platform: string, title: string, messages: Array<{ role: string; content: string }>): string[] {
+  autoTagSession(sessionId: string, platform: string, title: string, messages: Array<{ role: string, content: string }>): string[] {
     const tags = this.autoDetectTags(title, messages)
     if (tags.length > 0) this.setSessionTags(sessionId, platform, tags)
     return tags

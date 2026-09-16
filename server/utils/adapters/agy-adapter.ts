@@ -1,10 +1,32 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type Database from 'better-sqlite3'
 import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
 
 const homeDir = os.homedir()
+
+interface AgySummaryRow {
+  conversation_id: string
+  title?: string
+  preview?: string
+  step_count?: number
+  last_modified_time?: string
+  workspace_uris?: string
+  status?: string
+  agent_name?: string
+  last_user_input_time?: string
+}
+
+interface AgyTranscriptLine {
+  type?: string
+  content?: string
+  thinking?: string
+  tool_calls?: SessionToolCall[]
+  step_index?: number
+  created_at?: string
+}
 
 export class AgySessionAdapter extends BaseSqliteAdapter {
   constructor() {
@@ -18,28 +40,30 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
 
   getSessions(): UnifiedSession[] {
     if (!this.isAvailable()) return []
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(true)
       const rows = db.prepare(`
         SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, agent_name, last_user_input_time
         FROM conversation_summaries
         ORDER BY last_modified_time DESC
-      `).all()
+      `).all() as AgySummaryRow[]
 
-      return rows.map((row: any) => {
+      return rows.map((row) => {
         let createdAt = Date.now()
         let updatedAt = Date.now()
         try {
           if (row.last_user_input_time) createdAt = new Date(row.last_user_input_time).getTime()
           if (row.last_modified_time) updatedAt = new Date(row.last_modified_time).getTime()
-        } catch {}
+        } catch {
+          // keep the default timestamps when stored dates are invalid
+        }
 
         let cwd = ''
         try {
           if (row.workspace_uris) {
-            const parsed = JSON.parse(row.workspace_uris)
-            cwd = Array.isArray(parsed) ? parsed[0] : parsed
+            const parsed: unknown = JSON.parse(row.workspace_uris)
+            cwd = Array.isArray(parsed) ? parsed[0] as string : parsed as string
           }
         } catch {
           cwd = row.workspace_uris || ''
@@ -76,7 +100,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
       try {
         const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean)
         for (const line of lines) {
-          const parsed = JSON.parse(line)
+          const parsed = JSON.parse(line) as AgyTranscriptLine
           const role = parsed.type === 'USER_INPUT' ? 'user' : 'assistant'
           messages.push({
             id: String(parsed.step_index),
@@ -87,14 +111,16 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
             toolCalls: parsed.tool_calls
           })
         }
-      } catch {}
+      } catch {
+        // return whatever transcript lines were parsed before the failure
+      }
     }
     return messages
   }
 
   updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!this.isAvailable()) return false
-    let db: any
+    let db: Database.Database | undefined
     try {
       db = this.getDb(false)
       if (payload.title) {
@@ -111,7 +137,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
 
   deleteSession(id: string): boolean {
     if (this.isAvailable()) {
-      let db: any
+      let db: Database.Database | undefined
       try {
         db = this.getDb(false)
         db.prepare(`DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(id)
@@ -132,7 +158,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
     if (this.isAvailable()) {
-      let db: any
+      let db: Database.Database | undefined
       try {
         db = this.getDb(false)
         db.prepare(`

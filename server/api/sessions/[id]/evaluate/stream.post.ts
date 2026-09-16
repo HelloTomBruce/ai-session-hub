@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Connection', 'keep-alive')
 
   const res = event.node.res
-  const sendEvent = (eventType: string, data: any) => {
+  const sendEvent = (eventType: string, data: unknown) => {
     res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
       createdAt: activeSession.createdAt,
       updatedAt: activeSession.updatedAt,
       messages: messages.map(m => ({
-        role: m.role as any,
+        role: m.role,
         content: m.content,
         thought: m.thought,
         toolCalls: m.toolCalls
@@ -126,8 +126,8 @@ export default defineEventHandler(async (event) => {
     })
 
     res.end()
-  } catch (err: any) {
-    sendEvent('error', { message: err?.message || '评估流处理发生异常' })
+  } catch (err) {
+    sendEvent('error', { message: (err as { message?: string })?.message || '评估流处理发生异常' })
     res.end()
   }
 })
