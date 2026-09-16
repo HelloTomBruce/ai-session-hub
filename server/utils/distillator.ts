@@ -114,34 +114,43 @@ async function callLLM(provider: LLMProviderSettings, systemPrompt: string, user
     temperature
   }
 
+  // 依次尝试不同参数组合，兼容对 response_format / temperature 有限制的模型端点
+  // （如 kimi-for-coding、o 系列模型仅允许 temperature 默认值）
+  const attempts: Record<string, unknown>[] = [
+    { ...reqBody, response_format: { type: 'json_object' } },
+    reqBody,
+    (() => { const { temperature: _t, ...rest } = reqBody; return { ...rest, response_format: { type: 'json_object' } } })(),
+    (() => { const { temperature: _t, ...rest } = reqBody; return rest })()
+  ]
+
   let rawContent = ''
-  try {
-    const res = await $fetch<any>(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${provider.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: {
-        ...reqBody,
-        response_format: { type: 'json_object' }
-      }
-    })
-    rawContent = res.choices?.[0]?.message?.content || ''
-  } catch (err: any) {
-    // If response_format json_object was rejected, retry without it
-    const res = await $fetch<any>(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${provider.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: reqBody
-    })
-    rawContent = res.choices?.[0]?.message?.content || ''
+  let lastErr: unknown
+  for (const body of attempts) {
+    try {
+      const res = await $fetch<any>(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${provider.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body
+      })
+      rawContent = res.choices?.[0]?.message?.content || ''
+      break
+    } catch (err: any) {
+      lastErr = err
+      const errText = String(err?.data?.error?.message || err?.message || '')
+      // 仅在参数被端点拒绝（400）时尝试下一组合，其他错误直接抛出
+      const status = err?.status || err?.response?.status || err?.statusCode
+      if (Number(status) !== 400) throw err
+      console.warn(`[Distillator] LLM request rejected (400): ${errText.slice(0, 120)}，尝试下一参数组合...`)
+    }
   }
 
-  if (!rawContent) throw new Error('Empty LLM response')
+  if (!rawContent) {
+    if (lastErr) throw lastErr
+    throw new Error('Empty LLM response')
+  }
 
   // Extract JSON
   const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, rawContent]
@@ -186,6 +195,72 @@ async function distillSingleSessionMap(
   // 4. Save to cache
   saveCachedSessionSummary(summary)
   return summary
+}
+
+/** 从 LLM 输出文本中提取 JSON 对象（兼容 ```json 代码块包裹） */
+function extractJsonObjectFromText(text: string): Record<string, unknown> {
+  let cleaned = text.trim()
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+  }
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+    if (jsonMatch) return JSON.parse(jsonMatch[0])
+    throw new Error('Failed to parse JSON from LLM output')
+  }
+}
+
+/**
+ * Map Phase (Streaming): 与非流式版本逻辑一致，但通过流式调用 LLM，
+ * 每个 token 到达时回调 onChunk，让前端能实时展示提炼进度。
+ */
+async function distillSingleSessionMapStreaming(
+  item: { session: UnifiedSession, messages: SessionMessage[] },
+  provider: LLMProviderSettings,
+  onChunk: (text: string) => void
+): Promise<SingleSessionSummary> {
+  const { session, messages } = item
+
+  // 1. Check disk cache
+  const cached = getCachedSessionSummary(session.cli, session.id, session.updatedAt)
+  if (cached) {
+    return cached
+  }
+
+  // 2. Compact transcript
+  const compacted = compactSessionForAI(session, messages)
+
+  // 3. Call LLM (streaming)
+  const userPrompt = `Please distill the following coding conversation:\n\n${compacted.transcriptText}`
+  const fullText = await streamLLMCompletion(provider, MAP_SYSTEM_PROMPT, userPrompt, onChunk, 0.1)
+  const parsed = extractJsonObjectFromText(fullText)
+
+  const summary: SingleSessionSummary = {
+    sessionId: session.id,
+    platform: session.cli,
+    title: session.title,
+    cwd: session.cwd,
+    updatedAt: session.updatedAt,
+    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+    decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+    learnings: Array.isArray(parsed.learnings) ? parsed.learnings : [],
+    todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+    tools: Array.isArray(parsed.tools) ? parsed.tools : []
+  }
+
+  // 4. Save to cache
+  saveCachedSessionSummary(summary)
+  return summary
+}
+
+/** Map 阶段单个会话的实时进度状态 */
+export interface MapSessionProgress {
+  id: string
+  title: string
+  state: 'pending' | 'active' | 'cached' | 'done' | 'error'
+  chars: number
 }
 
 /**
@@ -470,38 +545,78 @@ export async function distillSessionsContentStream(
   provider: LLMProviderSettings | undefined,
   onStatus: (status: { message: string, step?: number, totalSteps?: number, currentSession?: string }) => void,
   onChunk: (chunk: string) => void,
-  onDone: (report: DistillReport) => void
+  onDone: (report: DistillReport) => void,
+  onMapProgress?: (progress: MapSessionProgress[]) => void,
+  onMapChunk?: (sessionId: string, text: string) => void
 ): Promise<void> {
   if (provider && provider.enabled && provider.apiKey) {
     try {
-      const mapSummaries: SingleSessionSummary[] = []
       const total = sessions.length
+      const MAP_CONCURRENCY = 3
 
-      // 1. Map Phase: Extract micro-summary for each session with status updates
+      // 1. Map Phase: 有限并发 + 流式提炼，实时汇报每个会话的进度
+      const progress: MapSessionProgress[] = sessions.map(item => ({
+        id: item.session.id,
+        title: item.session.title,
+        state: 'pending',
+        chars: 0
+      }))
+      const emitProgress = () => onMapProgress?.(progress.map(p => ({ ...p })))
+
+      const mapResults: (SingleSessionSummary | null)[] = new Array(total).fill(null)
+      const pendingIdx: number[] = []
+
+      // 先同步检查缓存，命中立即反馈
       for (let i = 0; i < total; i++) {
-        const item = sessions[i]
-        if (!item) continue
-        const sess = item.session
+        const sess = sessions[i]!.session
         const cached = getCachedSessionSummary(sess.cli, sess.id, sess.updatedAt)
         if (cached) {
-          onStatus({
-            message: `[1/2 Map阶段] 处理会话 (${i + 1}/${total}): ${sess.title} (已命中缓存)`,
-            step: i + 1,
-            totalSteps: total,
-            currentSession: sess.title
-          })
-          mapSummaries.push(cached)
+          progress[i]!.state = 'cached'
+          mapResults[i] = cached
         } else {
-          onStatus({
-            message: `[1/2 Map阶段] 正在提炼会话 (${i + 1}/${total}): ${sess.title}...`,
-            step: i + 1,
-            totalSteps: total,
-            currentSession: sess.title
-          })
-          const summary = await distillSingleSessionMap(item, provider)
-          mapSummaries.push(summary)
+          pendingIdx.push(i)
         }
       }
+      emitProgress()
+      onStatus({
+        message: `[1/2 Map阶段] 共 ${total} 个会话：缓存命中 ${total - pendingIdx.length} 个，待提炼 ${pendingIdx.length} 个（并发 ${Math.min(MAP_CONCURRENCY, pendingIdx.length) || 1} 路流式生成）...`
+      })
+
+      let cursor = 0
+      let finishedCount = total - pendingIdx.length
+      const worker = async () => {
+        while (cursor < pendingIdx.length) {
+          const i = pendingIdx[cursor++]!
+          const item = sessions[i]!
+          progress[i]!.state = 'active'
+          emitProgress()
+          onStatus({
+            message: `[1/2 Map阶段] 正在提炼会话 (${finishedCount + 1}/${total}): ${item.session.title}...`,
+            step: finishedCount + 1,
+            totalSteps: total,
+            currentSession: item.session.title
+          })
+          try {
+            const summary = await distillSingleSessionMapStreaming(item, provider, (text) => {
+              progress[i]!.chars += text.length
+              onMapChunk?.(item.session.id, text)
+            })
+            mapResults[i] = summary
+            progress[i]!.state = 'done'
+          } catch (err) {
+            progress[i]!.state = 'error'
+            emitProgress()
+            throw err
+          }
+          finishedCount++
+          emitProgress()
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(MAP_CONCURRENCY, pendingIdx.length) }, () => worker())
+      )
+
+      const mapSummaries = mapResults.filter((r): r is SingleSessionSummary => r !== null)
 
       // 2. Reduce Phase: Stream synthesis
       onStatus({

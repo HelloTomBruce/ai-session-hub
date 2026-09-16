@@ -47,6 +47,12 @@ export default defineEventHandler(async (event) => {
       (finalReport: DistillReport) => {
         sendEvent('done', { report: finalReport })
         res.end()
+      },
+      (progress) => {
+        sendEvent('map-progress', { sessions: progress })
+      },
+      (sessionId: string, text: string) => {
+        sendEvent('map-chunk', { sessionId, text })
       }
     )
   } catch (err: any) {
@@ -54,4 +60,3 @@ export default defineEventHandler(async (event) => {
     res.end()
   }
 })
-
