@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { LocationQuery } from 'vue-router'
+
 interface UnifiedSession {
   id: string
   cli: 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'workbuddy' | 'reasonix'
@@ -36,7 +38,7 @@ const searchQuery = ref((route.query.q as string) || '')
 const activeTagFilter = ref((route.query.tag as string) || '')
 
 const syncUrlQuery = () => {
-  const query: Record<string, string | undefined> = { ...route.query }
+  const query: LocationQuery = { ...route.query }
   if (currentTab.value && currentTab.value !== 'all') {
     query.cli = currentTab.value
   } else {
@@ -122,8 +124,16 @@ const selectedSessions = computed(() => {
   return sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`))
 })
 
+const toast = useToast()
+const { confirm } = useConfirm()
+
 const handleBatchDelete = async () => {
-  if (!confirm(`确认删除 ${selectedSessions.value.length} 个会话？此操作不可撤销。`)) return
+  if (!await confirm({
+    title: `确认删除 ${selectedSessions.value.length} 个会话？`,
+    description: '此操作不可撤销。',
+    danger: true,
+    confirmLabel: '删除'
+  })) return
   isBatchDeleting.value = true
   try {
     const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
@@ -131,10 +141,14 @@ const handleBatchDelete = async () => {
     if (res.success) {
       selectedIds.value = new Set()
       await handleRefresh()
-      if (res.data.failCount > 0) alert(`已删除 ${res.data.successCount} 个，${res.data.failCount} 个失败`)
+      if (res.data.failCount > 0) {
+        toast.add({ title: `已删除 ${res.data.successCount} 个，${res.data.failCount} 个失败`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+      } else {
+        toast.add({ title: `已删除 ${res.data.successCount} 个会话`, color: 'success', icon: 'i-lucide-check-circle-2' })
+      }
     }
   } catch (err: any) {
-    alert('批量删除失败: ' + (err?.data?.message || err?.message))
+    toast.add({ title: '批量删除失败: ' + (err?.data?.message || err?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isBatchDeleting.value = false
   }
@@ -153,9 +167,9 @@ const handleBatchAddTag = async () => {
     batchTagInput.value = ''
     selectedIds.value = new Set()
     await handleRefresh()
-    if (res.message) alert(res.message)
+    if (res.message) toast.add({ title: res.message, color: 'success', icon: 'i-lucide-check-circle-2' })
   } catch (err: any) {
-    alert('批量打标签失败: ' + (err?.data?.message || err?.message))
+    toast.add({ title: '批量打标签失败: ' + (err?.data?.message || err?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isBatchTagging.value = false
   }
@@ -198,7 +212,7 @@ const handleCacheSync = async () => {
     await handleRefresh()
   } catch (err: any) {
     const msg = err?.data?.message || err?.message || '未知错误'
-    alert('同步失败: ' + msg)
+    toast.add({ title: '同步失败: ' + msg, color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSyncing.value = false
   }
@@ -386,10 +400,10 @@ const saveEdit = async () => {
       isEditOpen.value = false
       await handleRefresh()
     } else {
-      alert(res.message || '修改失败')
+      toast.add({ title: res.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
     }
   } catch (err: any) {
-    alert(err?.data?.message || err?.message || '修改失败')
+    toast.add({ title: err?.data?.message || err?.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSavingEdit.value = false
   }
@@ -416,10 +430,10 @@ const executeDelete = async () => {
       if (isDetailOpen.value) isDetailOpen.value = false
       await handleRefresh()
     } else {
-      alert(res.message || '删除失败')
+      toast.add({ title: res.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
     }
   } catch (err: any) {
-    alert(err?.data?.message || err?.message || '删除失败')
+    toast.add({ title: err?.data?.message || err?.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isDeleting.value = false
   }
@@ -625,6 +639,14 @@ const executeDelete = async () => {
               <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                 <UIcon :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'" class="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
                 {{ sourceMeta[item.cli]?.name || item.cli }}
+              </span>
+              <span
+                v-if="item.extra?.aiDiagnosed"
+                class="px-1.5 py-0.5 rounded text-[10px] font-medium border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1 shrink-0"
+                title="该会话已完成 AI 深度诊断，进入详情页可查看诊断报告"
+              >
+                <UIcon name="i-lucide-sparkles" class="w-3 h-3" />
+                AI 已诊断
               </span>
             </div>
             <span class="text-[11px] text-zinc-400 font-mono">

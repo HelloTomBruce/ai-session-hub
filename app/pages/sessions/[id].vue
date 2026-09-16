@@ -29,6 +29,8 @@ const { data: sessionRes, pending, refresh } = await useFetch<{ success: boolean
 const session = computed(() => sessionRes.value?.data?.session)
 const messages = computed(() => sessionRes.value?.data?.messages || [])
 
+const toast = useToast()
+
 const handleRefresh = async () => {
   isRefreshing.value = true
   await refresh()
@@ -62,10 +64,10 @@ const saveEditTitle = async () => {
       isEditOpen.value = false
       await refresh()
     } else {
-      alert(res.message || '修改失败')
+      toast.add({ title: res.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
     }
   } catch (err: any) {
-    alert(err?.data?.message || err?.message || '修改失败')
+    toast.add({ title: err?.data?.message || err?.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSavingEdit.value = false
   }
@@ -294,7 +296,7 @@ const runAIDiagnosis = async () => {
       }
     }
   } catch (err: any) {
-    alert(err?.message || 'AI 诊断失败')
+    toast.add({ title: err?.message || 'AI 诊断失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isDiagnosing.value = false
   }

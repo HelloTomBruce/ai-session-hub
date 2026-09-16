@@ -74,6 +74,8 @@ const applyPreset = (presetKey: string) => {
   }
 }
 
+const toast = useToast()
+
 const saveSettings = async () => {
   isSaving.value = true
   try {
@@ -106,7 +108,7 @@ const saveSettings = async () => {
       isOpen.value = false
     }, 1200)
   } catch (err: any) {
-    alert(err?.data?.message || '保存设置失败')
+    toast.add({ title: err?.data?.message || '保存设置失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isSaving.value = false
   }

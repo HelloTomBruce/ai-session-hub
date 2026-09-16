@@ -100,6 +100,7 @@ useHead({
       <!-- Modals -->
       <McpModal v-model:open="isMcpModalOpen" />
       <LlmSettingsModal v-model:open="isLlmModalOpen" />
+      <ConfirmDialog />
     </div>
   </UApp>
 </template>

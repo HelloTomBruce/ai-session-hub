@@ -372,9 +372,16 @@ const toggleServerStatus = async (server: UnifiedMcpServer, event: Event) => {
   }
 }
 
+const toast = useToast()
+const { confirm } = useConfirm()
+
 const deleteServer = async (server: UnifiedMcpServer, event: Event) => {
   event.stopPropagation()
-  if (!confirm(`确定要从 ${server.platformName} 中删除 MCP 服务 "${server.id}" 吗？`)) {
+  if (!await confirm({
+    title: `确定要从 ${server.platformName} 中删除 MCP 服务 "${server.id}" 吗？`,
+    danger: true,
+    confirmLabel: '删除'
+  })) {
     return
   }
 
@@ -385,10 +392,11 @@ const deleteServer = async (server: UnifiedMcpServer, event: Event) => {
     if (selectedServer.value?.id === server.id) {
       isDetailOpen.value = false
     }
+    toast.add({ title: `已删除 MCP 服务 ${server.id}`, color: 'success', icon: 'i-lucide-check-circle-2' })
     refresh()
   } catch (e) {
     console.error('Failed deleting server:', e)
-    alert('删除失败')
+    toast.add({ title: '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   }
 }
 </script>

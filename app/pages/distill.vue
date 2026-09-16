@@ -36,14 +36,73 @@ interface UnifiedSession {
 const { data: sessionData } = await useFetch<{ success: boolean, data: UnifiedSession[] }>('/api/sessions?cli=all')
 const allSessions = computed(() => sessionData.value?.data || [])
 
+interface MapSessionProgress {
+  id: string
+  title: string
+  state: 'pending' | 'active' | 'cached' | 'done' | 'error'
+  chars: number
+}
+
 const selectedSessionKeys = ref<string[]>([])
 const isDistilling = ref(false)
 const distillStatus = ref('')
 const streamChunkText = ref('')
 const report = ref<DistillReport | null>(null)
+const mapSessions = ref<MapSessionProgress[]>([])
+const activeMapTitle = ref('')
+const activeMapText = ref('')
+const elapsedSeconds = ref(0)
+let elapsedTimer: ReturnType<typeof setInterval> | undefined
+let activeMapSessionId = ''
+
+const mapFinishedCount = computed(() =>
+  mapSessions.value.filter(m => m.state === 'done' || m.state === 'cached').length
+)
+
+const mapStateIcon = (state: MapSessionProgress['state']) => {
+  switch (state) {
+    case 'active': return 'i-lucide-loader-2'
+    case 'done': return 'i-lucide-check-circle-2'
+    case 'cached': return 'i-lucide-database'
+    case 'error': return 'i-lucide-x-circle'
+    default: return 'i-lucide-clock'
+  }
+}
+
+const mapStateClass = (state: MapSessionProgress['state']) => {
+  switch (state) {
+    case 'active': return 'text-purple-500 animate-spin'
+    case 'done': return 'text-emerald-500'
+    case 'cached': return 'text-sky-500'
+    case 'error': return 'text-red-500'
+    default: return 'text-zinc-300 dark:text-zinc-600'
+  }
+}
+
+const mapStateLabel = (state: MapSessionProgress['state']) => {
+  switch (state) {
+    case 'active': return '提炼中'
+    case 'done': return '已完成'
+    case 'cached': return '缓存命中'
+    case 'error': return '失败'
+    default: return '等待中'
+  }
+}
 const copySuccess = ref(false)
 const copyAdrSuccess = ref(false)
 const activeReportTab = ref<'summary' | 'adr'>('summary')
+const selectedAdrIds = ref<string[]>([])
+const toast = useToast()
+const { confirm } = useConfirm()
+
+const toggleAdrSelect = (adrId: string) => {
+  const idx = selectedAdrIds.value.indexOf(adrId)
+  if (idx >= 0) {
+    selectedAdrIds.value.splice(idx, 1)
+  } else {
+    selectedAdrIds.value.push(adrId)
+  }
+}
 
 const toggleSelect = (session: UnifiedSession) => {
   const key = `${session.cli}::${session.id}`
@@ -65,7 +124,7 @@ const clearSelection = () => {
 
 const handleDistill = async () => {
   if (selectedSessionKeys.value.length === 0) {
-    alert('请至少选择一个会话进行总结提炼')
+    toast.add({ title: '请至少选择一个会话进行总结提炼', color: 'warning', icon: 'i-lucide-alert-triangle' })
     return
   }
 
@@ -78,6 +137,18 @@ const handleDistill = async () => {
   distillStatus.value = '正在准备启动知识提炼引擎...'
   streamChunkText.value = ''
   report.value = null
+  mapSessions.value = items.map(item => ({
+    id: item.id as string,
+    title: allSessions.value.find(sess => sess.id === item.id)?.title || (item.id as string),
+    state: 'pending',
+    chars: 0
+  }))
+  activeMapTitle.value = ''
+  activeMapText.value = ''
+  activeMapSessionId = ''
+  elapsedSeconds.value = 0
+  clearInterval(elapsedTimer)
+  elapsedTimer = setInterval(() => elapsedSeconds.value++, 1000)
 
   try {
     const response = await fetch('/api/distill/stream', {
@@ -123,9 +194,24 @@ const handleDistill = async () => {
           distillStatus.value = parsed.message || ''
         } else if (eventType === 'chunk') {
           streamChunkText.value += parsed.text || ''
+        } else if (eventType === 'map-progress') {
+          if (Array.isArray(parsed.sessions)) {
+            mapSessions.value = parsed.sessions
+          }
+        } else if (eventType === 'map-chunk') {
+          if (parsed.sessionId !== activeMapSessionId) {
+            activeMapSessionId = parsed.sessionId || ''
+            activeMapText.value = ''
+            activeMapTitle.value = mapSessions.value.find(m => m.id === parsed.sessionId)?.title || ''
+          }
+          activeMapText.value = (activeMapText.value + (parsed.text || '')).slice(-1200)
+          const sess = mapSessions.value.find(m => m.id === parsed.sessionId)
+          if (sess) sess.chars += (parsed.text || '').length
         } else if (eventType === 'done') {
           if (parsed.report) {
             report.value = parsed.report
+            // 默认全选 ADR，用户可手动取消勾选后再批量归档
+            selectedAdrIds.value = (parsed.report.adrs || []).map((a: ADRItem) => a.id)
           }
         } else if (eventType === 'error') {
           throw new Error(parsed.message || '提炼发生错误')
@@ -153,8 +239,9 @@ const handleDistill = async () => {
       }
     }
   } catch (err: any) {
-    alert(err?.message || '知识提炼失败')
+    toast.add({ title: err?.message || '知识提炼失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
+    clearInterval(elapsedTimer)
     isDistilling.value = false
   }
 }
@@ -175,14 +262,15 @@ const copyAdrMarkdown = () => {
 
 const isArchiving = ref(false)
 const archiveAllAdrs = async () => {
-  if (!report.value?.adrs || report.value.adrs.length === 0) {
-    alert('当前报告中没有可归档的 ADR 条目')
+  const targetAdrs = (report.value?.adrs || []).filter(adr => selectedAdrIds.value.includes(adr.id))
+  if (targetAdrs.length === 0) {
+    toast.add({ title: '请先勾选要归档的 ADR 条目', color: 'warning', icon: 'i-lucide-alert-triangle' })
     return
   }
   isArchiving.value = true
   try {
     let count = 0
-    for (const adr of report.value.adrs) {
+    for (const adr of targetAdrs) {
       await $fetch('/api/knowledge', {
         method: 'POST',
         body: {
@@ -200,9 +288,14 @@ const archiveAllAdrs = async () => {
       })
       count++
     }
-    alert(`🎉 成功将 ${count} 条 ADR 架构决策归档至「知识资产库」！可在导航栏「知识资产库」中随时检索与导出。`)
+    toast.add({
+      title: `成功将 ${count} 条 ADR 架构决策归档至「知识资产库」`,
+      description: '可在导航栏「知识资产库」中随时检索与导出',
+      color: 'success',
+      icon: 'i-lucide-check-circle-2'
+    })
   } catch (err: any) {
-    alert(`归档失败: ${err.message}`)
+    toast.add({ title: `归档失败: ${err.message}`, color: 'error', icon: 'i-lucide-alert-triangle' })
   } finally {
     isArchiving.value = false
   }
@@ -245,7 +338,16 @@ const archiveAllAdrs = async () => {
             <div class="flex items-center gap-1.5 text-xs">
               <button @click="selectAllRecent(5)" class="text-zinc-600 dark:text-zinc-300 hover:underline">选近5条</button>
               <span class="text-zinc-300 dark:text-zinc-700">|</span>
-              <button @click="clearSelection" class="text-zinc-400 hover:underline">清空</button>
+              <button
+                @click="clearSelection"
+                :disabled="selectedSessionKeys.length === 0"
+                :class="[
+                  'transition-colors',
+                  selectedSessionKeys.length === 0
+                    ? 'text-zinc-300 dark:text-zinc-600 cursor-not-allowed'
+                    : 'text-zinc-600 dark:text-zinc-300 hover:underline'
+                ]"
+              >清空</button>
             </div>
           </div>
 
@@ -316,11 +418,62 @@ const archiveAllAdrs = async () => {
 
           <!-- Status indicator -->
           <div class="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded border border-zinc-200/70 dark:border-zinc-700/60 text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-            <span class="relative flex h-2 w-2">
+            <span class="relative flex h-2 w-2 shrink-0">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
               <span class="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
             </span>
-            <span class="font-medium font-mono">{{ distillStatus || '正在执行 Map-Reduce 提炼任务...' }}</span>
+            <span class="font-medium font-mono flex-1 min-w-0 truncate" :title="distillStatus">{{ distillStatus || '正在执行 Map-Reduce 提炼任务...' }}</span>
+            <span class="shrink-0 font-mono text-[10px] text-zinc-400 flex items-center gap-1">
+              <UIcon name="i-lucide-timer" class="w-3 h-3" />
+              {{ elapsedSeconds }}s
+            </span>
+          </div>
+
+          <!-- Map Phase Progress Panel -->
+          <div v-if="mapSessions.length" class="rounded border border-zinc-200/70 dark:border-zinc-700/60 overflow-hidden">
+            <div class="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200/70 dark:border-zinc-700/60 flex items-center justify-between text-[11px]">
+              <span class="font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                <UIcon name="i-lucide-layers" class="w-3.5 h-3.5 text-purple-500" />
+                Map 阶段 · 单会话提炼进度
+              </span>
+              <span class="font-mono text-zinc-500 dark:text-zinc-400">{{ mapFinishedCount }}/{{ mapSessions.length }} 完成</span>
+            </div>
+            <!-- Progress bar -->
+            <div class="h-1 bg-zinc-100 dark:bg-zinc-800">
+              <div
+                class="h-full bg-purple-500 dark:bg-purple-400 transition-all duration-500"
+                :style="{ width: (mapSessions.length ? (mapFinishedCount / mapSessions.length * 100) : 0) + '%' }"
+              ></div>
+            </div>
+            <!-- Session checklist -->
+            <div class="divide-y divide-zinc-100 dark:divide-zinc-800/80 max-h-[220px] overflow-y-auto">
+              <div
+                v-for="m in mapSessions" :key="m.id"
+                class="px-3 py-1.5 flex items-center gap-2 text-[11px]"
+                :class="m.state === 'active' ? 'bg-purple-50/60 dark:bg-purple-950/20' : ''"
+              >
+                <UIcon :name="mapStateIcon(m.state)" class="w-3.5 h-3.5 shrink-0" :class="mapStateClass(m.state)" />
+                <span class="flex-1 min-w-0 truncate" :class="m.state === 'pending' ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300'" :title="m.title">
+                  {{ m.title }}
+                </span>
+                <span v-if="m.state === 'active'" class="shrink-0 font-mono text-[10px] text-purple-500 dark:text-purple-400">
+                  已生成 {{ m.chars }} 字符
+                </span>
+                <span class="shrink-0 text-[10px]" :class="m.state === 'pending' ? 'text-zinc-300 dark:text-zinc-600' : 'text-zinc-400 dark:text-zinc-500'">
+                  {{ mapStateLabel(m.state) }}
+                </span>
+              </div>
+            </div>
+            <!-- Active session live output -->
+            <div v-if="activeMapText" class="border-t border-zinc-200/70 dark:border-zinc-700/60">
+              <div class="px-3 pt-1.5 text-[10px] text-zinc-400 dark:text-zinc-500 flex items-center gap-1">
+                <UIcon name="i-lucide-sparkles" class="w-3 h-3 text-purple-400" />
+                正在输出: <span class="truncate font-medium">{{ activeMapTitle }}</span>
+              </div>
+              <div class="p-3 text-zinc-500 dark:text-zinc-400 font-mono text-[10px] max-h-[120px] overflow-y-auto whitespace-pre-wrap leading-relaxed break-all">
+                {{ activeMapText }}<span class="inline-block w-1 h-3 bg-purple-500 dark:bg-purple-400 ml-0.5 animate-pulse align-middle"></span>
+              </div>
+            </div>
           </div>
 
           <!-- Realtime text stream typewriter box -->
@@ -336,7 +489,7 @@ const archiveAllAdrs = async () => {
               {{ streamChunkText }}<span class="inline-block w-1.5 h-3.5 bg-purple-600 dark:bg-purple-400 ml-0.5 animate-pulse align-middle"></span>
             </div>
           </div>
-          <div v-else class="py-12 flex flex-col items-center justify-center text-zinc-400 space-y-2">
+          <div v-else-if="!mapSessions.length" class="py-12 flex flex-col items-center justify-center text-zinc-400 space-y-2">
             <UIcon name="i-lucide-cpu" class="w-8 h-8 opacity-40 animate-pulse" />
             <p class="text-xs">正在分析会话思维链与工具操作上下文...</p>
           </div>
@@ -344,9 +497,9 @@ const archiveAllAdrs = async () => {
 
         <!-- Render Finished Report -->
         <div v-else-if="report" class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 space-y-4 shadow-sm">
-          <div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <div class="flex flex-col gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">{{ report.title }}</h2>
                 <span
                   v-if="report.isAiGenerated"
@@ -366,7 +519,7 @@ const archiveAllAdrs = async () => {
             </div>
 
             <!-- Tab & Actions -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
               <div class="flex items-center bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded text-xs">
                 <button
                   @click="activeReportTab = 'summary'"
@@ -414,13 +567,15 @@ const archiveAllAdrs = async () => {
                 </UButton>
                 <UButton
                   size="xs"
-                  color="primary"
+                  color="neutral"
                   variant="solid"
                   icon="i-lucide-sparkles"
+                  class="bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
                   :loading="isArchiving"
+                  :disabled="selectedAdrIds.length === 0"
                   @click="archiveAllAdrs"
                 >
-                  一键归档至知识库
+                  批量归档至知识库 ({{ selectedAdrIds.length }})
                 </UButton>
               </div>
             </div>
@@ -505,10 +660,20 @@ const archiveAllAdrs = async () => {
             <div
               v-for="adr in report.adrs || []"
               :key="adr.id"
-              class="p-3.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 space-y-2 text-xs"
+              @click="toggleAdrSelect(adr.id)"
+              :class="[
+                'p-3.5 rounded-lg border space-y-2 text-xs cursor-pointer select-none transition-all',
+                selectedAdrIds.includes(adr.id)
+                  ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-100/90 dark:bg-zinc-800/60'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 opacity-80 hover:opacity-100'
+              ]"
             >
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
+                  <UIcon
+                    :name="selectedAdrIds.includes(adr.id) ? 'i-lucide-check-square' : 'i-lucide-square'"
+                    class="w-4 h-4 shrink-0 text-zinc-600 dark:text-zinc-300"
+                  />
                   <span class="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
                     {{ adr.id }}
                   </span>

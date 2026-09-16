@@ -33,21 +33,25 @@ const typeFilters = [
   { label: '里程碑 (Milestone)', value: 'Milestone', icon: 'i-lucide-flag', color: 'purple' }
 ]
 
+const toast = useToast()
+const { confirm } = useConfirm()
+
 function openDetail(item: KnowledgeItem) {
   currentItem.value = item
   isDetailOpen.value = true
 }
 
 async function deleteItem(id: string) {
-  if (!confirm('确定要从知识资产库中删除此条目吗？')) return
+  if (!await confirm({ title: '确定要从知识资产库中删除此条目吗？', danger: true, confirmLabel: '删除' })) return
   try {
     await $fetch(`/api/knowledge/${id}`, { method: 'DELETE' as any })
     if (currentItem.value?.id === id) {
       isDetailOpen.value = false
     }
+    toast.add({ title: '已删除该知识条目', color: 'success', icon: 'i-lucide-check-circle-2' })
     refresh()
   } catch (err: any) {
-    alert(`删除失败: ${err.message}`)
+    toast.add({ title: `删除失败: ${err.message}`, color: 'error', icon: 'i-lucide-alert-triangle' })
   }
 }
 
@@ -57,7 +61,7 @@ async function copyMarkdown(text: string) {
     copySuccess.value = true
     setTimeout(() => { copySuccess.value = false }, 2000)
   } catch {
-    alert('复制到剪贴板失败')
+    toast.add({ title: '复制到剪贴板失败', color: 'error', icon: 'i-lucide-alert-triangle' })
   }
 }
 
