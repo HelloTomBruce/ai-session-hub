@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -55,10 +55,14 @@ CREATE TABLE IF NOT EXISTS messages_cache (
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages_cache(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages_cache(timestamp);
 
--- FTS5 全文搜索虚拟表（用 content= 外部内容表实现低耦合）
+-- FTS5 全文搜索虚拟表（增强字段：支持 message_id 锚点、tool_summary 工具调用、cwd 路径、tags 标签与中英文分词）
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_messages USING fts5(
   content,
   title,
+  tool_summary,
+  cwd,
+  tags,
+  message_id UNINDEXED,
   session_id UNINDEXED,
   platform UNINDEXED,
   role UNINDEXED,
@@ -104,48 +108,19 @@ CREATE TABLE IF NOT EXISTS session_evaluations (
 );
 `.trim()
 
-// 重建 FTS 索引（当大量消息变更后）
+// 重建 FTS 索引
 export const REBUILD_FTS_SQL = `
 INSERT INTO fts_messages(fts_messages)
 SELECT 'rebuild'
 `.trim()
 
 // 插入/更新 FTS 索引
-export const UPSERT_FTS_SQL = `
-INSERT INTO fts_messages(rowid, content, title, session_id, platform, role)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(rowid) DO UPDATE SET
-  content = excluded.content,
-  title = excluded.title,
-  session_id = excluded.session_id,
-  platform = excluded.platform,
-  role = excluded.role
+export const INSERT_FTS_SQL = `
+INSERT INTO fts_messages(content, title, tool_summary, cwd, tags, message_id, session_id, platform, role)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `.trim()
 
 // 删除 FTS 条目
 export const DELETE_FTS_SQL = `
 DELETE FROM fts_messages WHERE session_id = ?
-`.trim()
-
-// 搜索
-export const SEARCH_SQL = `
-SELECT
-  f.rowid,
-  snippet(fts_messages, 0, '<mark>', '</mark>', '...', 48) AS snippet,
-  f.content,
-  f.title,
-  f.session_id,
-  f.platform,
-  f.role,
-  rank
-FROM fts_messages f
-WHERE fts_messages MATCH ?
-ORDER BY rank
-LIMIT ? OFFSET ?
-`.trim()
-
-export const SEARCH_COUNT_SQL = `
-SELECT COUNT(*) as total
-FROM fts_messages
-WHERE fts_messages MATCH ?
 `.trim()

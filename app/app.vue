@@ -1,6 +1,20 @@
 <script setup lang="ts">
 const isMcpModalOpen = ref(false)
 const isLlmModalOpen = ref(false)
+const isPluginModalOpen = ref(false)
+
+onMounted(() => {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault()
+      navigateTo('/search')
+    }
+  }
+  window.addEventListener('keydown', onKeyDown)
+  onUnmounted(() => {
+    window.removeEventListener('keydown', onKeyDown)
+  })
+})
 
 useHead({
   title: 'AI Session Hub - 会话与知识管理',
@@ -52,16 +66,16 @@ useHead({
                 >会话</UButton>
               </NuxtLink>
               <NuxtLink
-                to="/insights"
+                to="/search"
                 class="flex-shrink-0"
               >
                 <UButton
                   variant="ghost"
                   color="neutral"
                   size="sm"
-                  icon="i-lucide-line-chart"
+                  icon="i-lucide-search"
                   class="whitespace-nowrap px-2.5"
-                >洞察</UButton>
+                >搜索</UButton>
               </NuxtLink>
               <NuxtLink
                 to="/knowledge"
@@ -88,40 +102,16 @@ useHead({
                 >提炼</UButton>
               </NuxtLink>
               <NuxtLink
-                to="/skills"
+                to="/insights"
                 class="flex-shrink-0"
               >
                 <UButton
                   variant="ghost"
                   color="neutral"
                   size="sm"
-                  icon="i-lucide-puzzle"
+                  icon="i-lucide-line-chart"
                   class="whitespace-nowrap px-2.5"
-                >技能</UButton>
-              </NuxtLink>
-              <NuxtLink
-                to="/mcp"
-                class="flex-shrink-0"
-              >
-                <UButton
-                  variant="ghost"
-                  color="neutral"
-                  size="sm"
-                  icon="i-lucide-server"
-                  class="whitespace-nowrap px-2.5"
-                >MCP</UButton>
-              </NuxtLink>
-              <NuxtLink
-                to="/search"
-                class="flex-shrink-0"
-              >
-                <UButton
-                  variant="ghost"
-                  color="neutral"
-                  size="sm"
-                  icon="i-lucide-search"
-                  class="whitespace-nowrap px-2.5"
-                >搜索</UButton>
+                >洞察</UButton>
               </NuxtLink>
             </nav>
           </div>
@@ -141,6 +131,18 @@ useHead({
                 class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform"
               />
             </button>
+
+            <!-- Plugin Ecosystem Button -->
+            <UButton
+              size="sm"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-blocks"
+              title="管理适配器插件与零代码扩展"
+              @click="isPluginModalOpen = true"
+            >
+              <span class="hidden md:inline text-xs">插件</span>
+            </UButton>
 
             <!-- LLM Provider Settings Button -->
             <UButton
@@ -171,6 +173,7 @@ useHead({
 
       <!-- Modals -->
       <McpModal v-model:open="isMcpModalOpen" />
+      <PluginSettingsModal v-model:open="isPluginModalOpen" />
       <LlmSettingsModal v-model:open="isLlmModalOpen" />
       <ConfirmDialog />
     </div>

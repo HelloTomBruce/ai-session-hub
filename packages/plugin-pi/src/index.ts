@@ -1,10 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { BaseJsonlAdapter } from '../base-jsonl-adapter'
-import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession } from '../types'
-
-const homeDir = os.homedir()
+import type {
+  SessionPlugin,
+  SessionPluginManifest,
+  UnifiedSession,
+  SessionMessage,
+  SessionToolCall,
+  CreateSessionPayload,
+  UpdateSessionPayload
+} from '@session-hub/core'
 
 interface PiTextPart {
   type: 'text'
@@ -23,7 +28,6 @@ interface PiToolPart {
 
 type PiContentPart = PiTextPart | PiThinkingPart | PiToolPart
 
-/** Shape of a single line in a Pi CLI session JSONL file. */
 interface PiLine {
   id?: string
   type?: string
@@ -39,14 +43,51 @@ interface PiLine {
   }
 }
 
-export class PiSessionAdapter extends BaseJsonlAdapter {
-  constructor() {
-    super({
-      id: 'pi',
-      name: 'Pi CLI',
-      category: 'cli',
-      baseDir: path.join(homeDir, '.pi', 'agent', 'sessions')
-    })
+/**
+ * Pi CLI 独立 npm 插件包实现
+ */
+export class PiPlugin implements SessionPlugin {
+  readonly manifest: SessionPluginManifest = {
+    id: 'pi',
+    name: 'Pi CLI',
+    category: 'cli',
+    icon: 'i-lucide-terminal',
+    version: '1.0.0',
+    description: '轻量级多模型终端 Agent，支持树状会话、Skill 与 MCP 工具',
+    author: 'Session Hub Team',
+    type: 'npm',
+    defaultEnabled: true
+  }
+
+  private baseDir: string
+
+  constructor(customBaseDir?: string) {
+    this.baseDir = customBaseDir || path.join(os.homedir(), '.pi', 'agent', 'sessions')
+  }
+
+  isAvailable(): boolean {
+    return fs.existsSync(this.baseDir)
+  }
+
+  private readJsonl<T>(filePath: string): T[] {
+    try {
+      if (!fs.existsSync(filePath)) return []
+      const raw = fs.readFileSync(filePath, 'utf-8')
+      const lines = raw.split('\n')
+      const items: T[] = []
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        try {
+          items.push(JSON.parse(trimmed) as T)
+        } catch {
+          // ignore invalid json line
+        }
+      }
+      return items
+    } catch {
+      return []
+    }
   }
 
   getSessions(): UnifiedSession[] {
@@ -108,13 +149,13 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
                 rawLocation: filePath
               })
             } catch {
-              // skip session files that fail to read
+              // skip unreadable session file
             }
           }
         }
       }
     } catch {
-      // ignore errors while scanning pi sessions
+      // ignore scanning errors
     }
 
     return sessions
@@ -158,7 +199,7 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
   }
 
   createSession(payload: CreateSessionPayload): UnifiedSession {
-    const targetCwd = payload.cwd || homeDir
+    const targetCwd = payload.cwd || os.homedir()
     const now = Date.now()
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
     const folderName = `--${targetCwd.replace(/^\//, '').replace(/\//g, '-')}--`
@@ -203,16 +244,16 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
     }
   }
 
-  override updateSession(id: string, payload: UpdateSessionPayload): boolean {
+  updateSession(id: string, payload: UpdateSessionPayload): boolean {
     if (!payload.title) return false
     const session = this.getSessions().find(s => s.id === id)
     if (!session || !fs.existsSync(session.rawLocation)) return false
 
     try {
       const raw = fs.readFileSync(session.rawLocation, 'utf-8')
-      const lines = raw.split('\n').filter(Boolean)
+      const lines: string[] = raw.split('\n').filter(Boolean)
       let customTitleFound = false
-      const updatedLines = lines.map((line) => {
+      const updatedLines = lines.map((line: string) => {
         try {
           const parsed = JSON.parse(line)
           if (parsed.type === 'session') {
@@ -225,13 +266,12 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
             return JSON.stringify(parsed)
           }
         } catch {
-          // keep the original line when it is not valid JSON
+          // ignore non-json line
         }
         return line
       })
 
       if (!customTitleFound) {
-        // Insert custom_title after first line
         const customTitleObj = {
           type: 'custom_title',
           title: payload.title,
@@ -243,8 +283,24 @@ export class PiSessionAdapter extends BaseJsonlAdapter {
       fs.writeFileSync(session.rawLocation, updatedLines.join('\n') + '\n', 'utf-8')
       return true
     } catch (e) {
-      console.error('[PiSessionAdapter] Failed updating session title:', e)
+      console.error('[PiPlugin] Failed updating session title:', e)
       return false
     }
   }
+
+  deleteSession(id: string): boolean {
+    const session = this.getSessions().find(s => s.id === id)
+    if (!session || !fs.existsSync(session.rawLocation)) {
+      return true
+    }
+    try {
+      fs.unlinkSync(session.rawLocation)
+      return true
+    } catch {
+      return true
+    }
+  }
 }
+
+export const plugin = new PiPlugin()
+export default plugin

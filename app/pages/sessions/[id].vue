@@ -42,19 +42,7 @@ const platform = computed(() => (route.query.cli as string) || '')
 const detailMode = ref<'chat' | 'thinking'>('chat')
 const isRefreshing = ref(false)
 
-const sourceMeta: Record<string, { name: string, type: string, icon: string }> = {
-  pi: { name: 'Pi CLI', type: 'CLI', icon: 'i-lucide-terminal' },
-  opencode: { name: 'OpenCode', type: 'CLI', icon: 'i-lucide-code-2' },
-  agy: { name: 'AGY CLI', type: 'CLI', icon: 'i-lucide-sparkles' },
-  claude: { name: 'Claude Code', type: 'CLI', icon: 'i-lucide-bot' },
-  codex: { name: 'Codex App', type: 'APP', icon: 'i-lucide-cpu' },
-  workbuddy: { name: 'WorkBuddy', type: 'APP', icon: 'i-lucide-briefcase' },
-  reasonix: { name: 'Reasonix', type: 'APP', icon: 'i-lucide-brain-circuit' },
-  kimi: { name: 'Kimi CLI', type: 'CLI', icon: 'i-lucide-bot' },
-  trae: { name: 'Trae', type: 'APP', icon: 'i-lucide-pen-tool' },
-  cursor: { name: 'Cursor', type: 'APP', icon: 'i-lucide-cursor-arrow' },
-  mimo: { name: 'Mimo CLI', type: 'CLI', icon: 'i-lucide-smartphone' }
-}
+const { getPluginMeta } = usePlugins()
 
 const { data: sessionRes, pending, refresh } = await useFetch<{ success: boolean, data: SessionDetailData }>(
   () => `/api/sessions/${sessionId.value}?cli=${platform.value}`
@@ -64,6 +52,46 @@ const session = computed(() => sessionRes.value?.data?.session)
 const messages = computed(() => sessionRes.value?.data?.messages || [])
 
 const toast = useToast()
+
+const targetMsgId = computed(() => {
+  const q = (route.query.msgId as string) || ''
+  if (!q) return ''
+  // If composite key was passed (${cli}_${sessionId}_${rawMsgId}), strip prefix for backwards compatibility
+  const prefix = `${platform.value}_${sessionId.value}_`
+  if (q.startsWith(prefix)) {
+    return q.slice(prefix.length)
+  }
+  return q
+})
+const activeHighlightedMsgId = ref('')
+
+const scrollToTargetMessage = () => {
+  if (!targetMsgId.value) return
+  nextTick(() => {
+    setTimeout(() => {
+      let el = document.getElementById('msg-' + targetMsgId.value)
+      // Fallback: if query was composite key, check direct id as well
+      if (!el && route.query.msgId) {
+        el = document.getElementById('msg-' + route.query.msgId)
+      }
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        activeHighlightedMsgId.value = targetMsgId.value
+        setTimeout(() => {
+          activeHighlightedMsgId.value = ''
+        }, 3500)
+      }
+    }, 250)
+  })
+}
+
+onMounted(() => {
+  scrollToTargetMessage()
+})
+
+watch(() => messages.value, () => {
+  scrollToTargetMessage()
+})
 
 const handleRefresh = async () => {
   isRefreshing.value = true
@@ -643,10 +671,10 @@ const backUrl = computed(() => {
             <div class="flex items-center gap-2">
               <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                 <UIcon
-                  :name="sourceMeta[platform]?.icon || 'i-lucide-terminal'"
+                  :name="getPluginMeta(platform).icon"
                   class="w-3.5 h-3.5"
                 />
-                {{ sourceMeta[platform]?.name || platform.toUpperCase() }}
+                {{ getPluginMeta(platform).name }}
               </span>
               <span class="text-xs text-zinc-400 font-mono">ID: {{ sessionId }}</span>
             </div>
@@ -936,12 +964,16 @@ const backUrl = computed(() => {
       >
         <div
           v-for="(msg, idx) in messages"
+          :id="'msg-' + (msg.id || idx)"
           :key="idx"
           :class="[
-            'p-4 rounded-xl text-xs space-y-2 border transition-all',
+            'p-4 rounded-xl text-xs space-y-2 border transition-all duration-300',
             msg.role === 'user'
               ? 'bg-zinc-100/90 dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700/70 ml-8 lg:ml-20'
-              : 'bg-white dark:bg-zinc-900 border-zinc-200/90 dark:border-zinc-800 mr-8 lg:mr-20 shadow-xs'
+              : 'bg-white dark:bg-zinc-900 border-zinc-200/90 dark:border-zinc-800 mr-8 lg:mr-20 shadow-xs',
+            activeHighlightedMsgId === (msg.id || String(idx))
+              ? 'ring-2 ring-amber-500 shadow-lg scale-[1.01]'
+              : ''
           ]"
         >
           <!-- Message Header -->

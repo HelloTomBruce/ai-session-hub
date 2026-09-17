@@ -1,10 +1,16 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type Database from 'better-sqlite3'
-import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
-
-const homeDir = os.homedir()
+import Database from 'better-sqlite3'
+import type {
+  SessionPlugin,
+  SessionPluginManifest,
+  UnifiedSession,
+  SessionMessage,
+  SessionToolCall,
+  CreateSessionPayload,
+  UpdateSessionPayload
+} from '@session-hub/core'
 
 interface OpenCodeSessionRow {
   id: string
@@ -57,14 +63,35 @@ interface OpenCodeProjectRow {
   id?: string
 }
 
-export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
-  constructor() {
-    super({
-      id: 'opencode',
-      name: 'OpenCode CLI',
-      category: 'cli',
-      dbPath: path.join(homeDir, '.local', 'share', 'opencode', 'opencode.db')
-    })
+export class OpenCodePlugin implements SessionPlugin {
+  readonly manifest: SessionPluginManifest = {
+    id: 'opencode',
+    name: 'OpenCode CLI',
+    category: 'cli',
+    icon: 'i-lucide-code-2',
+    version: '1.0.0',
+    description: '开源 AI 编码 CLI，支持代码重构、工具调用与多模型对话',
+    author: 'Session Hub Team',
+    type: 'npm',
+    defaultEnabled: true
+  }
+
+  private dbPath: string
+
+  constructor(customDbPath?: string) {
+    this.dbPath = customDbPath || path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db')
+  }
+
+  isAvailable(): boolean {
+    try {
+      return fs.existsSync(this.dbPath)
+    } catch {
+      return false
+    }
+  }
+
+  private getDb(readonly = true): Database.Database {
+    return new Database(this.dbPath, { readonly, fileMustExist: true })
   }
 
   getSessions(): UnifiedSession[] {
@@ -103,7 +130,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
     }
   }
 
-  getMessages(id: string): SessionMessage[] {
+  getMessages(id: string, _session?: UnifiedSession): SessionMessage[] {
     if (!this.isAvailable()) return []
     let db: Database.Database | undefined
     const messages: SessionMessage[] = []
@@ -115,7 +142,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
         try {
           msgData = typeof m.data === 'string' ? JSON.parse(m.data) as OpenCodeMessageData : (m.data || {})
         } catch {
-          // fall back to empty message data when the stored JSON is malformed
+          // ignore
         }
 
         const role = msgData.role || 'assistant'
@@ -131,7 +158,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
           try {
             pData = typeof p.data === 'string' ? JSON.parse(p.data) as OpenCodePartData : (p.data || {})
           } catch {
-            // fall back to empty part data when the stored JSON is malformed
+            // ignore
           }
 
           const pType = pData.type || p.type
@@ -179,7 +206,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
         return res.changes > 0
       }
     } catch (e) {
-      console.error('[OpenCodeSessionAdapter] Failed updating session:', e)
+      console.error('[OpenCodePlugin] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }
@@ -199,7 +226,7 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
   }
 
   createSession(payload: CreateSessionPayload): UnifiedSession {
-    const targetCwd = payload.cwd || homeDir
+    const targetCwd = payload.cwd || os.homedir()
     const now = Date.now()
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
@@ -230,3 +257,6 @@ export class OpenCodeSessionAdapter extends BaseSqliteAdapter {
     }
   }
 }
+
+export const plugin = new OpenCodePlugin()
+export default plugin

@@ -1,0 +1,38 @@
+{
+  "name": "@session-hub/plugin-claude",
+  "version": "1.0.0",
+  "description": "Claude Code CLI session plugin for AI Session Hub",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "session-hub",
+    "session-hub-plugin",
+    "claude-code",
+    "anthropic"
+  ],
+  "author": "Session Hub Team",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@session-hub/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@session-hub/core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  }
+}

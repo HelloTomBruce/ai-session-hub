@@ -1,0 +1,33 @@
+{
+  "name": "@session-hub/core",
+  "version": "1.0.0",
+  "description": "Core interfaces, types, and base classes for AI Session Hub plugins",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "session-hub",
+    "ai-agent",
+    "plugin",
+    "sdk"
+  ],
+  "author": "Session Hub Team",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

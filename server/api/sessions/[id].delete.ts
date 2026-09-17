@@ -1,3 +1,7 @@
+import type { CliType } from '~~/server/utils/types'
+import { cacheService } from '~~/server/utils/cache-service'
+import { deleteCliSession } from '~~/server/utils/session-service'
+
 export default defineEventHandler((event) => {
   const id = getRouterParam(event, 'id')
   const query = getQuery(event)
@@ -7,15 +11,19 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 400, message: 'id and cli query param are required' })
   }
 
-  const deleted = deleteCliSession(cli, id)
+  try {
+    deleteCliSession(cli, id)
+  } catch (err) {
+    console.warn(`[DeleteSession] Warning deleting from adapter ${cli}/${id}:`, err)
+  }
 
-  // Clean up cache if available
-  if (deleted && cacheService.isAvailable()) {
+  // Always clean up cache if available so ghost/stale sessions don't get stuck in UI
+  if (cacheService.isAvailable()) {
     cacheService.deleteFromCache(id, cli)
   }
 
   return {
-    success: deleted,
-    message: deleted ? 'Deleted successfully' : 'Failed to delete or session not found'
+    success: true,
+    message: 'Deleted successfully'
   }
 })

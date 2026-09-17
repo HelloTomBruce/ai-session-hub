@@ -10,13 +10,16 @@ import { distillSessionsContent } from './distillator'
 import { mcpLogger } from './mcp-logger'
 import { knowledgeService } from './knowledge-service'
 import { evaluateSessionValue } from './evaluator-engine'
+import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
+
+const ALL_PLATFORMS = ['all', 'pi', 'opencode', 'agy', 'claude', 'codex', 'workbuddy', 'reasonix', 'kimi', 'trae', 'cursor', 'mimo']
 
 export function createMcpServer() {
   const server = new Server(
     {
       name: 'ai-session-hub-mcp',
-      version: '1.0.0'
+      version: '1.1.0'
     },
     {
       capabilities: {
@@ -31,6 +34,38 @@ export function createMcpServer() {
     return {
       tools: [
         {
+          name: 'search_sessions_fts',
+          description: '对本地所有 11+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词），快速找回历史上下文与报错解决记录',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: '搜索关键词、问题描述、函数名、错误日志或修改的文件路径'
+              },
+              platform: {
+                type: 'string',
+                description: '可选平台过滤：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo',
+                enum: ALL_PLATFORMS
+              },
+              role: {
+                type: 'string',
+                description: '按消息角色过滤：all | user | assistant',
+                enum: ['all', 'user', 'assistant']
+              },
+              cwd: {
+                type: 'string',
+                description: '可选工作区项目路径关键词或前缀过滤'
+              },
+              limit: {
+                type: 'number',
+                description: '返回命中会话的最大数量（默认 10）'
+              }
+            },
+            required: ['query']
+          }
+        },
+        {
           name: 'list_sessions',
           description: '列出本地由 AI Session Hub 管理的所有 CLI 和 App 历史会话（支持按平台、工作区路径 CWD、关键词搜索和数量限制）',
           inputSchema: {
@@ -38,12 +73,12 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix',
-                enum: ['all', 'pi', 'opencode', 'agy', 'claude', 'codex', 'workbuddy', 'reasonix']
+                description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo',
+                enum: ALL_PLATFORMS
               },
               cwd: {
                 type: 'string',
-                description: '按工作目录关键词或路径筛选（如 /Users/zhangbei/code/dataease-web）'
+                description: '按工作目录关键词或路径筛选（如 /Users/zhangbei/code/session-hub）'
               },
               search: {
                 type: 'string',
@@ -64,50 +99,14 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix)',
-                required: true
+                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo)'
               },
               sessionId: {
                 type: 'string',
-                description: '会话唯一标识 ID',
-                required: true
+                description: '会话唯一标识 ID'
               }
             },
             required: ['platform', 'sessionId']
-          }
-        },
-        {
-          name: 'distill_knowledge',
-          description: '对指定的一个或多个会话进行知识提炼、行动轨迹复盘、技术选型决策与经验避坑要点提炼，生成结构化知识总结报告',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              sessionIds: {
-                type: 'array',
-                items: { type: 'string' },
-                description: '要总结提炼的会话 ID 列表'
-              },
-              platform: {
-                type: 'string',
-                description: '指定平台（若不指定 sessionIds，则提炼该平台近期的会话）'
-              },
-              cwd: {
-                type: 'string',
-                description: '按工作目录路径聚合提炼最近所有的开发会话'
-              },
-              limit: {
-                type: 'number',
-                description: '最多提取的会话数量（默认 5）'
-              }
-            }
-          }
-        },
-        {
-          name: 'get_hub_stats',
-          description: '获取本地各 AI 工具与 App 的会话统计数据（各工具会话总数、活跃状态等）',
-          inputSchema: {
-            type: 'object',
-            properties: {}
           }
         },
         {
@@ -190,6 +189,32 @@ export function createMcpServer() {
           }
         },
         {
+          name: 'distill_knowledge',
+          description: '对指定的一个或多个会话进行知识提炼、行动轨迹复盘、技术选型决策与经验避坑要点提炼，生成结构化知识总结报告',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              sessionIds: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '要总结提炼的会话 ID 列表'
+              },
+              platform: {
+                type: 'string',
+                description: '指定平台（若不指定 sessionIds，则提炼该平台近期的会话）'
+              },
+              cwd: {
+                type: 'string',
+                description: '按工作目录路径聚合提炼最近所有的开发会话'
+              },
+              limit: {
+                type: 'number',
+                description: '最多提取的会话数量（默认 5）'
+              }
+            }
+          }
+        },
+        {
           name: 'evaluate_session_value',
           description: '对指定会话调用多维价值量化评估引擎 (ValueScoringEngine)，输出客观价值分、证据归因与入库建议',
           inputSchema: {
@@ -197,7 +222,7 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix)'
+                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo)'
               },
               sessionId: {
                 type: 'string',
@@ -205,6 +230,14 @@ export function createMcpServer() {
               }
             },
             required: ['platform', 'sessionId']
+          }
+        },
+        {
+          name: 'get_hub_stats',
+          description: '获取本地各 AI 工具与 App 的会话统计数据（各工具会话总数、活跃状态等）',
+          inputSchema: {
+            type: 'object',
+            properties: {}
           }
         }
       ]
@@ -217,6 +250,60 @@ export function createMcpServer() {
     const startTime = Date.now()
 
     try {
+      if (name === 'search_sessions_fts') {
+        const query = (args.query as string) || ''
+        const platform = (args.platform as string) || 'all'
+        const role = (args.role as string) || 'all'
+        const cwd = (args.cwd as string) || ''
+        const limit = Number(args.limit) || 10
+
+        const res = cacheService.search(query, {
+          platform: platform === 'all' ? undefined : platform,
+          role: role === 'all' ? undefined : role,
+          cwd: cwd || undefined,
+          limit,
+          groupBy: 'session'
+        })
+
+        const results = (res.groupedSessions || []).map(s => ({
+          sessionId: s.session_id,
+          platform: s.platform,
+          title: s.title,
+          cwd: s.cwd,
+          tags: s.tags,
+          updatedAt: new Date(s.updated_at).toISOString(),
+          matchedCount: s.matchedCount,
+          snippets: s.snippets.map(sn => ({
+            role: sn.role,
+            snippet: sn.snippet.replace(/<\/?mark>/g, '**')
+          }))
+        }))
+
+        const resText = JSON.stringify({
+          totalMatchedMessages: res.total,
+          matchedSessionsCount: results.length,
+          sessions: results
+        }, null, 2)
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `FTS query "${query}" matched ${res.total} messages in ${results.length} sessions`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: resText
+            }
+          ]
+        }
+      }
+
       if (name === 'list_sessions') {
         const platform = (args.platform as string) || 'all'
         const search = ((args.search as string) || '').toLowerCase().trim()
@@ -460,22 +547,29 @@ export function createMcpServer() {
       }
 
       if (name === 'capture_session_insight') {
-        const title = args.title as string
-        const type = (args.type as string).toUpperCase() as 'ADR' | 'Gotcha' | 'Pattern' | 'Milestone'
-        const summary = args.summary as string
-        const solution = args.solution as string
+        const title = (args.title as string) || '未命名资产'
+        const rawType = ((args.type as string) || 'gotcha').toLowerCase()
+        const typeMap: Record<string, 'ADR' | 'Gotcha' | 'Pattern' | 'Milestone'> = {
+          adr: 'ADR',
+          gotcha: 'Gotcha',
+          pattern: 'Pattern',
+          milestone: 'Milestone'
+        }
+        const type = typeMap[rawType] || 'Gotcha'
+        const summary = (args.summary as string) || ''
+        const solution = (args.solution as string) || ''
         const tags = (args.tags as string[]) || []
-        const sessionId = args.sessionId as string | undefined
-        const platform = (args.platform as string) || 'hub'
+        const sessionId = (args.sessionId as string) || undefined
+        const platform = (args.platform as PlatformType) || 'pi'
 
-        const created = knowledgeService.saveItem({
-          title,
+        const item = knowledgeService.saveItem({
+          sessionId,
+          platform,
           type,
+          title,
           context: summary,
           decision: solution,
-          tags,
-          sessionId,
-          platform
+          tags
         })
 
         mcpLogger.addLog({
@@ -484,14 +578,18 @@ export function createMcpServer() {
           params: args,
           status: 'success',
           durationMs: Date.now() - startTime,
-          responsePreview: `Created knowledge item [${type}] ${title}`
+          responsePreview: `Saved knowledge ${item.id} (${type}: ${title})`
         })
 
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({ success: true, item: created }, null, 2)
+              text: JSON.stringify({
+                success: true,
+                message: '资产成功沉淀至 Session Hub Knowledge Vault',
+                item
+              }, null, 2)
             }
           ]
         }
@@ -501,17 +599,38 @@ export function createMcpServer() {
         const platform = args.platform as PlatformType
         const sessionId = args.sessionId as string
 
-        const res = adapterRegistry.getMessages(platform, sessionId)
-        if (!res.session) {
-          throw new Error(`Session not found: platform=${platform}, sessionId=${sessionId}`)
+        const { session, messages } = adapterRegistry.getMessages(platform, sessionId)
+        if (!session) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'error',
+            durationMs: Date.now() - startTime,
+            error: `Session not found: ${sessionId}`
+          })
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `会话未找到: platform=${platform}, sessionId=${sessionId}`
+              }
+            ],
+            isError: true
+          }
         }
 
-        const report = await evaluateSessionValue({
-          sessionId: res.session.id,
-          platform: res.session.cli,
-          title: res.session.title,
-          cwd: res.session.cwd,
-          messages: res.messages
+        const evaluation = await evaluateSessionValue({
+          sessionId,
+          platform,
+          title: session.title,
+          cwd: session.cwd,
+          messages: messages.map(m => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content || ''),
+            thought: m.thought,
+            toolCalls: m.toolCalls
+          }))
         })
 
         mcpLogger.addLog({
@@ -520,128 +639,124 @@ export function createMcpServer() {
           params: args,
           status: 'success',
           durationMs: Date.now() - startTime,
-          responsePreview: `Evaluated ${sessionId}: ${report.overallScore} score, grade ${report.grade}, worthy=${report.isWorthSaving}`
+          responsePreview: `Evaluated score=${evaluation.overallScore} (${evaluation.grade})`
         })
 
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(report, null, 2)
+              text: JSON.stringify(evaluation, null, 2)
             }
           ]
         }
       }
 
-      throw new Error(`Unknown tool: ${name}`)
-    } catch (err) {
+      throw new Error(`未知的 MCP 工具: ${name}`)
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err)
       mcpLogger.addLog({
         type: 'tool',
         name,
         params: args,
         status: 'error',
         durationMs: Date.now() - startTime,
-        error: err instanceof Error ? err.message : String(err)
+        error: errMsg
       })
-      throw err
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `执行失败: ${errMsg}`
+          }
+        ],
+        isError: true
+      }
     }
   })
 
-  // 3. Resources
+  // 3. Resources Definition
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const sessions = adapterRegistry.getAllSessions().slice(0, 30)
-    const sessionResources = sessions.map(s => ({
-      uri: `session://${s.cli}/${s.id}`,
-      name: `[${s.cli.toUpperCase()}] ${s.title}`,
-      description: `Session at ${s.cwd}`,
-      mimeType: 'application/json'
-    }))
-
-    const vaultResources = [
-      {
-        uri: 'vault://all',
-        name: 'Knowledge Vault (All Items)',
-        description: 'Complete JSON list of architectural decisions, gotchas, patterns and milestones',
-        mimeType: 'application/json'
-      },
-      {
-        uri: 'vault://export.md',
-        name: 'Knowledge Vault (Markdown Export)',
-        description: 'Formatted Markdown repository of all harvested architectural assets',
-        mimeType: 'text/markdown'
-      }
-    ]
-
+    const stats = adapterRegistry.getStats()
     return {
-      resources: [...vaultResources, ...sessionResources]
-    }
-  })
-
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const uri = request.params.uri
-
-    if (uri === 'vault://all') {
-      const { items } = knowledgeService.listItems({ limit: 500 })
-      mcpLogger.addLog({
-        type: 'resource',
-        name: uri,
-        status: 'success',
-        responsePreview: `Read ${items.length} vault items`
-      })
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: 'application/json',
-            text: JSON.stringify(items, null, 2)
-          }
-        ]
-      }
-    }
-
-    if (uri === 'vault://export.md') {
-      const md = knowledgeService.exportMarkdown()
-      mcpLogger.addLog({
-        type: 'resource',
-        name: uri,
-        status: 'success',
-        responsePreview: `Read markdown export (${md.length} chars)`
-      })
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: 'text/markdown',
-            text: md
-          }
-        ]
-      }
-    }
-
-    const match = uri.match(/^session:\/\/([^/]+)\/(.+)$/)
-    if (!match || !match[1] || !match[2]) {
-      throw new Error(`Invalid resource URI: ${uri}`)
-    }
-
-    const platform = match[1] as PlatformType
-    const sessionId = match[2]
-    const res = adapterRegistry.getMessages(platform, sessionId)
-
-    mcpLogger.addLog({
-      type: 'resource',
-      name: uri,
-      status: 'success',
-      responsePreview: `Read resource ${uri}`
-    })
-
-    return {
-      contents: [
+      resources: [
         {
-          uri,
-          mimeType: 'application/json',
-          text: JSON.stringify(res, null, 2)
+          uri: 'session-hub://stats',
+          name: 'AI Session Hub 统计信息',
+          description: '当前各 AI 客户端会话总数与平台状态摘要',
+          mimeType: 'application/json'
+        },
+        {
+          uri: 'session-hub://adrs/latest',
+          name: '最新架构决策记录 (ADR)',
+          description: '从开发会话中沉淀出的最新技术决策',
+          mimeType: 'application/json'
         }
       ]
+    }
+  })
+
+  // 4. Resources Read Implementation
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params
+    const startTime = Date.now()
+
+    try {
+      if (uri === 'session-hub://stats') {
+        const stats = adapterRegistry.getStats()
+        mcpLogger.addLog({
+          type: 'resource',
+          name: uri,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Returned stats resource`
+        })
+
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(stats, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (uri === 'session-hub://adrs/latest') {
+        const { items } = knowledgeService.listItems({ type: 'adr', limit: 20 })
+        mcpLogger.addLog({
+          type: 'resource',
+          name: uri,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Returned ${items.length} ADRs`
+        })
+
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(items, null, 2)
+            }
+          ]
+        }
+      }
+
+      throw new Error(`未知资源 URI: ${uri}`)
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      mcpLogger.addLog({
+        type: 'resource',
+        name: uri,
+        status: 'error',
+        durationMs: Date.now() - startTime,
+        error: errMsg
+      })
+
+      throw err
     }
   })
 

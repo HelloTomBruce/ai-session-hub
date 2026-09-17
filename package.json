@@ -15,6 +15,13 @@
     "@iconify-json/simple-icons": "^1.2.94",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@nuxt/ui": "^4.11.0",
+    "@session-hub/core": "workspace:*",
+    "@session-hub/plugin-pi": "workspace:*",
+    "@session-hub/plugin-claude": "workspace:*",
+    "@session-hub/plugin-opencode": "workspace:*",
+    "@session-hub/plugin-codex": "workspace:*",
+    "@session-hub/plugin-agy": "workspace:*",
+    "@session-hub/plugin-workbuddy": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3"

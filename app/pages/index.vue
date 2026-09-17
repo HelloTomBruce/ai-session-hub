@@ -3,7 +3,7 @@ import type { LocationQuery } from 'vue-router'
 
 interface UnifiedSession {
   id: string
-  cli: 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'workbuddy' | 'reasonix'
+  cli: string
   category: 'cli' | 'app'
   title: string
   cwd: string
@@ -19,16 +19,10 @@ interface UnifiedSession {
 
 interface StatsData {
   total: number
-  counts: {
-    pi: number
-    opencode: number
-    agy: number
-    claude: number
-    codex: number
-    workbuddy: number
-    reasonix: number
-  }
+  counts: Record<string, number>
 }
+
+const { activePlugins, getPluginMeta, refresh: refreshPlugins } = usePlugins()
 
 const route = useRoute()
 const router = useRouter()
@@ -210,8 +204,8 @@ onMounted(async () => {
 const handleCacheSync = async () => {
   isSyncing.value = true
   try {
-    const res = await $fetch('/api/cache/sync', { method: 'POST' })
-    if (res.success && res.data.stats?.last_sync_at) {
+    const res = await $fetch<{ success: boolean, data: { result?: unknown, stats?: { last_sync_at?: string } } }>('/api/cache/sync', { method: 'POST' })
+    if (res.success && res.data?.stats?.last_sync_at) {
       const d = new Date(res.data.stats.last_sync_at)
       lastSyncTime.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     }
@@ -232,13 +226,13 @@ const { data: sessionData, pending, refresh: refreshSessions } = await useFetch<
 )
 
 const sessions = computed(() => sessionData.value?.data || [])
-const counts = computed(() => statsData.value?.data?.counts || { pi: 0, opencode: 0, agy: 0, claude: 0, codex: 0, workbuddy: 0, reasonix: 0 })
+const counts = computed(() => statsData.value?.data?.counts || {})
 const totalCount = computed(() => statsData.value?.data?.total || 0)
 
 // Refresh all
 const handleRefresh = async () => {
   isRefreshing.value = true
-  await Promise.all([refreshStats(), refreshSessions()])
+  await Promise.all([refreshPlugins(), refreshStats(), refreshSessions()])
   isRefreshing.value = false
 }
 
@@ -247,64 +241,6 @@ const formatTime = (ts?: number) => {
   if (!ts) return '-'
   const d = new Date(ts)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-const sourceMeta = {
-  pi: {
-    name: 'Pi CLI',
-    type: 'CLI',
-    icon: 'i-lucide-terminal'
-  },
-  opencode: {
-    name: 'OpenCode',
-    type: 'CLI',
-    icon: 'i-lucide-code-2'
-  },
-  agy: {
-    name: 'AGY CLI',
-    type: 'CLI',
-    icon: 'i-lucide-sparkles'
-  },
-  claude: {
-    name: 'Claude Code',
-    type: 'CLI',
-    icon: 'i-lucide-bot'
-  },
-  codex: {
-    name: 'Codex App',
-    type: 'APP',
-    icon: 'i-lucide-cpu'
-  },
-  workbuddy: {
-    name: 'WorkBuddy',
-    type: 'APP',
-    icon: 'i-lucide-briefcase'
-  },
-  reasonix: {
-    name: 'Reasonix',
-    type: 'APP',
-    icon: 'i-lucide-brain-circuit'
-  },
-  kimi: {
-    name: 'Kimi CLI',
-    type: 'CLI',
-    icon: 'i-lucide-bot'
-  },
-  trae: {
-    name: 'Trae',
-    type: 'APP',
-    icon: 'i-lucide-pen-tool'
-  },
-  cursor: {
-    name: 'Cursor',
-    type: 'APP',
-    icon: 'i-lucide-cursor-arrow'
-  },
-  mimo: {
-    name: 'Mimo CLI',
-    type: 'CLI',
-    icon: 'i-lucide-smartphone'
-  }
 }
 
 // Modal States
@@ -390,7 +326,7 @@ const executeDelete = async () => {
 <template>
   <div class="space-y-5">
     <!-- Top Stats Tabs -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 xl:grid-cols-8 gap-2">
       <!-- All -->
       <div
         :class="[
@@ -413,32 +349,33 @@ const executeDelete = async () => {
         </div>
       </div>
 
-      <!-- Each Source Tab -->
+      <!-- Each Active Plugin Source Tab -->
       <div
-        v-for="(meta, key) in sourceMeta"
-        :key="key"
+        v-for="p in activePlugins"
+        :key="p.manifest.id"
         :class="[
           'p-3 rounded-lg border transition-all cursor-pointer select-none',
-          currentTab === key
+          currentTab === p.manifest.id
             ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-sm'
             : 'bg-white dark:bg-zinc-900 border-zinc-200/90 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
         ]"
-        @click="currentTab = key"
+        @click="currentTab = p.manifest.id"
       >
         <div class="flex items-center justify-between">
-          <span class="text-xs font-medium truncate flex items-center gap-1.5">
+          <span class="text-xs font-medium truncate flex items-center gap-1.5" :title="p.manifest.name">
             <UIcon
-              :name="meta.icon"
+              :name="p.manifest.icon || 'i-lucide-terminal'"
               class="w-3.5 h-3.5 shrink-0 opacity-70"
             />
-            <span class="truncate">{{ meta.name }}</span>
+            <span class="truncate">{{ p.manifest.name }}</span>
           </span>
-          <span :class="['text-[9px] uppercase font-mono px-1 py-0.2 rounded', currentTab === key ? 'bg-zinc-800 text-zinc-300 dark:bg-zinc-200 dark:text-zinc-800' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400']">
-            {{ meta.type }}
+          <span :class="['text-[9px] uppercase font-mono px-1 py-0.2 rounded', currentTab === p.manifest.id ? 'bg-zinc-800 text-zinc-300 dark:bg-zinc-200 dark:text-zinc-800' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400']">
+            {{ (p.manifest.category || 'cli').toUpperCase() }}
           </span>
         </div>
-        <div class="text-xl font-bold mt-1 font-mono tracking-tight">
-          {{ (counts as any)[key] || 0 }}
+        <div class="text-xl font-bold mt-1 font-mono tracking-tight flex items-center justify-between">
+          <span>{{ counts[p.manifest.id] ?? p.sessionCount ?? 0 }}</span>
+          <span v-if="!p.isAvailable" class="text-[10px] font-sans font-normal opacity-40">未就绪</span>
         </div>
       </div>
     </div>
@@ -673,10 +610,10 @@ const executeDelete = async () => {
                 </div>
                 <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                   <UIcon
-                    :name="sourceMeta[item.cli]?.icon || 'i-lucide-terminal'"
+                    :name="getPluginMeta(item.cli).icon"
                     class="w-3 h-3 text-zinc-500 dark:text-zinc-400"
                   />
-                  {{ sourceMeta[item.cli]?.name || item.cli }}
+                  {{ getPluginMeta(item.cli).name }}
                 </span>
                 <span
                   v-if="item.extra?.aiDiagnosed"

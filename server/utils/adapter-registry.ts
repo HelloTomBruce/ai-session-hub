@@ -1,92 +1,80 @@
 import type { BaseSessionAdapter, UnifiedSession, SessionMessage, PlatformType, CreateSessionPayload, UpdateSessionPayload } from './types'
+import { pluginManager } from './plugin-manager'
 
 class SessionAdapterRegistry {
-  private adapters = new Map<string, BaseSessionAdapter>()
-
-  register(adapter: BaseSessionAdapter) {
-    this.adapters.set(adapter.id, adapter)
+  register(_adapter: BaseSessionAdapter) {
+    // No-op for legacy adapter registration
   }
 
   get(id: string): BaseSessionAdapter | undefined {
-    return this.adapters.get(id)
+    const plugin = pluginManager.getPlugin(id)
+    if (!plugin) return undefined
+    // Return a BaseSessionAdapter duck-type wrapper for template plugins
+    return {
+      name: plugin.manifest.name,
+      id: plugin.manifest.id,
+      category: plugin.manifest.category,
+      isAvailable: () => plugin.isAvailable(),
+      getSessions: () => plugin.getSessions(),
+      getMessages: (id, session) => plugin.getMessages(id, session),
+      updateSession: (id, payload) => plugin.updateSession ? Boolean(plugin.updateSession(id, payload)) : false,
+      deleteSession: (id) => plugin.deleteSession ? Boolean(plugin.deleteSession(id)) : true,
+      createSession: (payload) => {
+        if (!plugin.createSession) throw new Error(`Plugin ${id} does not support createSession`)
+        return plugin.createSession(payload) as UnifiedSession
+      }
+    }
   }
 
   getAllAdapters(): BaseSessionAdapter[] {
-    return Array.from(this.adapters.values())
+    return pluginManager.getAllPlugins().map(p => {
+      return {
+        name: p.manifest.name,
+        id: p.manifest.id,
+        category: p.manifest.category,
+        isAvailable: () => p.isAvailable(),
+        getSessions: () => p.getSessions(),
+        getMessages: (id, session) => p.getMessages(id, session),
+        updateSession: (id, payload) => p.updateSession ? Boolean(p.updateSession(id, payload)) : false,
+        deleteSession: (id) => p.deleteSession ? Boolean(p.deleteSession(id)) : true,
+        createSession: (payload) => {
+          if (!p.createSession) throw new Error(`Plugin ${p.manifest.id} does not support createSession`)
+          return p.createSession(payload) as UnifiedSession
+        }
+      }
+    })
   }
 
   getAllSessions(platformFilter?: string): UnifiedSession[] {
-    let sessions: UnifiedSession[] = []
-    if (!platformFilter || platformFilter === 'all') {
-      for (const adapter of this.adapters.values()) {
-        if (adapter.isAvailable()) {
-          try {
-            sessions.push(...adapter.getSessions())
-          } catch (e) {
-            console.error(`Error loading sessions for ${adapter.id}:`, e)
-          }
-        }
-      }
-    } else {
-      const adapter = this.adapters.get(platformFilter)
-      if (adapter && adapter.isAvailable()) {
-        sessions = adapter.getSessions()
-      }
-    }
-    return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
+    return pluginManager.getAllSessions(platformFilter)
   }
 
   getSession(platform: string, id: string): UnifiedSession | null {
-    const adapter = this.adapters.get(platform)
-    if (!adapter || !adapter.isAvailable()) return null
-    return adapter.getSessions().find(s => s.id === id) || null
+    return pluginManager.getSession(platform, id)
   }
 
   getMessages(platform: PlatformType, id: string): { session: UnifiedSession | null, messages: SessionMessage[] } {
-    const adapter = this.adapters.get(platform)
-    if (!adapter) return { session: null, messages: [] }
-
-    const all = adapter.getSessions()
-    const session = all.find(s => s.id === id) || null
-    if (!session) return { session: null, messages: [] }
-
-    const messages = adapter.getMessages(id, session)
-    return { session, messages }
+    return pluginManager.getMessages(platform, id)
   }
 
   updateSession(platform: PlatformType, id: string, payload: UpdateSessionPayload): boolean {
-    const adapter = this.adapters.get(platform)
-    if (!adapter) return false
-    return adapter.updateSession(id, payload)
+    return pluginManager.updateSession(platform, id, payload)
   }
 
   deleteSession(platform: PlatformType, id: string): boolean {
-    const adapter = this.adapters.get(platform)
-    if (!adapter) return false
-    return adapter.deleteSession(id)
+    return pluginManager.deleteSession(platform, id)
   }
 
   createSession(platform: PlatformType, payload: CreateSessionPayload): UnifiedSession {
-    const adapter = this.adapters.get(platform)
-    if (!adapter) {
-      throw new Error(`Platform adapter ${platform} not found`)
+    const res = pluginManager.createSession(platform, payload)
+    if (!res) {
+      throw new Error(`Platform/Plugin ${platform} not found or does not support creation`)
     }
-    return adapter.createSession(payload)
+    return res
   }
 
   getStats() {
-    const counts: Record<string, number> = {}
-    let total = 0
-    for (const [key, adapter] of this.adapters.entries()) {
-      if (adapter.isAvailable()) {
-        const count = adapter.getSessions().length
-        counts[key] = count
-        total += count
-      } else {
-        counts[key] = 0
-      }
-    }
-    return { total, counts }
+    return pluginManager.getStats()
   }
 }
 

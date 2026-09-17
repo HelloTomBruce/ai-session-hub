@@ -35,6 +35,7 @@ interface UnifiedSession {
 
 const { data: sessionData } = await useFetch<{ success: boolean, data: UnifiedSession[] }>('/api/sessions?cli=all')
 const allSessions = computed(() => sessionData.value?.data || [])
+const { getPluginMeta } = usePlugins()
 
 interface MapSessionProgress {
   id: string
@@ -389,8 +390,12 @@ const archiveAllAdrs = async () => {
 
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5 mb-0.5">
-                  <span class="px-1.5 py-0.2 rounded text-[10px] uppercase font-mono font-medium bg-zinc-200/60 dark:bg-zinc-700/60 text-zinc-700 dark:text-zinc-300">
-                    {{ s.cli }}
+                  <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-medium bg-zinc-200/60 dark:bg-zinc-700/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                    <UIcon
+                      :name="getPluginMeta(s.cli).icon"
+                      class="w-3 h-3 text-zinc-500"
+                    />
+                    {{ getPluginMeta(s.cli).name }}
                   </span>
                   <span class="text-[10px] text-zinc-400 truncate">{{ s.cwd }}</span>
                 </div>

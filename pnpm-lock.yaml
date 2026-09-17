@@ -20,6 +20,27 @@ importers:
       '@nuxt/ui':
         specifier: ^4.11.0
         version: 4.11.0(50847bd72a9a6612fd4c47cb571d9476)
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@session-hub/plugin-agy':
+        specifier: workspace:*
+        version: link:packages/plugin-agy
+      '@session-hub/plugin-claude':
+        specifier: workspace:*
+        version: link:packages/plugin-claude
+      '@session-hub/plugin-codex':
+        specifier: workspace:*
+        version: link:packages/plugin-codex
+      '@session-hub/plugin-opencode':
+        specifier: workspace:*
+        version: link:packages/plugin-opencode
+      '@session-hub/plugin-pi':
+        specifier: workspace:*
+        version: link:packages/plugin-pi
+      '@session-hub/plugin-workbuddy':
+        specifier: workspace:*
+        version: link:packages/plugin-workbuddy
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -45,6 +66,108 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  packages/core:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-agy:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-claude:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-codex:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-opencode:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-pi:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-workbuddy:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
 
@@ -1917,6 +2040,9 @@ packages:
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
+
+  '@types/node@22.20.3':
+    resolution: {integrity: sha512-DZmzkmwHzXrLPAXPyKNDzlIwMMUZCVacoD25ywdy5YTKGbOx/2ld+Q38Im2zJ0vBuZP5Prd3VZutKZyXwkOS8A==}
 
   '@types/node@26.4.1':
     resolution: {integrity: sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA==}
@@ -5069,6 +5195,9 @@ packages:
       unplugin:
         optional: true
 
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
@@ -7666,6 +7795,10 @@ snapshots:
   '@types/jsesc@2.5.1': {}
 
   '@types/json-schema@7.0.15': {}
+
+  '@types/node@22.20.3':
+    dependencies:
+      undici-types: 6.21.0
 
   '@types/node@26.4.1':
     dependencies:
@@ -11146,6 +11279,8 @@ snapshots:
       oxc-parser: 0.140.0
       rolldown: 1.2.1
       unplugin: 3.3.0(esbuild@0.28.0)(rolldown@1.2.1)(rollup@4.60.4)(vite@8.2.1(@types/node@26.4.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))
+
+  undici-types@6.21.0: {}
 
   undici-types@8.3.0: {}
 

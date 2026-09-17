@@ -1,11 +1,16 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type Database from 'better-sqlite3'
-import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, SessionToolCall, UnifiedSession, UpdateSessionPayload } from '../types'
-
-const homeDir = os.homedir()
+import Database from 'better-sqlite3'
+import type {
+  SessionPlugin,
+  SessionPluginManifest,
+  UnifiedSession,
+  SessionMessage,
+  SessionToolCall,
+  CreateSessionPayload,
+  UpdateSessionPayload
+} from '@session-hub/core'
 
 interface AgySummaryRow {
   conversation_id: string
@@ -28,14 +33,31 @@ interface AgyTranscriptLine {
   created_at?: string
 }
 
-export class AgySessionAdapter extends BaseSqliteAdapter {
-  constructor() {
-    super({
-      id: 'agy',
-      name: 'AGY CLI',
-      category: 'cli',
-      dbPath: path.join(homeDir, '.gemini', 'antigravity-cli', 'conversation_summaries.db')
-    })
+export class AgyPlugin implements SessionPlugin {
+  readonly manifest: SessionPluginManifest = {
+    id: 'agy',
+    name: 'AGY CLI',
+    category: 'cli',
+    icon: 'i-lucide-sparkles',
+    version: '1.0.0',
+    description: 'Google Antigravity CLI 智能助手，支持项目级脑图与 Transcript 思考链提取',
+    author: 'Session Hub Team',
+    type: 'npm',
+    defaultEnabled: true
+  }
+
+  private dbPath: string
+
+  constructor(customDbPath?: string) {
+    this.dbPath = customDbPath || path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversation_summaries.db')
+  }
+
+  isAvailable(): boolean {
+    return fs.existsSync(this.dbPath)
+  }
+
+  private getDb(readonly = true): Database.Database {
+    return new Database(this.dbPath, { readonly, fileMustExist: true })
   }
 
   getSessions(): UnifiedSession[] {
@@ -56,14 +78,14 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
           if (row.last_user_input_time) createdAt = new Date(row.last_user_input_time).getTime()
           if (row.last_modified_time) updatedAt = new Date(row.last_modified_time).getTime()
         } catch {
-          // keep the default timestamps when stored dates are invalid
+          // ignore
         }
 
         let cwd = ''
         try {
           if (row.workspace_uris) {
             const parsed: unknown = JSON.parse(row.workspace_uris)
-            cwd = Array.isArray(parsed) ? parsed[0] as string : parsed as string
+            cwd = Array.isArray(parsed) ? (parsed[0] as string) : (parsed as string)
           }
         } catch {
           cwd = row.workspace_uris || ''
@@ -79,7 +101,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
           updatedAt,
           messageCount: row.step_count || 0,
           status: row.status,
-          rawLocation: path.join(homeDir, '.gemini', 'antigravity-cli', 'conversations', `${row.conversation_id}.db`),
+          rawLocation: path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversations', `${row.conversation_id}.db`),
           extra: {
             preview: row.preview,
             agentName: row.agent_name
@@ -93,8 +115,8 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
     }
   }
 
-  getMessages(id: string): SessionMessage[] {
-    const transcriptPath = path.join(homeDir, '.gemini', 'antigravity-cli', 'brain', id, '.system_generated', 'logs', 'transcript.jsonl')
+  getMessages(id: string, _session?: UnifiedSession): SessionMessage[] {
+    const transcriptPath = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain', id, '.system_generated', 'logs', 'transcript.jsonl')
     const messages: SessionMessage[] = []
     if (fs.existsSync(transcriptPath)) {
       try {
@@ -112,7 +134,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
           })
         }
       } catch {
-        // return whatever transcript lines were parsed before the failure
+        // ignore
       }
     }
     return messages
@@ -128,7 +150,7 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
         return res.changes > 0
       }
     } catch (e) {
-      console.error('[AgySessionAdapter] Failed updating session:', e)
+      console.error('[AgyPlugin] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }
@@ -141,19 +163,21 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
       try {
         db = this.getDb(false)
         db.prepare(`DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(id)
+      } catch {
+        // ignore
       } finally {
         if (db) db.close()
       }
     }
-    const convDb = path.join(homeDir, '.gemini', 'antigravity-cli', 'conversations', `${id}.db`)
+    const convDb = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversations', `${id}.db`)
     if (fs.existsSync(convDb)) fs.unlinkSync(convDb)
-    const brainDir = path.join(homeDir, '.gemini', 'antigravity-cli', 'brain', id)
+    const brainDir = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain', id)
     if (fs.existsSync(brainDir)) fs.rmSync(brainDir, { recursive: true, force: true })
     return true
   }
 
   createSession(payload: CreateSessionPayload): UnifiedSession {
-    const targetCwd = payload.cwd || homeDir
+    const targetCwd = payload.cwd || os.homedir()
     const now = Date.now()
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
@@ -178,7 +202,10 @@ export class AgySessionAdapter extends BaseSqliteAdapter {
       cwd: targetCwd,
       createdAt: now,
       updatedAt: now,
-      rawLocation: path.join(homeDir, '.gemini', 'antigravity-cli', 'conversations', `${id}.db`)
+      rawLocation: path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversations', `${id}.db`)
     }
   }
 }
+
+export const plugin = new AgyPlugin()
+export default plugin

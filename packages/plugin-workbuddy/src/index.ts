@@ -1,11 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type Database from 'better-sqlite3'
-import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
-
-const homeDir = os.homedir()
+import Database from 'better-sqlite3'
+import type {
+  SessionPlugin,
+  SessionPluginManifest,
+  UnifiedSession,
+  SessionMessage,
+  CreateSessionPayload,
+  UpdateSessionPayload
+} from '@session-hub/core'
 
 interface WorkBuddySessionRow {
   id: string
@@ -37,14 +41,31 @@ interface WorkBuddyLogLine {
   timestamp?: number
 }
 
-export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
-  constructor() {
-    super({
-      id: 'workbuddy',
-      name: 'WorkBuddy',
-      category: 'app',
-      dbPath: path.join(homeDir, '.workbuddy', 'workbuddy.db')
-    })
+export class WorkBuddyPlugin implements SessionPlugin {
+  readonly manifest: SessionPluginManifest = {
+    id: 'workbuddy',
+    name: 'WorkBuddy',
+    category: 'app',
+    icon: 'i-lucide-briefcase',
+    version: '1.0.0',
+    description: 'WorkBuddy 智能工作助手桌面端，支持任务追踪、专家模型与项目会话',
+    author: 'Session Hub Team',
+    type: 'npm',
+    defaultEnabled: true
+  }
+
+  private dbPath: string
+
+  constructor(customDbPath?: string) {
+    this.dbPath = customDbPath || path.join(os.homedir(), '.workbuddy', 'workbuddy.db')
+  }
+
+  isAvailable(): boolean {
+    return fs.existsSync(this.dbPath)
+  }
+
+  private getDb(readonly = true): Database.Database {
+    return new Database(this.dbPath, { readonly, fileMustExist: true })
   }
 
   getSessions(): UnifiedSession[] {
@@ -83,7 +104,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
   }
 
   getMessages(id: string, session?: UnifiedSession): SessionMessage[] {
-    const wbProjectsDir = path.join(homeDir, '.workbuddy', 'projects')
+    const wbProjectsDir = path.join(os.homedir(), '.workbuddy', 'projects')
     const messages: SessionMessage[] = []
 
     if (fs.existsSync(wbProjectsDir)) {
@@ -122,14 +143,14 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
                   })
                 }
               } catch {
-                // skip malformed log lines
+                // skip malformed
               }
             }
             break
           }
         }
       } catch {
-        // fall back to the session-summary placeholder below when the log cannot be read
+        // ignore
       }
     }
 
@@ -154,7 +175,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
         return res.changes > 0
       }
     } catch (e) {
-      console.error('[WorkBuddySessionAdapter] Failed updating session:', e)
+      console.error('[WorkBuddyPlugin] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }
@@ -174,7 +195,7 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
   }
 
   createSession(payload: CreateSessionPayload): UnifiedSession {
-    const targetCwd = payload.cwd || homeDir
+    const targetCwd = payload.cwd || os.homedir()
     const now = Date.now()
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
@@ -203,3 +224,6 @@ export class WorkBuddySessionAdapter extends BaseSqliteAdapter {
     }
   }
 }
+
+export const plugin = new WorkBuddyPlugin()
+export default plugin

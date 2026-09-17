@@ -63,6 +63,7 @@ interface InsightsData {
 }
 
 const isRefreshing = ref(false)
+const isMcpOpen = ref(false)
 
 const { data: insightsRes, pending, refresh } = await useFetch<{
   success: boolean
@@ -354,15 +355,16 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
 
           <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400">
             <span>支持 11+ 种 AI 编程工具与 CLI</span>
-            <NuxtLink
-              to="/mcp"
-              class="text-purple-500 hover:underline flex items-center gap-1"
+            <button
+              type="button"
+              class="text-purple-500 hover:underline flex items-center gap-1 cursor-pointer"
+              @click="isMcpOpen = true"
             >
               配置 MCP 集成 <UIcon
                 name="i-lucide-arrow-right"
                 class="w-3 h-3"
               />
-            </NuxtLink>
+            </button>
           </div>
         </div>
       </div>
@@ -512,5 +514,8 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
         </div>
       </div>
     </div>
+
+    <!-- MCP Integration Modal -->
+    <McpModal v-model:open="isMcpOpen" />
   </div>
 </template>

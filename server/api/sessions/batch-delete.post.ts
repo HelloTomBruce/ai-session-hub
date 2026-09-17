@@ -1,4 +1,6 @@
 import type { PlatformType } from '../../utils/types'
+import { cacheService } from '../../utils/cache-service'
+import { deleteCliSession } from '../../utils/session-service'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -14,17 +16,17 @@ export default defineEventHandler(async (event) => {
 
   for (const item of items) {
     try {
-      const ok = deleteCliSession(item.cli as PlatformType, item.id)
-      if (ok) {
-        successCount++
-        // Clean up cache
-        if (cacheService.isAvailable()) {
-          cacheService.deleteFromCache(item.id, item.cli)
-        }
-      } else {
-        failCount++
-        errors.push(`${item.cli}/${item.id}: not found`)
+      try {
+        deleteCliSession(item.cli as PlatformType, item.id)
+      } catch (err) {
+        console.warn(`[BatchDelete] Warning deleting from adapter ${item.cli}/${item.id}:`, err)
       }
+
+      // Always clean up cache
+      if (cacheService.isAvailable()) {
+        cacheService.deleteFromCache(item.id, item.cli)
+      }
+      successCount++
     } catch (err) {
       failCount++
       errors.push(`${item.cli}/${item.id}: ${(err as { message?: string })?.message || 'unknown error'}`)
@@ -33,6 +35,10 @@ export default defineEventHandler(async (event) => {
 
   return {
     success: true,
-    data: { successCount, failCount, errors: errors.slice(0, 20) }
+    data: {
+      successCount,
+      failCount,
+      errors
+    }
   }
 })

@@ -1,13 +1,16 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type Database from 'better-sqlite3'
-import { BaseSqliteAdapter } from '../base-sqlite-adapter'
-import type { CreateSessionPayload, SessionMessage, UnifiedSession, UpdateSessionPayload } from '../types'
+import Database from 'better-sqlite3'
+import type {
+  SessionPlugin,
+  SessionPluginManifest,
+  UnifiedSession,
+  SessionMessage,
+  CreateSessionPayload,
+  UpdateSessionPayload
+} from '@session-hub/core'
 
-const homeDir = os.homedir()
-
-/** Shape of a row in the Codex `threads` table (all optional fields may be NULL). */
 interface CodexThreadRow {
   id: string
   title?: string
@@ -26,20 +29,37 @@ interface CodexThreadRow {
   archived?: number
 }
 
-export class CodexSessionAdapter extends BaseSqliteAdapter {
-  constructor() {
-    super({
-      id: 'codex',
-      name: 'Codex App',
-      category: 'app',
-      dbPath: path.join(homeDir, '.codex', 'state_5.sqlite')
-    })
+export class CodexPlugin implements SessionPlugin {
+  readonly manifest: SessionPluginManifest = {
+    id: 'codex',
+    name: 'Codex App',
+    category: 'app',
+    icon: 'i-lucide-cpu',
+    version: '1.0.0',
+    description: 'OpenAI 官方 Codex 桌面客户端，支持沙箱会话与 Rollout 线程跟踪',
+    author: 'Session Hub Team',
+    type: 'npm',
+    defaultEnabled: true
+  }
+
+  private dbPath: string
+
+  constructor(customDbPath?: string) {
+    this.dbPath = customDbPath || path.join(os.homedir(), '.codex', 'state_5.sqlite')
+  }
+
+  isAvailable(): boolean {
+    return fs.existsSync(this.dbPath)
+  }
+
+  private getDb(readonly = true): Database.Database {
+    return new Database(this.dbPath, { readonly, fileMustExist: true })
   }
 
   private findRolloutPath(id: string, storedPath?: string): string {
     if (storedPath && fs.existsSync(storedPath)) return storedPath
 
-    // Search in ~/.codex/sessions/
+    const homeDir = os.homedir()
     const codexSessionsDir = path.join(homeDir, '.codex', 'sessions')
     if (fs.existsSync(codexSessionsDir)) {
       const queue = [codexSessionsDir]
@@ -56,12 +76,11 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
             }
           }
         } catch {
-          // skip unreadable directories while searching
+          // ignore
         }
       }
     }
 
-    // Search in ~/.codex/archived_sessions/
     const archDir = path.join(homeDir, '.codex', 'archived_sessions')
     if (fs.existsSync(archDir)) {
       try {
@@ -72,7 +91,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
           }
         }
       } catch {
-        // skip archived sessions dir if it is unreadable
+        // ignore
       }
     }
 
@@ -84,7 +103,6 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     if (row.name && row.name.trim()) return row.name.trim()
     let raw = row.first_user_message || row.preview || ''
 
-    // If it contains a transcript wrapper
     if (raw.includes('TRANSCRIPT START')) {
       const match = raw.match(/\[\d+\]\s*user:\s*([\s\S]+?)(?=\n\s*\[\d+\]|\n\s*>>>|$)/)
       if (match && match[1]) {
@@ -92,7 +110,6 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
       }
     }
 
-    // If it contains '## My request:'
     if (raw.includes('## My request:')) {
       const reqMatch = raw.match(/##\s*My request:\s*([\s\S]+?)(?=\n\s*##|\n\s*\[|$)/)
       if (reqMatch && reqMatch[1]) {
@@ -100,7 +117,6 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
       }
     }
 
-    // Clean up headers, whitespace and multiple newlines
     raw = raw
       .replace(/^#+\s+/gm, '')
       .replace(/\r?\n+/g, ' ')
@@ -222,7 +238,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
               }
             }
           } catch {
-            // skip malformed rollout lines
+            // skip malformed
           }
         }
       } catch (e) {
@@ -251,7 +267,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
         return res.changes > 0
       }
     } catch (e) {
-      console.error('[CodexSessionAdapter] Failed updating session:', e)
+      console.error('[CodexPlugin] Failed updating session:', e)
     } finally {
       if (db) db.close()
     }
@@ -273,7 +289,7 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
   }
 
   createSession(payload: CreateSessionPayload): UnifiedSession {
-    const targetCwd = payload.cwd || homeDir
+    const targetCwd = payload.cwd || os.homedir()
     const now = Date.now()
     const id = `session_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`
 
@@ -302,3 +318,6 @@ export class CodexSessionAdapter extends BaseSqliteAdapter {
     }
   }
 }
+
+export const plugin = new CodexPlugin()
+export default plugin
