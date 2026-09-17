@@ -29,3 +29,6 @@ graphify-out
 
 # pnpm local store
 .pnpm-store
+
+# Demo video recordings
+recordings

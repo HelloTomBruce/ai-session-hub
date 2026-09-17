@@ -162,12 +162,12 @@ useHead({
       </header>
 
       <!-- Main Content Area -->
-      <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <NuxtPage />
       </main>
 
       <!-- Footer -->
-      <footer class="border-t border-zinc-200 dark:border-zinc-800/80 py-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
+      <footer class="relative z-10 border-t border-zinc-200 dark:border-zinc-800/80 py-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
         AI Session Hub • 极简、高效的多源会话与知识资产沉淀平台 • 支持 MCP SSE 协议
       </footer>
 
@@ -176,6 +176,9 @@ useHead({
       <PluginSettingsModal v-model:open="isPluginModalOpen" />
       <LlmSettingsModal v-model:open="isLlmModalOpen" />
       <ConfirmDialog />
+
+      <!-- Full-Screen Ambient AI Neural Synapse & Aurora Background -->
+      <FullScreenDecorations />
     </div>
   </UApp>
 </template>

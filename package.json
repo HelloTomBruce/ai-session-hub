@@ -9,7 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "pnpm run build:packages && nuxt prepare",
     "lint": "eslint .",
-    "typecheck": "pnpm run build:packages && nuxt typecheck"
+    "typecheck": "pnpm run build:packages && nuxt typecheck",
+    "record:demo": "tsx scripts/record-demo.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.127",
@@ -17,11 +18,11 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@nuxt/ui": "^4.11.0",
     "@session-hub/core": "workspace:*",
-    "@session-hub/plugin-pi": "workspace:*",
-    "@session-hub/plugin-claude": "workspace:*",
-    "@session-hub/plugin-opencode": "workspace:*",
-    "@session-hub/plugin-codex": "workspace:*",
     "@session-hub/plugin-agy": "workspace:*",
+    "@session-hub/plugin-claude": "workspace:*",
+    "@session-hub/plugin-codex": "workspace:*",
+    "@session-hub/plugin-opencode": "workspace:*",
+    "@session-hub/plugin-pi": "workspace:*",
     "@session-hub/plugin-workbuddy": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "nuxt": "^4.5.2",
@@ -31,6 +32,8 @@
     "@nuxt/eslint": "^1.17.0",
     "@types/better-sqlite3": "^9.6.0",
     "eslint": "^10.9.1",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "vue-tsc": "^3.3.11"
   },
