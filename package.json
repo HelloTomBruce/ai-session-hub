@@ -7,9 +7,9 @@
     "build": "pnpm run build:packages && nuxt build",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
+    "postinstall": "pnpm run build:packages && nuxt prepare",
     "lint": "eslint .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "pnpm run build:packages && nuxt typecheck"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.127",

@@ -422,7 +422,7 @@ export class PluginManager {
   getSession(platform: string, id: string): UnifiedSession | null {
     const plugin = this.plugins.get(platform)
     if (!plugin || !plugin.isAvailable()) return null
-    return plugin.getSessions().find(s => s.id === id) || null
+    return plugin.getSessions().find((s: UnifiedSession) => s.id === id) || null
   }
 
   getMessages(platform: PlatformType, id: string): { session: UnifiedSession | null, messages: SessionMessage[] } {
@@ -430,7 +430,7 @@ export class PluginManager {
     if (!plugin || !plugin.isAvailable()) return { session: null, messages: [] }
 
     const all = plugin.getSessions()
-    const session = all.find(s => s.id === id) || null
+    const session = all.find((s: UnifiedSession) => s.id === id) || null
     if (!session) return { session: null, messages: [] }
 
     const messages = plugin.getMessages(id, session)

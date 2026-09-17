@@ -419,7 +419,7 @@ class CacheService {
 
           // Auto-tag session
           try {
-            const msgList = messages.map(m => ({ role: m.role, content: m.content }))
+            const msgList = messages.map((m: SessionMessage) => ({ role: m.role, content: m.content }))
             tagService.autoTagSession(session.id, session.cli, session.title, msgList)
           } catch {
             // tagging is best-effort
