@@ -283,7 +283,9 @@ const copyCode = (text: string, index: number) => {
               <div class="px-3.5 py-2 bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
                 <div>
                   <span class="text-xs font-medium text-zinc-800 dark:text-zinc-200">{{ cfg.title }}</span>
-                  <p class="text-[10px] text-zinc-400">{{ cfg.desc }}</p>
+                  <p class="text-[10px] text-zinc-400">
+                    {{ cfg.desc }}
+                  </p>
                 </div>
                 <UButton
                   size="xs"
@@ -373,7 +375,9 @@ const copyCode = (text: string, index: number) => {
               name="i-lucide-activity"
               class="w-8 h-8 mb-2 opacity-50"
             />
-            <p class="text-xs">暂无 MCP 交互日志</p>
+            <p class="text-xs">
+              暂无 MCP 交互日志
+            </p>
             <p class="text-[11px] text-zinc-500 mt-1">
               当外部客户端通过 SSE 连接或调用工具时，将在此处实时显示参数与耗时
             </p>

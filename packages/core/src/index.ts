@@ -6,34 +6,34 @@ export type CategoryType = 'cli' | 'app'
  * 常用推荐图标 (配合 IDE 自动补全)，同时也支持任意合法的 Iconify 图标字符串
  * 图标库查询网站: https://icones.js.org/ 或 https://lucide.dev/icons
  */
-export type CommonPluginIcon =
+export type CommonPluginIcon
   // 常用通用与控制类图标 (Lucide)
-  | 'i-lucide-terminal'
-  | 'i-lucide-bot'
-  | 'i-lucide-code-2'
-  | 'i-lucide-sparkles'
-  | 'i-lucide-cpu'
-  | 'i-lucide-briefcase'
-  | 'i-lucide-database'
-  | 'i-lucide-folder-code'
-  | 'i-lucide-brain-circuit'
-  | 'i-lucide-message-square'
-  | 'i-lucide-layers'
-  | 'i-lucide-wrench'
-  | 'i-lucide-box'
-  | 'i-lucide-smartphone'
-  | 'i-lucide-pen-tool'
-  | 'i-lucide-cursor-arrow'
+  = | 'i-lucide-terminal'
+    | 'i-lucide-bot'
+    | 'i-lucide-code-2'
+    | 'i-lucide-sparkles'
+    | 'i-lucide-cpu'
+    | 'i-lucide-briefcase'
+    | 'i-lucide-database'
+    | 'i-lucide-folder-code'
+    | 'i-lucide-brain-circuit'
+    | 'i-lucide-message-square'
+    | 'i-lucide-layers'
+    | 'i-lucide-wrench'
+    | 'i-lucide-box'
+    | 'i-lucide-smartphone'
+    | 'i-lucide-pen-tool'
+    | 'i-lucide-cursor-arrow'
   // 常用品牌与大模型 Logo (Simple Icons)
-  | 'i-simple-icons-anthropic'
-  | 'i-simple-icons-openai'
-  | 'i-simple-icons-github'
-  | 'i-simple-icons-google'
-  | 'i-simple-icons-vscodethemes'
-  | 'i-simple-icons-visualstudiocode'
-  | 'i-simple-icons-zedindustries'
+    | 'i-simple-icons-anthropic'
+    | 'i-simple-icons-openai'
+    | 'i-simple-icons-github'
+    | 'i-simple-icons-google'
+    | 'i-simple-icons-vscodethemes'
+    | 'i-simple-icons-visualstudiocode'
+    | 'i-simple-icons-zedindustries'
   // 支持输入任意其它合法图标名
-  | (string & {})
+    | (string & {})
 
 export interface SessionToolCall {
   id?: string

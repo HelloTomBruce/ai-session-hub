@@ -362,7 +362,10 @@ const executeDelete = async () => {
         @click="currentTab = p.manifest.id"
       >
         <div class="flex items-center justify-between">
-          <span class="text-xs font-medium truncate flex items-center gap-1.5" :title="p.manifest.name">
+          <span
+            class="text-xs font-medium truncate flex items-center gap-1.5"
+            :title="p.manifest.name"
+          >
             <UIcon
               :name="p.manifest.icon || 'i-lucide-terminal'"
               class="w-3.5 h-3.5 shrink-0 opacity-70"
@@ -375,7 +378,10 @@ const executeDelete = async () => {
         </div>
         <div class="text-xl font-bold mt-1 font-mono tracking-tight flex items-center justify-between">
           <span>{{ counts[p.manifest.id] ?? p.sessionCount ?? 0 }}</span>
-          <span v-if="!p.isAvailable" class="text-[10px] font-sans font-normal opacity-40">未就绪</span>
+          <span
+            v-if="!p.isAvailable"
+            class="text-[10px] font-sans font-normal opacity-40"
+          >未就绪</span>
         </div>
       </div>
     </div>

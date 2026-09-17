@@ -34,7 +34,6 @@ const plugins = ref<PluginStatusInfo[]>([])
 const isLoading = ref(false)
 const isReloading = ref(false)
 const togglingId = ref<string | null>(null)
-const toast = useToast?.() || { add: () => {} }
 
 const loadPlugins = async () => {
   isLoading.value = true
@@ -43,7 +42,7 @@ const loadPlugins = async () => {
     if (res?.data) {
       plugins.value = res.data
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Failed to load plugins:', err)
   } finally {
     isLoading.value = false
@@ -65,7 +64,7 @@ const togglePlugin = async (plugin: PluginStatusInfo) => {
       plugin.isEnabled = res.data.enabled
       await refreshNuxtData()
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Failed to toggle plugin:', err)
   } finally {
     togglingId.value = null
@@ -82,7 +81,7 @@ const reloadPlugins = async () => {
       plugins.value = res.data
       await refreshNuxtData()
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Failed to reload plugins:', err)
   } finally {
     isReloading.value = false

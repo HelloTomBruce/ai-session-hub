@@ -25,4 +25,3 @@ export function createCliSession(cli: PlatformType, payload: CreateSessionPayloa
 export function getStats() {
   return pluginManager.getStats()
 }
-

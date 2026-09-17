@@ -678,7 +678,6 @@ export function createMcpServer() {
 
   // 3. Resources Definition
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const stats = adapterRegistry.getStats()
     return {
       resources: [
         {

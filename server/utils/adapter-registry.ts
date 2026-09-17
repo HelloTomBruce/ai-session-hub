@@ -18,7 +18,7 @@ class SessionAdapterRegistry {
       getSessions: () => plugin.getSessions(),
       getMessages: (id, session) => plugin.getMessages(id, session),
       updateSession: (id, payload) => plugin.updateSession ? Boolean(plugin.updateSession(id, payload)) : false,
-      deleteSession: (id) => plugin.deleteSession ? Boolean(plugin.deleteSession(id)) : true,
+      deleteSession: id => plugin.deleteSession ? Boolean(plugin.deleteSession(id)) : true,
       createSession: (payload) => {
         if (!plugin.createSession) throw new Error(`Plugin ${id} does not support createSession`)
         return plugin.createSession(payload) as UnifiedSession
@@ -27,7 +27,7 @@ class SessionAdapterRegistry {
   }
 
   getAllAdapters(): BaseSessionAdapter[] {
-    return pluginManager.getAllPlugins().map(p => {
+    return pluginManager.getAllPlugins().map((p) => {
       return {
         name: p.manifest.name,
         id: p.manifest.id,
@@ -36,7 +36,7 @@ class SessionAdapterRegistry {
         getSessions: () => p.getSessions(),
         getMessages: (id, session) => p.getMessages(id, session),
         updateSession: (id, payload) => p.updateSession ? Boolean(p.updateSession(id, payload)) : false,
-        deleteSession: (id) => p.deleteSession ? Boolean(p.deleteSession(id)) : true,
+        deleteSession: id => p.deleteSession ? Boolean(p.deleteSession(id)) : true,
         createSession: (payload) => {
           if (!p.createSession) throw new Error(`Plugin ${p.manifest.id} does not support createSession`)
           return p.createSession(payload) as UnifiedSession
