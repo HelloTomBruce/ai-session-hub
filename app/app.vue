@@ -78,6 +78,18 @@ useHead({
                 >搜索</UButton>
               </NuxtLink>
               <NuxtLink
+                to="/memory"
+                class="flex-shrink-0"
+              >
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  icon="i-lucide-brain"
+                  class="whitespace-nowrap px-2.5"
+                >记忆图谱</UButton>
+              </NuxtLink>
+              <NuxtLink
                 to="/knowledge"
                 class="flex-shrink-0"
               >

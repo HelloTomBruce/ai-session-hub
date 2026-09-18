@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@grafeo-db/js':
+        specifier: ^0.5.42
+        version: 0.5.42
       '@iconify-json/lucide':
         specifier: ^1.2.127
         version: 1.2.127
@@ -806,6 +809,49 @@ packages:
 
   '@floating-ui/vue@1.1.11':
     resolution: {integrity: sha512-HzHKCNVxnGS35r9fCHBc3+uCnjw9IWIlCPL683cGgM9Kgj2BiAl8x1mS7vtvP6F9S/e/q4O6MApwSHj8hNLGfw==}
+
+  '@grafeo-db/js-darwin-arm64@0.5.42':
+    resolution: {integrity: sha512-zGktciH7DtC1gnR1CIxqtLH2M+4wxrn45+um7W6dyNlYfi4844vKGQbK1Waq2zKIqvGL1x550pgqoXx1pijDEg==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@grafeo-db/js-darwin-x64@0.5.42':
+    resolution: {integrity: sha512-EZKeUhgYHJgsbu7Fsqq+wS+ByQTxTbcGoHJLpskTQgnf58SHElhUbToPalL/NHr51be8q5x+KB6jpvLEu6qf5g==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@grafeo-db/js-linux-arm64-gnu@0.5.42':
+    resolution: {integrity: sha512-6MT3czXIsa3AaUD2bvbIHru1lUBYmf15lh62mZ7LzGAn0qus9pTC9NYd6FJJ13xEmxZo+I18VwiYiRD+mSFxbw==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@grafeo-db/js-linux-arm64-musl@0.5.42':
+    resolution: {integrity: sha512-Pid43AXLqot7aBpwtFzZ1TLuHzxagReWeFHVhzNaWNwb0cnySe1YdNiY3GytuARg8IWbjg9YcIf9rnwRg3/aag==}
+    engines: {node: '>=20'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@grafeo-db/js-linux-x64-gnu@0.5.42':
+    resolution: {integrity: sha512-5LthBRNKb3YaSn7mP1Ep6/YPYY3PbOeQ5BguFvtrMQtsovtGyIqHqp9Fv68JGLk45AXJG6vol0B6IwpRHb3TQQ==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@grafeo-db/js-win32-x64-msvc@0.5.42':
+    resolution: {integrity: sha512-IRNcnqYhiRuMvqEjeVbndky7Rors/pf8zwGGuI4hco6PGkDKENfm8w7aDPe1b46cxV82TpMCC4FdpkiW1ixA7A==}
+    engines: {node: '>=20'}
+    cpu: [x64]
+    os: [win32]
+
+  '@grafeo-db/js@0.5.42':
+    resolution: {integrity: sha512-EAi8wVxOu04dAlgRDv9o2FNyvNtGQJOrE0uskfQoHTkmNzYdVpr23isKjNKEg1yX7xaFWdLdBjQrucU8LqTMnQ==}
+    engines: {node: '>=20'}
 
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
@@ -6317,6 +6363,33 @@ snapshots:
     transitivePeerDependencies:
       - '@vue/composition-api'
       - vue
+
+  '@grafeo-db/js-darwin-arm64@0.5.42':
+    optional: true
+
+  '@grafeo-db/js-darwin-x64@0.5.42':
+    optional: true
+
+  '@grafeo-db/js-linux-arm64-gnu@0.5.42':
+    optional: true
+
+  '@grafeo-db/js-linux-arm64-musl@0.5.42':
+    optional: true
+
+  '@grafeo-db/js-linux-x64-gnu@0.5.42':
+    optional: true
+
+  '@grafeo-db/js-win32-x64-msvc@0.5.42':
+    optional: true
+
+  '@grafeo-db/js@0.5.42':
+    optionalDependencies:
+      '@grafeo-db/js-darwin-arm64': 0.5.42
+      '@grafeo-db/js-darwin-x64': 0.5.42
+      '@grafeo-db/js-linux-arm64-gnu': 0.5.42
+      '@grafeo-db/js-linux-arm64-musl': 0.5.42
+      '@grafeo-db/js-linux-x64-gnu': 0.5.42
+      '@grafeo-db/js-win32-x64-msvc': 0.5.42
 
   '@hono/node-server@2.1.1(hono@4.13.7)':
     dependencies:

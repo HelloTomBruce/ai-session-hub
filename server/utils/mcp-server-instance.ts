@@ -9,6 +9,7 @@ import { adapterRegistry } from './adapter-registry'
 import { distillSessionsContent } from './distillator'
 import { mcpLogger } from './mcp-logger'
 import { knowledgeService } from './knowledge-service'
+import { memoryService } from './memory-service'
 import { evaluateSessionValue } from './evaluator-engine'
 import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
@@ -238,6 +239,125 @@ export function createMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {}
+          }
+        },
+        {
+          name: 'recall_memories',
+          description: '从基于 Grafeo 图数据库的本地记忆库中，按工作区路径、涉及的技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: '搜索问题、关键词、痛点或方案描述'
+              },
+              cwd: {
+                type: 'string',
+                description: '当前项目或工作区路径（用于优先召回当前项目沉淀的经验）'
+              },
+              tech: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '当前使用或相关的技术栈实体列表（如 [\"Nuxt\", \"Grafeo\", \"SQLite\"]）'
+              },
+              type: {
+                type: 'string',
+                description: '记忆类型过滤：ADR | Gotcha | BestPractice | Pattern | Workflow | Config 或自定义类型'
+              },
+              limit: {
+                type: 'number',
+                description: '最大返回条数（默认 10）'
+              }
+            }
+          }
+        },
+        {
+          name: 'search_memory_graph',
+          description: '获取 Grafeo 知识图谱的拓扑实体关系网络（包含 Memory、Project、TechConcept、Problem 节点及关联边）',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                description: '可选的记忆类型筛选'
+              },
+              project: {
+                type: 'string',
+                description: '可选的项目名称筛选'
+              },
+              limit: {
+                type: 'number',
+                description: '最大节点返回数'
+              }
+            }
+          }
+        },
+        {
+          name: 'save_memory',
+          description: '将当前对话中提炼的高价值架构决策、排坑避坑指南或最佳实践主动沉淀到 Grafeo 记忆图谱中（解耦会话存续，永久保留）',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: '记忆/经验标题'
+              },
+              type: {
+                type: 'string',
+                description: '记忆分类（如 ADR, Gotcha, BestPractice, Pattern, Workflow, Config 或自定义）'
+              },
+              summary: {
+                type: 'string',
+                description: '一句话核心摘要'
+              },
+              content: {
+                type: 'string',
+                description: '详细方案、原理、操作步骤或完整 Markdown 报告'
+              },
+              projects: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    cwd: { type: 'string' }
+                  },
+                  required: ['name']
+                },
+                description: '适用的项目列表'
+              },
+              techConcepts: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    category: { type: 'string' }
+                  },
+                  required: ['name']
+                },
+                description: '涉及的技术栈/工具/库列表'
+              },
+              problems: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    symptom: { type: 'string' },
+                    errorCode: { type: 'string' }
+                  },
+                  required: ['title']
+                },
+                description: '解决的痛点/报错/异常'
+              },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '关联标签'
+              }
+            },
+            required: ['title', 'content']
           }
         }
       ]
@@ -647,6 +767,133 @@ export function createMcpServer() {
             {
               type: 'text',
               text: JSON.stringify(evaluation, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (name === 'recall_memories') {
+        const query = (args.query as string) || ''
+        const cwd = (args.cwd as string) || ''
+        const tech = (args.tech as string[]) || []
+        const type = (args.type as string) || undefined
+        const limit = typeof args.limit === 'number' ? args.limit : 10
+
+        const memories = await memoryService.recallMemories({
+          query,
+          cwd,
+          tech,
+          type,
+          limit
+        })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Recalled ${memories.length} memories from Grafeo graph`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: memories.length,
+                  memories: memories.map(m => ({
+                    id: m.id,
+                    title: m.title,
+                    type: m.type,
+                    summary: m.summary,
+                    content: m.content,
+                    confidence: m.confidence,
+                    tags: m.tags,
+                    projects: m.projects,
+                    techConcepts: m.techConcepts,
+                    problems: m.problems,
+                    snippets: m.snippets
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+      }
+
+      if (name === 'search_memory_graph') {
+        const type = (args.type as string) || undefined
+        const project = (args.project as string) || undefined
+        const limit = typeof args.limit === 'number' ? args.limit : 200
+
+        const graph = await memoryService.getGraphData({ type, project, limit })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Fetched graph with ${graph.nodes.length} nodes and ${graph.edges.length} edges`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(graph, null, 2)
+            }
+          ]
+        }
+      }
+
+      if (name === 'save_memory') {
+        const title = (args.title as string) || '未命名记忆'
+        const type = (args.type as string) || 'BestPractice'
+        const summary = (args.summary as string) || title
+        const content = (args.content as string) || ''
+        const tags = (args.tags as string[]) || []
+        const projects = (args.projects as any[]) || []
+        const techConcepts = (args.techConcepts as any[]) || []
+        const problems = (args.problems as any[]) || []
+
+        const saved = await memoryService.saveMemory({
+          title,
+          type,
+          summary,
+          content,
+          tags,
+          projects,
+          techConcepts,
+          problems
+        })
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Saved memory ${saved.id} into Grafeo graph`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: '记忆与实体拓扑已成功持久化至 Grafeo 图数据库',
+                  item: saved
+                },
+                null,
+                2
+              )
             }
           ]
         }

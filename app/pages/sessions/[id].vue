@@ -145,6 +145,7 @@ const formatTime = (ts?: number) => {
 // Tool & Skill analytics computation
 const isToolModalOpen = ref(false)
 const isHarvestModalOpen = ref(false)
+const isExtractMemoryModalOpen = ref(false)
 
 const selectedToolName = ref('')
 const selectedToolCalls = ref<Array<{
@@ -705,6 +706,17 @@ const backUrl = computed(() => {
           >
             刷新
           </UButton>
+          <button
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-all cursor-pointer select-none active:scale-95"
+            title="提取通用架构决策、排坑经验并存入 Grafeo 记忆图谱"
+            @click="isExtractMemoryModalOpen = true"
+          >
+            <UIcon
+              name="i-lucide-brain"
+              class="w-3.5 h-3.5"
+            />
+            <span>提炼记忆</span>
+          </button>
           <button
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer select-none active:scale-95"
             title="启动多维量化评估并沉淀高价值知识"
@@ -1583,6 +1595,13 @@ const backUrl = computed(() => {
       :session-id="sessionId"
       :platform="platform"
       :session-title="session?.title"
+    />
+
+    <!-- Grafeo Memory Extraction Modal -->
+    <ExtractMemoryModal
+      v-model:open="isExtractMemoryModalOpen"
+      :session="session"
+      :messages="messages"
     />
   </div>
 </template>

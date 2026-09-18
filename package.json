@@ -13,6 +13,7 @@
     "record:demo": "tsx scripts/record-demo.ts"
   },
   "dependencies": {
+    "@grafeo-db/js": "^0.5.42",
     "@iconify-json/lucide": "^1.2.127",
     "@iconify-json/simple-icons": "^1.2.94",
     "@modelcontextprotocol/sdk": "^1.30.0",

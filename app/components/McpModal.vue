@@ -75,6 +75,31 @@ const configs = [
 }`
   },
   {
+    title: 'OpenCode CLI (~/.opencode/mcp.json)',
+    desc: '在 OpenCode 中配置跨会话与 Grafeo 记忆图谱增强',
+    type: 'json',
+    code: `{
+  "mcpServers": {
+    "session-hub": {
+      "type": "sse",
+      "url": "http://localhost:3000/api/mcp/sse"
+    }
+  }
+}`
+  },
+  {
+    title: 'Codex CLI / App (~/.codex/mcp.json)',
+    desc: 'Codex 架构决策与会话检索增强',
+    type: 'json',
+    code: `{
+  "mcpServers": {
+    "session-hub": {
+      "url": "http://localhost:3000/api/mcp/sse"
+    }
+  }
+}`
+  },
+  {
     title: 'Pi CLI (~/.pi/agent/mcp.json)',
     desc: 'Pi 智能代理跨会话记忆与知识增强',
     type: 'json',
@@ -91,10 +116,55 @@ const configs = [
     desc: '使用 agy 终端一键连接',
     type: 'cli',
     code: `agy mcp add session-hub --url http://localhost:3000/api/mcp/sse`
+  },
+  {
+    title: 'WorkBuddy (~/.workbuddy/mcp.json)',
+    desc: '企业级 AI 编码助手 MCP 服务配置',
+    type: 'json',
+    code: `{
+  "mcpServers": {
+    "session-hub": {
+      "url": "http://localhost:3000/api/mcp/sse"
+    }
+  }
+}`
+  },
+  {
+    title: 'Trae / Windsurf / Continue',
+    desc: '通用 SSE MCP 服务接入配置',
+    type: 'json',
+    code: `{
+  "mcpServers": {
+    "session-hub": {
+      "url": "http://localhost:3000/api/mcp/sse"
+    }
+  }
+}`
   }
 ]
 
 const exposedTools = [
+  {
+    name: 'recall_memories',
+    tag: 'Grafeo 记忆召回',
+    color: 'violet',
+    desc: '基于 Grafeo 图数据库按工作区路径、涉及的技术栈实体或关键词召回相关避坑指南、架构决策与最佳实践。',
+    params: 'query, cwd, tech (技术实体数组), type, limit'
+  },
+  {
+    name: 'search_memory_graph',
+    tag: 'Grafeo 拓扑查询',
+    color: 'violet',
+    desc: '查询 Grafeo 知识图谱的网络节点（Memory, Project, TechConcept, Problem）与拓扑关系边。',
+    params: 'type, project, limit'
+  },
+  {
+    name: 'save_memory',
+    tag: 'Grafeo 记忆沉淀',
+    color: 'violet',
+    desc: '允许外部 Agent 在解决难题或做出架构选型后，主动将经验、实体关系与规约存入 Grafeo 图谱。',
+    params: 'title (必需), content (必需), type, summary, projects, techConcepts, problems, tags'
+  },
   {
     name: 'search_sessions_fts',
     tag: '全文检索 (FTS5)',
