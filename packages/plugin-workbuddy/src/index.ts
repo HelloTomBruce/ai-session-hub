@@ -50,7 +50,7 @@ export class WorkBuddyPlugin implements SessionPlugin {
     version: '1.0.0',
     description: 'WorkBuddy 智能工作助手桌面端，支持任务追踪、专家模型与项目会话',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
 

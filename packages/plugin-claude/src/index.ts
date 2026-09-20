@@ -56,11 +56,13 @@ export class ClaudePlugin implements SessionPlugin {
     version: '1.0.0',
     description: 'Anthropic 官方研究级 Coding CLI，支持项目级会话、MCP 与 Plugins',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
 
   private baseDir: string
+  /** 列表解析结果缓存：key 为文件路径，mtime 变化时失效（避免重复全量解析） */
+  private sessionInfoCache = new Map<string, { mtimeMs: number, size: number, session: UnifiedSession }>()
 
   constructor(customBaseDir?: string) {
     this.baseDir = customBaseDir || path.join(os.homedir(), '.claude', 'projects')
@@ -86,7 +88,8 @@ export class ClaudePlugin implements SessionPlugin {
         }
       }
       return items
-    } catch {
+    } catch (err) {
+      console.error(`[ClaudePlugin] Failed to read ${filePath}:`, err)
       return []
     }
   }
@@ -107,6 +110,14 @@ export class ClaudePlugin implements SessionPlugin {
             const filePath = path.join(fullPDir, file)
             try {
               const stat = fs.statSync(filePath)
+
+              // 缓存命中（mtime + size 未变）时直接复用上次解析结果
+              const cached = this.sessionInfoCache.get(filePath)
+              if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+                sessions.push(cached.session)
+                continue
+              }
+
               const id = file.replace('.jsonl', '')
               let title = ''
               let messageCount = 0
@@ -149,7 +160,7 @@ export class ClaudePlugin implements SessionPlugin {
                 }
               }
 
-              sessions.push({
+              const session: UnifiedSession = {
                 id,
                 cli: 'claude',
                 category: 'cli',
@@ -159,15 +170,18 @@ export class ClaudePlugin implements SessionPlugin {
                 updatedAt: stat.mtimeMs,
                 messageCount,
                 rawLocation: filePath
-              })
-            } catch {
-              // skip unreadable
+              }
+
+              this.sessionInfoCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, session })
+              sessions.push(session)
+            } catch (err) {
+              console.warn(`[ClaudePlugin] Skipping unreadable session file ${filePath}:`, err)
             }
           }
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('[ClaudePlugin] Failed to scan sessions directory:', err)
     }
 
     return sessions

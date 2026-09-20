@@ -72,7 +72,7 @@ export class OpenCodePlugin implements SessionPlugin {
     version: '1.0.0',
     description: '开源 AI 编码 CLI，支持代码重构、工具调用与多模型对话',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
 
@@ -114,7 +114,7 @@ export class OpenCodePlugin implements SessionPlugin {
         createdAt: row.time_created || Date.now(),
         updatedAt: row.time_updated || Date.now(),
         cost: row.cost,
-        model: row.model,
+        model: this.extractModelName(row.model),
         rawLocation: this.dbPath,
         extra: {
           slug: row.slug,
@@ -123,10 +123,28 @@ export class OpenCodePlugin implements SessionPlugin {
           summary_deletions: row.summary_deletions
         }
       }))
-    } catch {
+    } catch (err) {
+      console.error('[OpenCodePlugin] Failed to read sessions (DB schema drifted or file corrupted?):', err)
       return []
     } finally {
       if (db) db.close()
+    }
+  }
+
+  /**
+   * OpenCode 的 model 字段存储的是 JSON 字符串（如 {"id":"...","modelID":"..."}），
+   * 需要提取出真实模型名，避免把整段 JSON 透传到 UI。
+   */
+  private extractModelName(raw: string | undefined): string | undefined {
+    if (!raw) return undefined
+    const trimmed = raw.trim()
+    if (!trimmed.startsWith('{')) return trimmed
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>
+      const candidate = parsed.modelID || parsed.id || parsed.model
+      return typeof candidate === 'string' && candidate ? candidate : undefined
+    } catch {
+      return undefined
     }
   }
 
@@ -218,8 +236,17 @@ export class OpenCodePlugin implements SessionPlugin {
     let db: Database.Database | undefined
     try {
       db = this.getDb(false)
-      db.prepare(`DELETE FROM session WHERE id = ?`).run(id)
+      // 级联清理消息与 part，避免孤儿数据残留（库未开启 foreign_keys pragma）
+      const tx = db.transaction(() => {
+        db!.prepare(`DELETE FROM part WHERE message_id IN (SELECT id FROM message WHERE session_id = ?)`).run(id)
+        db!.prepare(`DELETE FROM message WHERE session_id = ?`).run(id)
+        db!.prepare(`DELETE FROM session WHERE id = ?`).run(id)
+      })
+      tx()
       return true
+    } catch (e) {
+      console.error('[OpenCodePlugin] Failed deleting session:', e)
+      return false
     } finally {
       if (db) db.close()
     }

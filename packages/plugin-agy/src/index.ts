@@ -42,7 +42,7 @@ export class AgyPlugin implements SessionPlugin {
     version: '1.0.0',
     description: 'Google Antigravity CLI 智能助手，支持项目级脑图与 Transcript 思考链提取',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
 
@@ -108,7 +108,8 @@ export class AgyPlugin implements SessionPlugin {
           }
         }
       })
-    } catch {
+    } catch (err) {
+      console.error('[AgyPlugin] Failed to read sessions (DB schema drifted or file corrupted?):', err)
       return []
     } finally {
       if (db) db.close()
@@ -119,22 +120,39 @@ export class AgyPlugin implements SessionPlugin {
     const transcriptPath = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain', id, '.system_generated', 'logs', 'transcript.jsonl')
     const messages: SessionMessage[] = []
     if (fs.existsSync(transcriptPath)) {
+      let lines: string[]
       try {
-        const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean)
-        for (const line of lines) {
-          const parsed = JSON.parse(line) as AgyTranscriptLine
-          const role = parsed.type === 'USER_INPUT' ? 'user' : 'assistant'
-          messages.push({
-            id: String(parsed.step_index),
-            role,
-            content: parsed.content || '',
-            timestamp: parsed.created_at ? new Date(parsed.created_at).getTime() : undefined,
-            thought: parsed.thinking,
-            toolCalls: parsed.tool_calls
-          })
+        lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean)
+      } catch (err) {
+        console.error(`[AgyPlugin] Failed to read transcript for ${id}:`, err)
+        return messages
+      }
+
+      // 行级容错：单行坏数据只跳过该行并记录日志，不再中断整个 transcript
+      let skippedLines = 0
+      for (const [lineIdx, line] of lines.entries()) {
+        let parsed: AgyTranscriptLine
+        try {
+          parsed = JSON.parse(line) as AgyTranscriptLine
+        } catch {
+          skippedLines++
+          continue
         }
-      } catch {
-        // ignore
+
+        const role = parsed.type === 'USER_INPUT' ? 'user' : 'assistant'
+        messages.push({
+          // step_index 可能缺失或重复，拼接行号保证消息 id 唯一，避免缓存层主键冲突折叠消息
+          id: parsed.step_index != null ? `step_${parsed.step_index}_l${lineIdx}` : `line_${lineIdx}`,
+          role,
+          content: parsed.content || '',
+          timestamp: parsed.created_at ? new Date(parsed.created_at).getTime() : undefined,
+          thought: parsed.thinking,
+          toolCalls: parsed.tool_calls
+        })
+      }
+
+      if (skippedLines > 0) {
+        console.warn(`[AgyPlugin] Skipped ${skippedLines} malformed line(s) in transcript for ${id}`)
       }
     }
     return messages
@@ -163,8 +181,8 @@ export class AgyPlugin implements SessionPlugin {
       try {
         db = this.getDb(false)
         db.prepare(`DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(id)
-      } catch {
-        // ignore
+      } catch (err) {
+        console.error('[AgyPlugin] Failed deleting session from summaries DB:', err)
       } finally {
         if (db) db.close()
       }
@@ -185,10 +203,14 @@ export class AgyPlugin implements SessionPlugin {
       let db: Database.Database | undefined
       try {
         db = this.getDb(false)
+        // 使用带时区的 ISO 字符串而不是 datetime('now')（无时区 UTC 文本会被读取端按本地时区解析，造成 8 小时偏移）
+        const nowIso = new Date().toISOString()
         db.prepare(`
           INSERT OR REPLACE INTO conversation_summaries (conversation_id, title, preview, step_count, last_modified_time, workspace_uris, last_user_input_time)
-          VALUES (?, ?, ?, ?, datetime('now'), ?, datetime('now'))
-        `).run(id, payload.title || 'New AGY Conversation', payload.initialPrompt || '', payload.initialPrompt ? 1 : 0, JSON.stringify([targetCwd]))
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(id, payload.title || 'New AGY Conversation', payload.initialPrompt || '', payload.initialPrompt ? 1 : 0, nowIso, JSON.stringify([targetCwd]), nowIso)
+      } catch (e) {
+        console.error('[AgyPlugin] Failed creating session:', e)
       } finally {
         if (db) db.close()
       }

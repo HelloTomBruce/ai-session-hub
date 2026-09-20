@@ -55,11 +55,13 @@ export class PiPlugin implements SessionPlugin {
     version: '1.0.0',
     description: '轻量级多模型终端 Agent，支持树状会话、Skill 与 MCP 工具',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
 
   private baseDir: string
+  /** 列表解析结果缓存：key 为文件路径，mtime 变化时失效（避免 sync 双重全量解析） */
+  private sessionInfoCache = new Map<string, { mtimeMs: number, size: number, session: UnifiedSession }>()
 
   constructor(customBaseDir?: string) {
     this.baseDir = customBaseDir || path.join(os.homedir(), '.pi', 'agent', 'sessions')
@@ -85,8 +87,25 @@ export class PiPlugin implements SessionPlugin {
         }
       }
       return items
-    } catch {
+    } catch (err) {
+      console.error(`[PiPlugin] Failed to read ${filePath}:`, err)
       return []
+    }
+  }
+
+  /** 将非标准 role 归一化到统一枚举，避免泄漏到前端渲染（如 toolResult） */
+  private normalizeRole(role: string | undefined): SessionMessage['role'] {
+    switch (role) {
+      case 'user':
+      case 'assistant':
+      case 'system':
+      case 'tool':
+        return role
+      case 'toolResult':
+      case 'tool_result':
+        return 'tool'
+      default:
+        return 'assistant'
     }
   }
 
@@ -106,6 +125,14 @@ export class PiPlugin implements SessionPlugin {
             const filePath = path.join(fullPDir, file)
             try {
               const stat = fs.statSync(filePath)
+
+              // 缓存命中（mtime + size 未变）时直接复用上次解析结果
+              const cached = this.sessionInfoCache.get(filePath)
+              if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+                sessions.push(cached.session)
+                continue
+              }
+
               const lines = this.readJsonl<PiLine>(filePath)
 
               let id = file.replace('.jsonl', '')
@@ -136,7 +163,7 @@ export class PiPlugin implements SessionPlugin {
                 }
               }
 
-              sessions.push({
+              const session: UnifiedSession = {
                 id,
                 cli: 'pi',
                 category: 'cli',
@@ -147,15 +174,18 @@ export class PiPlugin implements SessionPlugin {
                 messageCount,
                 model,
                 rawLocation: filePath
-              })
-            } catch {
-              // skip unreadable session file
+              }
+
+              this.sessionInfoCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, session })
+              sessions.push(session)
+            } catch (err) {
+              console.warn(`[PiPlugin] Skipping unreadable session file ${filePath}:`, err)
             }
           }
         }
       }
-    } catch {
-      // ignore scanning errors
+    } catch (err) {
+      console.error('[PiPlugin] Failed to scan sessions directory:', err)
     }
 
     return sessions
@@ -168,7 +198,7 @@ export class PiPlugin implements SessionPlugin {
 
     for (const parsed of lines) {
       if (parsed.type === 'message') {
-        const role = parsed.message?.role || 'assistant'
+        const role = this.normalizeRole(parsed.message?.role)
         let content = ''
         let thought = ''
         const toolCalls: SessionToolCall[] = []
@@ -185,7 +215,7 @@ export class PiPlugin implements SessionPlugin {
 
         messages.push({
           id: parsed.id,
-          role: role as SessionMessage['role'],
+          role,
           content: content || (thought ? `*(Thinking)*\n${thought}` : ''),
           timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined,
           model: parsed.model || parsed.message?.model,

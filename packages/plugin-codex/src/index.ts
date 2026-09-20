@@ -38,9 +38,12 @@ export class CodexPlugin implements SessionPlugin {
     version: '1.0.0',
     description: 'OpenAI 官方 Codex 桌面客户端，支持沙箱会话与 Rollout 线程跟踪',
     author: 'Session Hub Team',
-    type: 'npm',
+    type: 'builtin',
     defaultEnabled: true
   }
+
+  /** rollout 路径解析缓存：避免每次拉取消息都对 ~/.codex/sessions 做全目录 BFS */
+  private rolloutPathCache = new Map<string, string>()
 
   private dbPath: string
 
@@ -59,6 +62,16 @@ export class CodexPlugin implements SessionPlugin {
   private findRolloutPath(id: string, storedPath?: string): string {
     if (storedPath && fs.existsSync(storedPath)) return storedPath
 
+    // 命中缓存（含负缓存 ''）时直接返回，避免重复 BFS
+    const cached = this.rolloutPathCache.get(id)
+    if (cached !== undefined) return cached
+
+    const resolved = this.searchRolloutPath(id)
+    this.rolloutPathCache.set(id, resolved)
+    return resolved
+  }
+
+  private searchRolloutPath(id: string): string {
     const homeDir = os.homedir()
     const codexSessionsDir = path.join(homeDir, '.codex', 'sessions')
     if (fs.existsSync(codexSessionsDir)) {
@@ -145,6 +158,7 @@ export class CodexPlugin implements SessionPlugin {
       return rows.map((row: CodexThreadRow) => {
         const createdAt = row.created_at_ms || (Number(row.created_at) * 1000)
         const updatedAt = row.updated_at_ms || (Number(row.updated_at) * 1000)
+        const model = row.model || row.model_provider
         return {
           id: row.id,
           cli: 'codex',
@@ -153,8 +167,8 @@ export class CodexPlugin implements SessionPlugin {
           cwd: row.cwd || '',
           createdAt,
           updatedAt,
-          model: row.model || row.model_provider,
-          cost: row.tokens_used ? (row.tokens_used / 1000000) * 2.5 : undefined,
+          model,
+          cost: this.estimateCost(row.tokens_used, model),
           status: row.archived ? 'Archived' : 'Active',
           rawLocation: row.rollout_path || this.dbPath,
           extra: {
@@ -163,10 +177,54 @@ export class CodexPlugin implements SessionPlugin {
           }
         }
       })
-    } catch {
+    } catch (err) {
+      console.error('[CodexPlugin] Failed to read sessions (DB schema drifted or file corrupted?):', err)
       return []
     } finally {
       if (db) db.close()
+    }
+  }
+
+  /**
+   * 按模型单价估算成本（tokens_used 为输入+输出总 token，按 3:1 输入输出比折算）。
+   * 未知模型返回 undefined，不再输出与模型无关的伪成本。
+   * 单价为每百万 token 美元，随官方定价调整。
+   */
+  private estimateCost(tokensUsed: number | undefined, model: string | undefined): number | undefined {
+    if (!tokensUsed || !model) return undefined
+    const rates: Record<string, { input: number, output: number }> = {
+      'gpt-5': { input: 1.25, output: 10 },
+      'gpt-5-codex': { input: 1.25, output: 10 },
+      'gpt-5.1': { input: 1.25, output: 10 },
+      'gpt-5-mini': { input: 0.25, output: 2 },
+      'gpt-5-nano': { input: 0.05, output: 0.4 },
+      'codex-mini-latest': { input: 0.15, output: 0.6 },
+      'o3': { input: 2, output: 8 },
+      'o4-mini': { input: 1.1, output: 4.4 }
+    }
+    const rate = rates[model]
+    if (!rate) return undefined
+    const blended = rate.input * 0.75 + rate.output * 0.25
+    return (tokensUsed / 1000000) * blended
+  }
+
+  /**
+   * Codex rollout 中的 role 归一化：developer/system 视角的消息统一为用户侧，
+   * 避免泄漏出统一枚举之外的 role 导致前端渲染异常。
+   */
+  private normalizeRole(role: string | undefined): SessionMessage['role'] {
+    switch (role) {
+      case 'user':
+      case 'developer':
+        return 'user'
+      case 'assistant':
+        return 'assistant'
+      case 'system':
+        return 'system'
+      case 'tool':
+        return 'tool'
+      default:
+        return 'assistant'
     }
   }
 
@@ -177,6 +235,16 @@ export class CodexPlugin implements SessionPlugin {
     if (rolloutPath && fs.existsSync(rolloutPath)) {
       try {
         const lines = fs.readFileSync(rolloutPath, 'utf-8').split('\n').filter(Boolean)
+        // 基于消息 id 去重：同一事件可能同时以 response_item 与 event_msg 两种形式落盘。
+        // 不能用内容去重——用户连续发送相同文本是合法场景，按内容去重会丢消息。
+        const seenIds = new Set<string>()
+        const isDuplicate = (msgId: string | undefined): boolean => {
+          if (!msgId) return false
+          if (seenIds.has(msgId)) return true
+          seenIds.add(msgId)
+          return false
+        }
+
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line)
@@ -184,7 +252,7 @@ export class CodexPlugin implements SessionPlugin {
             const payload = parsed.payload || {}
 
             if (type === 'response_item' && payload.type === 'message') {
-              const role = payload.role || 'assistant'
+              const role = this.normalizeRole(payload.role)
               let content = ''
               if (Array.isArray(payload.content)) {
                 for (const c of payload.content) {
@@ -193,7 +261,7 @@ export class CodexPlugin implements SessionPlugin {
                   }
                 }
               }
-              if (content) {
+              if (content && !isDuplicate(payload.id)) {
                 messages.push({
                   id: payload.id,
                   role,
@@ -208,7 +276,7 @@ export class CodexPlugin implements SessionPlugin {
                 for (const c of item.content) {
                   if (c.text) text += (text ? '\n\n' : '') + c.text
                 }
-                if (text && !messages.some(m => m.content === text)) {
+                if (text && !isDuplicate(item.id)) {
                   messages.push({
                     id: item.id,
                     role: 'user',
@@ -221,7 +289,7 @@ export class CodexPlugin implements SessionPlugin {
                 for (const c of item.content) {
                   if (c.text) text += (text ? '\n\n' : '') + c.text
                 }
-                if (text && !messages.some(m => m.content === text)) {
+                if (text && !isDuplicate(item.id)) {
                   messages.push({
                     id: item.id,
                     role: 'assistant',

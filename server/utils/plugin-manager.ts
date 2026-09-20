@@ -6,6 +6,7 @@ import type { SessionPlugin, PluginStatusInfo, TemplateJsonlConfig, TemplateSqli
 import type { UnifiedSession, SessionMessage, CreateSessionPayload, UpdateSessionPayload, PlatformType } from './types'
 import { TemplateJsonlPlugin } from './plugins/template-jsonl-plugin'
 import { TemplateSqlitePlugin } from './plugins/template-sqlite-plugin'
+import { logPluginEvent } from './plugin-log'
 
 // Builtin / Standard Plugin Packages
 import { PiPlugin } from '@session-hub/plugin-pi'
@@ -23,6 +24,12 @@ export class PluginManager {
   private plugins = new Map<string, SessionPlugin>()
   private enabledStates = new Map<string, boolean>()
   private initialized = false
+  /** 插件来源追踪（M6：不能依赖 manifest.type 判定，内置包的 type 也是 npm） */
+  private pluginSources = new Map<string, PluginStatusInfo['source']>()
+  /** 内置插件 id，外部插件不允许覆盖（L8） */
+  private builtinIds = new Set<string>()
+  /** 每个插件最近一次加载/同步失败原因，展示在插件面板（H1 上屏） */
+  private lastErrors = new Map<string, string>()
 
   constructor() {
     this.initBuiltinPlugins()
@@ -33,23 +40,50 @@ export class PluginManager {
    * 初始化标准插件包
    */
   private initBuiltinPlugins() {
-    this.register(new PiPlugin())
-    this.register(new ClaudePlugin())
-    this.register(new OpenCodePlugin())
-    this.register(new CodexPlugin())
-    this.register(new AgyPlugin())
-    this.register(new WorkBuddyPlugin())
+    const builtins: SessionPlugin[] = [
+      new PiPlugin(),
+      new ClaudePlugin(),
+      new OpenCodePlugin(),
+      new CodexPlugin(),
+      new AgyPlugin(),
+      new WorkBuddyPlugin()
+    ]
+    for (const plugin of builtins) {
+      this.builtinIds.add(plugin.manifest.id)
+      this.register(plugin, 'builtin')
+    }
   }
 
   /**
    * 注册插件
+   * @param source 插件来源：builtin 内置 / user 用户目录（声明式 JSON、自定义 JS）/ npm node_modules
    */
-  register(plugin: SessionPlugin): this {
-    this.plugins.set(plugin.manifest.id, plugin)
-    if (!this.enabledStates.has(plugin.manifest.id)) {
-      this.enabledStates.set(plugin.manifest.id, plugin.manifest.defaultEnabled !== false)
+  register(plugin: SessionPlugin, source: PluginStatusInfo['source'] = 'user'): this {
+    const id = plugin.manifest.id
+
+    // 内置插件不允许被外部插件静默覆盖（L8）
+    if (source !== 'builtin' && this.builtinIds.has(id) && this.plugins.has(id)) {
+      logPluginEvent('error', id, `External plugin "${id}" conflicts with a builtin plugin id and was rejected`)
+      return this
+    }
+
+    this.plugins.set(id, plugin)
+    this.pluginSources.set(id, source)
+    if (!this.enabledStates.has(id)) {
+      this.enabledStates.set(id, plugin.manifest.defaultEnabled !== false)
     }
     return this
+  }
+
+  /** 记录插件错误（上屏 + 持久化日志），成功路径由 clearPluginError 清除 */
+  private recordPluginError(id: string, err: unknown, context: string): void {
+    const message = err instanceof Error ? err.message : String(err)
+    this.lastErrors.set(id, `${context}: ${message}`)
+    logPluginEvent('error', id, context, err)
+  }
+
+  private clearPluginError(id: string): void {
+    this.lastErrors.delete(id)
   }
 
   /**
@@ -68,7 +102,7 @@ export class PluginManager {
   }
 
   /**
-   * 同步载入 ~/.session-hub/plugins/ 目录下的声明式 JSON 配置
+   * 同步载入 ~/.session-hub/plugins/ 目录下的声明式 JSON 配置（含 M8 配置校验）
    */
   private loadDeclarativeJsonPluginsSync() {
     if (!fs.existsSync(PLUGINS_DIR)) return
@@ -80,17 +114,17 @@ export class PluginManager {
           try {
             const raw = fs.readFileSync(fullPath, 'utf-8')
             const cfg = JSON.parse(raw) as Record<string, unknown>
-            if (cfg.id && typeof cfg.id === 'string') {
-              if (cfg.type === 'template-sqlite' || cfg.dbPath) {
-                const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
-                this.register(plugin)
-              } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
-                const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
-                this.register(plugin)
-              }
+            if (cfg.type === 'template-sqlite' || cfg.dbPath) {
+              const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
+              this.register(plugin, 'user')
+            } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
+              const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
+              this.register(plugin, 'user')
+            } else {
+              logPluginEvent('warn', String(cfg.id || file), `Skipping ${file}: missing required fields (need id + dbPath or baseDir)`)
             }
           } catch (e) {
-            console.error(`[PluginManager] Error loading JSON plugin ${file}:`, e)
+            logPluginEvent('error', file, `Invalid declarative plugin config ${file}`, e)
           }
         }
       }
@@ -201,7 +235,9 @@ export class PluginManager {
   }
 
   /**
-   * 动态加载 ~/.session-hub/plugins/ 目录下的声明式与外部插件
+   * 动态加载 ~/.session-hub/plugins/ 目录下的外部插件
+   * 注意：声明式 JSON 插件由 loadDeclarativeJsonPluginsSync 统一加载（构造器 + reload 均会调用），
+   * 此处只处理自定义 JS 插件与 npm 包，避免重复加载产生噪音日志（L3）。
    */
   async loadExternalPlugins(): Promise<void> {
     if (!fs.existsSync(PLUGINS_DIR)) return
@@ -213,28 +249,7 @@ export class PluginManager {
       for (const file of files) {
         const fullPath = path.join(PLUGINS_DIR, file)
 
-        // 1. 声明式 JSON 插件配置 (*.plugin.json 或 *.json)
-        if (file.endsWith('.json') && file !== 'plugins-config.json') {
-          try {
-            const raw = fs.readFileSync(fullPath, 'utf-8')
-            const cfg = JSON.parse(raw) as Record<string, unknown>
-            if (cfg.id && typeof cfg.id === 'string') {
-              if (cfg.type === 'template-sqlite' || cfg.dbPath) {
-                const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
-                this.register(plugin)
-                console.log(`[PluginManager] Loaded declarative SQLite plugin: ${cfg.id}`)
-              } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
-                const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
-                this.register(plugin)
-                console.log(`[PluginManager] Loaded declarative JSONL plugin: ${cfg.id}`)
-              }
-            }
-          } catch (e) {
-            console.error(`[PluginManager] Error loading JSON plugin ${file}:`, e)
-          }
-        }
-
-        // 2. 自定义 ESM 脚本插件 (*.plugin.js, *.plugin.mjs)
+        // 自定义 ESM 脚本插件 (*.plugin.js, *.plugin.mjs)
         if (file.endsWith('.plugin.js') || file.endsWith('.plugin.mjs')) {
           try {
             const fileUrl = pathToFileURL(fullPath).href
@@ -242,11 +257,11 @@ export class PluginManager {
             const PluginClass = mod.default || mod.plugin
             const pluginInstance: SessionPlugin = typeof PluginClass === 'function' ? new PluginClass() : PluginClass
             if (pluginInstance && pluginInstance.manifest?.id) {
-              this.register(pluginInstance)
+              this.register(pluginInstance, 'user')
               console.log(`[PluginManager] Loaded custom JS plugin: ${pluginInstance.manifest.id}`)
             }
           } catch (e) {
-            console.error(`[PluginManager] Error loading custom JS plugin ${file}:`, e)
+            logPluginEvent('error', file, `Error loading custom JS plugin ${file}`, e)
           }
         }
       }
@@ -286,7 +301,7 @@ export class PluginManager {
                   const PluginClass = mod.default || mod.plugin
                   const pluginInstance: SessionPlugin = typeof PluginClass === 'function' ? new PluginClass() : PluginClass
                   if (pluginInstance && pluginInstance.manifest?.id) {
-                    this.register(pluginInstance)
+                    this.register(pluginInstance, 'npm')
                     console.log(`[PluginManager] Loaded npm plugin: ${pluginInstance.manifest.id} (${entry.name})`)
                   }
                 } else {
@@ -330,7 +345,7 @@ export class PluginManager {
   }
 
   /**
-   * 获取所有插件的状态列表
+   * 获取所有插件的状态列表（含最近失败原因 lastError，用于插件面板排障）
    */
   getPluginStatusList(): PluginStatusInfo[] {
     const list: PluginStatusInfo[] = []
@@ -344,7 +359,9 @@ export class PluginManager {
       if (isAvailable && isEnabled) {
         try {
           sessionCount = plugin.getSessions().length
-        } catch {
+          this.clearPluginError(id)
+        } catch (err) {
+          this.recordPluginError(id, err, '加载会话列表失败')
           sessionCount = 0
         }
       }
@@ -354,7 +371,8 @@ export class PluginManager {
         isAvailable,
         isEnabled,
         sessionCount,
-        source: plugin.manifest.type === 'builtin' ? 'builtin' : 'user'
+        source: this.pluginSources.get(id) || 'user',
+        lastError: this.lastErrors.get(id) || null
       })
     }
 
@@ -383,6 +401,8 @@ export class PluginManager {
    */
   async reload(): Promise<void> {
     this.plugins.clear()
+    this.pluginSources.clear()
+    this.lastErrors.clear()
     this.initBuiltinPlugins()
     this.loadDeclarativeJsonPluginsSync()
     await this.loadExternalPlugins()
@@ -400,8 +420,9 @@ export class PluginManager {
       for (const plugin of this.getActivePlugins()) {
         try {
           sessions.push(...plugin.getSessions())
-        } catch (e) {
-          console.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
+          this.clearPluginError(plugin.manifest.id)
+        } catch (err) {
+          this.recordPluginError(plugin.manifest.id, err, '加载会话列表失败')
         }
       }
     } else {
@@ -410,8 +431,9 @@ export class PluginManager {
       if (plugin && isEnabled && plugin.isAvailable()) {
         try {
           sessions = plugin.getSessions()
-        } catch (e) {
-          console.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
+          this.clearPluginError(platformFilter)
+        } catch (err) {
+          this.recordPluginError(platformFilter, err, '加载会话列表失败')
         }
       }
     }
@@ -471,8 +493,9 @@ export class PluginManager {
           const sessions = plugin.getSessions()
           counts[plugin.manifest.id] = sessions.length
           total += sessions.length
-        } catch {
-          counts[plugin.manifest.id] = 0
+          this.clearPluginError(plugin.manifest.id)
+        } catch (err) {
+          this.recordPluginError(plugin.manifest.id, err, '统计会话数量失败')
         }
       }
     }
