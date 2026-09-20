@@ -19,18 +19,27 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 503, message: 'Cache not initialized. Please sync first (POST /api/cache/sync)' })
   }
 
-  const result = cacheService.search(q, {
-    platform,
-    role,
-    cwd,
-    tag,
-    limit,
-    offset,
-    groupBy
-  })
+  try {
+    const result = cacheService.search(q, {
+      platform,
+      role,
+      cwd,
+      tag,
+      limit,
+      offset,
+      groupBy
+    })
 
-  return {
-    success: true,
-    data: result
+    return {
+      success: true,
+      data: result
+    }
+  } catch (err) {
+    // TOMB-20：检索失败不再伪装成"无结果"，向前端返回明确错误
+    console.error('[API] /api/search failed:', err)
+    throw createError({
+      statusCode: 500,
+      message: `搜索失败：${err instanceof Error ? err.message : String(err)}`
+    })
   }
 })

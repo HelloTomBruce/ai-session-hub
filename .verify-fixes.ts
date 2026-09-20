@@ -1,6 +1,5 @@
 /* TOMB-2 修复验证脚本：在隔离 HOME 下验证 H2/H3/H4/M9 与适配器回归 */
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
 const home = process.env.HOME

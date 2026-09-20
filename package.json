@@ -10,7 +10,8 @@
     "postinstall": "pnpm run build:packages && nuxt prepare",
     "lint": "eslint .",
     "typecheck": "pnpm run build:packages && nuxt typecheck",
-    "record:demo": "tsx scripts/record-demo.ts"
+    "record:demo": "tsx scripts/record-demo.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@grafeo-db/js": "^0.5.42",
@@ -36,6 +37,7 @@
     "playwright": "^1.63.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
     "vue-tsc": "^3.3.11"
   },
   "packageManager": "pnpm@11.24.0"

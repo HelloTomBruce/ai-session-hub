@@ -5,6 +5,7 @@ import os from 'node:os'
 import Database from 'better-sqlite3'
 import { pluginManager } from './plugin-manager'
 import { logPluginEvent } from './plugin-log'
+import { buildFtsQuery } from './fts-query'
 import {
   SCHEMA_VERSION,
   CREATE_SCHEMA_SQL,
@@ -710,7 +711,7 @@ class CacheService {
     const empty: SearchResponse = { results: [], total: 0, query, page, pageSize: limit }
 
     try {
-      const ftsQuery = this.escapeFtsQuery(query)
+      const ftsQuery = buildFtsQuery(query)
       if (!ftsQuery) return empty
 
       // 动态拼接过滤条件
@@ -772,7 +773,10 @@ class CacheService {
         if (totalSessionsCount === 0) return empty
 
         // 2b. 会话分组的分页取页：窗口函数取每组内 rank 最高的一条代表行，
-        //     LIMIT/OFFSET 作用于会话组而非消息行，翻页不再错乱
+        //     LIMIT/OFFSET 作用于会话组而非消息行，翻页不再错乱。
+        //     注意：snippet() 不能与窗口函数出现在同一查询层级（SQLite ≥3.4x
+        //     报 "unable to use function snippet in the requested context"），
+        //     代表行的高亮片段在取页后按 rowid 单独补查（见 fetchSnippetsByRowid）。
         const groupPageSql = `
           SELECT * FROM (
             SELECT
@@ -786,7 +790,6 @@ class CacheService {
               s.tags,
               s.updated_at,
               f.tool_summary,
-              snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
               f.rank,
               ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
             FROM fts_messages f
@@ -807,9 +810,11 @@ class CacheService {
           tags: string
           updated_at: number
           tool_summary?: string
-          snippet: string
           rank: number
         }>
+
+        // 2b'. 补查本页代表行的高亮片段（snippet 需在与 MATCH 同一层级调用）
+        const pageSnippets = this.fetchSnippetsByRowid(ftsQuery, pageRows.map(r => r.rowid))
 
         // 2c. 本页会话的匹配消息数与 top-5 片段
         const keyConditions = pageRows.map(() => '(f.session_id = ? AND f.platform = ?)').join(' OR ')
@@ -834,11 +839,11 @@ class CacheService {
           const snippetSql = `
             SELECT * FROM (
               SELECT
+                f.rowid,
                 f.session_id,
                 f.platform,
                 f.message_id,
                 f.role,
-                snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
                 ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
               FROM fts_messages f
               LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
@@ -846,19 +851,20 @@ class CacheService {
             ) WHERE rn <= 5
           `
           const snippetRows = this.db.prepare(snippetSql).all(...params, ...keyParams) as Array<{
+            rowid: number
             session_id: string
             platform: string
             message_id: string
             role: string
-            snippet: string
           }>
+          const topSnippets = this.fetchSnippetsByRowid(ftsQuery, snippetRows.map(r => r.rowid))
           for (const r of snippetRows) {
             const key = `${r.platform}::${r.session_id}`
             if (!snippetMap.has(key)) snippetMap.set(key, [])
             snippetMap.get(key)!.push({
               message_id: r.message_id,
               role: r.role,
-              snippet: this.cleanSnippetSpaces(r.snippet)
+              snippet: this.cleanSnippetSpaces(topSnippets.get(r.rowid) || '')
             })
           }
         }
@@ -896,7 +902,7 @@ class CacheService {
           cwd: r.cwd || '',
           tags: parseTags(r.tags),
           updated_at: r.updated_at || Date.now(),
-          snippet: this.cleanSnippetSpaces(r.snippet),
+          snippet: this.cleanSnippetSpaces(pageSnippets.get(r.rowid) || ''),
           tool_summary: r.tool_summary || undefined,
           rank: r.rank
         }))
@@ -993,37 +999,29 @@ class CacheService {
         platforms: platformMap
       }
     } catch (err) {
+      // TOMB-20：检索错误不再静默吞掉。记录日志后向上抛出，
+      // 由 API 层返回明确错误，前端据此提示"检索失败"而非"无结果"。
       console.error('[Cache] FTS5 search error:', err)
-      return empty
+      throw err
     }
   }
 
   /**
-   * 将用户输入转义为 FTS5 分词匹配语法
+   * 按 rowid 批量补查 FTS 高亮片段。
+   * snippet() 只能在 MATCH 所在查询层级直接调用（与窗口函数同层会报错），
+   * 因此分组视图的取页/取 top-N 先只取 rowid，再在这里统一补查。
    */
-  private escapeFtsQuery(query: string): string {
-    const raw = query.trim()
-    if (!raw) return ''
-
-    try {
-      const segments = Array.from(this.segmenter.segment(raw))
-      const tokens = segments
-        .map(s => s.segment.trim())
-        .filter(s => s.length > 0 && !/^[\s,.:;!?'"()[\]{}]+$/.test(s))
-
-      if (tokens.length === 0) return ''
-
-      return tokens.map((t) => {
-        // 纯英文/数字/下划线/中划线 -> 前缀模糊匹配
-        if (/^[a-zA-Z0-9_\-.]+$/.test(t)) {
-          return `${t}*`
-        }
-        // 中文字符或混合字符 -> 短语精确/词匹配
-        return `"${t.replace(/"/g, '""')}"`
-      }).join(' ')
-    } catch {
-      return `"${raw.replace(/"/g, '""')}"`
-    }
+  private fetchSnippetsByRowid(ftsQuery: string, rowids: number[]): Map<number, string> {
+    const map = new Map<number, string>()
+    if (!this.db || !ftsQuery || rowids.length === 0) return map
+    const placeholders = rowids.map(() => '?').join(',')
+    const rows = this.db.prepare(`
+      SELECT f.rowid, snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet
+      FROM fts_messages f
+      WHERE fts_messages MATCH ? AND f.rowid IN (${placeholders})
+    `).all(ftsQuery, ...rowids) as Array<{ rowid: number, snippet: string }>
+    for (const r of rows) map.set(r.rowid, r.snippet)
+    return map
   }
 
   /**
