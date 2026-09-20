@@ -4,7 +4,8 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 3
+// v4（TOMB-21）：FTS message_id 改为与 messages_cache.id 一致的复合 id，需重建索引
+export const SCHEMA_VERSION = 4
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息

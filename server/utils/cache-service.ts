@@ -191,7 +191,10 @@ class CacheService {
     const currentVersion = row ? parseInt(row.value, 10) : 0
 
     if (currentVersion < SCHEMA_VERSION) {
-      if (currentVersion < 3) {
+      if (currentVersion < 4) {
+        // v3 -> v4（TOMB-21）：旧 FTS 索引 message_id 存的是 rawMsgId，
+        // 与 messages_cache 复合 id 不一致，必须重建索引；
+        // data_hash 置空强制下一次 sync 全量重同步并重建 FTS
         try {
           this.db.exec('DROP TABLE IF EXISTS fts_messages;')
           this.db.prepare('UPDATE sessions_cache SET data_hash = NULL;').run()
@@ -502,7 +505,9 @@ class CacheService {
             segmentedToolSummary,
             session.cwd || '',
             segmentedTags,
-            rawMsgId,
+            // TOMB-21：FTS 索引的 message_id 必须与 messages_cache.id 一致（复合 id），
+            // 否则搜索结果无法定位锚点，且 LEFT JOIN messages_cache 恒为 NULL
+            msgId,
             session.id,
             session.cli,
             msg.role
@@ -771,32 +776,41 @@ class CacheService {
         const totalSessionsCount = (this.db.prepare(sessionCountSql).get(...params) as { c: number }).c
         if (totalSessionsCount === 0) return empty
 
-        // 2b. 会话分组的分页取页：窗口函数取每组内 rank 最高的一条代表行，
-        //     LIMIT/OFFSET 作用于会话组而非消息行，翻页不再错乱
+        // 2b. 会话分组的分页取页：内层 GROUP BY + MIN(rank) 取每组代表行（SQLite 特性：
+        //     唯一 min/max 聚合时，裸列取自极值所在行），LIMIT/OFFSET 作用于会话组。
+        //     注意：SQLite 不允许 snippet() 与窗口/聚合函数同 SELECT（TOMB-21），
+        //     因此分组过滤放在 rowid 子查询中，snippet 在外层查询生成
         const groupPageSql = `
-          SELECT * FROM (
-            SELECT
-              f.rowid,
-              f.message_id,
-              f.session_id,
-              f.platform,
-              f.role,
-              s.title,
-              s.cwd,
-              s.tags,
-              s.updated_at,
-              f.tool_summary,
-              snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
-              f.rank,
-              ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
-            FROM fts_messages f
-            LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
-            WHERE ${whereClause}
-          ) WHERE rn = 1
-          ORDER BY rank
-          LIMIT ? OFFSET ?
+          SELECT
+            f.rowid,
+            f.message_id,
+            f.session_id,
+            f.platform,
+            f.role,
+            s.title,
+            s.cwd,
+            s.tags,
+            s.updated_at,
+            f.tool_summary,
+            snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
+            f.rank
+          FROM fts_messages f
+          LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+          WHERE ${whereClause}
+            AND f.rowid IN (
+              SELECT rowid FROM (
+                SELECT f.rowid AS rowid, MIN(f.rank) AS best_rank
+                FROM fts_messages f
+                LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+                WHERE ${whereClause}
+                GROUP BY f.session_id, f.platform
+                ORDER BY best_rank
+                LIMIT ? OFFSET ?
+              )
+            )
+          ORDER BY f.rank
         `
-        const pageRows = this.db.prepare(groupPageSql).all(...params, limit, offset) as Array<{
+        const pageRows = this.db.prepare(groupPageSql).all(...params, ...params, limit, offset) as Array<{
           rowid: number
           message_id: string
           session_id: string
@@ -831,25 +845,37 @@ class CacheService {
             countMap.set(`${r.platform}::${r.session_id}`, r.c)
           }
 
+          // 与 2b 相同：窗口函数在 rowid 子查询中，snippet 在外层生成（SQLite 限制）
           const snippetSql = `
-            SELECT * FROM (
-              SELECT
-                f.session_id,
-                f.platform,
-                f.message_id,
-                f.role,
-                snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
-                ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
-              FROM fts_messages f
-              LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
-              WHERE ${whereClause} AND (${keyConditions})
-            ) WHERE rn <= 5
+            SELECT
+              f.session_id,
+              f.platform,
+              f.message_id,
+              f.role,
+              substr(m.content, 1, 160) AS raw_content,
+              snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet
+            FROM fts_messages f
+            LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+            LEFT JOIN messages_cache m ON m.id = f.message_id
+            WHERE ${whereClause} AND (${keyConditions})
+              AND f.rowid IN (
+                SELECT rowid FROM (
+                  SELECT
+                    f.rowid AS rowid,
+                    ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
+                  FROM fts_messages f
+                  LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+                  WHERE ${whereClause} AND (${keyConditions})
+                ) WHERE rn <= 5
+              )
+            ORDER BY f.rank
           `
-          const snippetRows = this.db.prepare(snippetSql).all(...params, ...keyParams) as Array<{
+          const snippetRows = this.db.prepare(snippetSql).all(...params, ...keyParams, ...params, ...keyParams) as Array<{
             session_id: string
             platform: string
             message_id: string
             role: string
+            raw_content?: string
             snippet: string
           }>
           for (const r of snippetRows) {
@@ -858,7 +884,7 @@ class CacheService {
             snippetMap.get(key)!.push({
               message_id: r.message_id,
               role: r.role,
-              snippet: this.cleanSnippetSpaces(r.snippet)
+              snippet: this.resolveSnippet(r.snippet, r.raw_content)
             })
           }
         }
@@ -924,7 +950,7 @@ class CacheService {
           s.cwd,
           s.tags,
           s.updated_at,
-          m.content as raw_content,
+          substr(m.content, 1, 160) as raw_content,
           f.tool_summary,
           snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
           f.rank
@@ -976,7 +1002,7 @@ class CacheService {
           cwd: r.cwd || '',
           tags,
           updated_at: r.updated_at || Date.now(),
-          snippet: this.cleanSnippetSpaces(r.snippet),
+          snippet: this.resolveSnippet(r.snippet, r.raw_content),
           tool_summary: r.tool_summary || undefined,
           rank: r.rank
         })
@@ -1029,6 +1055,20 @@ class CacheService {
   /**
    * 清理分词高亮片段中由于分词产生的多余中文空格
    */
+  /**
+   * 生成展示用 snippet（TOMB-21 / P1）：
+   * FTS 命中 content 列时 snippet 含 <mark> 高亮，直接使用；
+   * 命中 title/cwd/tags/tool_summary 列时 snippet 无高亮（展示的是无关正文），
+   * 此时退回消息正文开头作为预览，避免误导。
+   */
+  private resolveSnippet(ftsSnippet: string, rawContent?: string | null): string {
+    const cleaned = this.cleanSnippetSpaces(ftsSnippet || '')
+    if (cleaned.includes('<mark>')) return cleaned
+    const preview = (rawContent || '').replace(/\s+/g, ' ').trim()
+    if (preview) return preview.length > 80 ? preview.slice(0, 80) + '...' : preview
+    return cleaned
+  }
+
   private cleanSnippetSpaces(snippet: string): string {
     if (!snippet) return ''
     return snippet
