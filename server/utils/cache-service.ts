@@ -4,6 +4,7 @@ import path from 'node:path'
 import os from 'node:os'
 import Database from 'better-sqlite3'
 import { pluginManager } from './plugin-manager'
+import { logPluginEvent } from './plugin-log'
 import {
   SCHEMA_VERSION,
   CREATE_SCHEMA_SQL,
@@ -15,6 +16,26 @@ import type { SessionToolCall, UnifiedSession, SessionMessage, PlatformType } fr
 
 const DB_DIR = path.join(os.homedir(), '.session-hub')
 const DB_PATH = path.join(DB_DIR, 'session-hub.db')
+
+/** 单条 FTS 索引内容上限；超长消息按此大小分块建多条索引（L5） */
+const FTS_CHUNK_SIZE = 50000
+
+/**
+ * 生成会话内唯一的缓存消息 id。
+ * 适配器可能产出重复/缺失的 message id（如 AGY 缺失 step_index），
+ * 直接拼接会导致 INSERT OR REPLACE 主键冲突折叠丢消息（M5）。
+ */
+function uniqueMsgId(used: Set<string>, rawId: string, idx: number): string {
+  let id = rawId
+  if (used.has(id)) {
+    id = `${rawId}#${idx}`
+  }
+  while (used.has(id)) {
+    id = `${id}_${idx}`
+  }
+  used.add(id)
+  return id
+}
 
 interface SessionCacheRow {
   id: string
@@ -294,6 +315,9 @@ class CacheService {
 
   /**
    * 执行全量/增量同步
+   * - 每个插件读取失败自动重试一次（L7）
+   * - 单会话消息解析失败不再中断整个插件同步
+   * - 同步结束后对「源端已消失」的会话做 prune（H4），且仅针对本次同步成功的插件
    */
   sync(): { synced: number, total: number, errors: number } {
     this.init()
@@ -306,131 +330,118 @@ class CacheService {
     let errors = 0
 
     const plugins = pluginManager.getActivePlugins()
+    /** 本次同步成功的插件 id，仅这些平台参与 prune */
+    const succeededPlugins = new Set<string>()
+    /** 源端实际存在的会话 key（platform::id） */
+    const seenKeys = new Set<string>()
 
     for (const plugin of plugins) {
       if (!plugin.isAvailable()) continue
 
-      try {
-        const sessions = plugin.getSessions()
-        totalSessions += sessions.length
-
-        for (const session of sessions) {
-          const newHash = this.computeHash(session)
-          const row = this.db!.prepare(
-            'SELECT data_hash FROM sessions_cache WHERE id = ? AND platform = ?'
-          ).get(session.id, session.cli) as { data_hash: string | null } | undefined
-
-          if (row && row.data_hash === newHash) {
-            continue
-          }
-
-          const messages = plugin.getMessages(session.id, session)
-
-          const sessionTx = this.db!.transaction(() => {
-            // 插入/更新 sessions_cache
-            this.db!.prepare(`
-              INSERT INTO sessions_cache
-                (id, platform, category, title, cwd, model, cost, status, message_count,
-                 created_at, updated_at, raw_location, data_hash, extra)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                platform = excluded.platform,
-                category = excluded.category,
-                title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
-                cwd = excluded.cwd,
-                model = excluded.model,
-                cost = excluded.cost,
-                status = excluded.status,
-                message_count = excluded.message_count,
-                updated_at = excluded.updated_at,
-                raw_location = excluded.raw_location,
-                data_hash = excluded.data_hash,
-                extra = excluded.extra
-            `).run(
-              session.id, session.cli, session.category,
-              session.title, session.cwd,
-              session.model || null,
-              session.cost || null,
-              session.status || null,
-              session.messageCount || 0,
-              session.createdAt, session.updatedAt,
-              session.rawLocation, newHash,
-              session.extra ? JSON.stringify(session.extra) : '{}'
-            )
-
-            // 删除旧消息并重新插入
-            this.db!.prepare(
-              'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
-            ).run(session.id, session.cli)
-
-            // 删除旧 FTS 索引
-            this.db!.prepare(DELETE_FTS_SQL).run(session.id)
-
-            const insertMsg = this.db!.prepare(`
-              INSERT OR REPLACE INTO messages_cache
-                (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `)
-
-            const insertFts = this.db!.prepare(INSERT_FTS_SQL)
-
-            const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
-            const segmentedTags = this.segmentText(tagsStr)
-            const segmentedTitle = this.segmentText(session.title || '')
-
-            for (const [idx, msg] of messages.entries()) {
-              const rawMsgId = msg.id || String(idx)
-              const msgId = `${session.cli}_${session.id}_${rawMsgId}`
-              const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
-              const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
-              const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
-
-              insertMsg.run(
-                msgId, session.id, session.cli,
-                msg.role || 'user', contentStr,
-                thoughtStr,
-                toolCallsStr,
-                typeof msg.timestamp === 'number' ? msg.timestamp : null,
-                msg.model ? String(msg.model) : null
-              )
-
-              if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
-                const toolSummary = this.extractToolSummary(msg.toolCalls)
-                const fullContent = contentStr.slice(0, 50000)
-                const segmentedContent = this.segmentText(fullContent)
-                const segmentedToolSummary = this.segmentText(toolSummary)
-
-                insertFts.run(
-                  segmentedContent,
-                  segmentedTitle,
-                  segmentedToolSummary,
-                  session.cwd || '',
-                  segmentedTags,
-                  rawMsgId,
-                  session.id,
-                  session.cli,
-                  msg.role
-                )
-              }
-            }
-          })
-
-          sessionTx()
-
-          // Auto-tag session
-          try {
-            const msgList = messages.map((m: SessionMessage) => ({ role: m.role, content: m.content }))
-            tagService.autoTagSession(session.id, session.cli, session.title, msgList)
-          } catch {
-            // tagging is best-effort
-          }
-
-          syncedSessions++
+      // 读取失败重试一次（L7：同步单次失败即跳过且无重试）
+      let sessions: UnifiedSession[] | null = null
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt < 2 && sessions === null; attempt++) {
+        try {
+          sessions = plugin.getSessions()
+        } catch (err) {
+          lastErr = err
         }
-      } catch (err) {
-        console.error(`[Cache] Error syncing plugin ${plugin.manifest.id}:`, err)
-        errors++
       }
+
+      if (sessions === null) {
+        console.error(`[Cache] Error syncing plugin ${plugin.manifest.id} (after retry):`, lastErr)
+        logPluginEvent('error', plugin.manifest.id, '同步失败：读取会话列表异常', lastErr)
+        errors++
+        continue
+      }
+
+      succeededPlugins.add(plugin.manifest.id)
+      totalSessions += sessions.length
+
+      for (const session of sessions) {
+        seenKeys.add(`${session.cli}::${session.id}`)
+        const newHash = this.computeHash(session)
+        const row = this.db!.prepare(
+          'SELECT data_hash FROM sessions_cache WHERE id = ? AND platform = ?'
+        ).get(session.id, session.cli) as { data_hash: string | null } | undefined
+
+        if (row && row.data_hash === newHash) {
+          continue
+        }
+
+        // 单会话容错：消息解析失败计入 errors，但不中断该平台其余会话同步
+        let messages: SessionMessage[] = []
+        try {
+          messages = plugin.getMessages(session.id, session)
+        } catch (err) {
+          console.error(`[Cache] Error reading messages for ${plugin.manifest.id}/${session.id}:`, err)
+          logPluginEvent('error', plugin.manifest.id, `读取消息失败：${session.id}`, err)
+          errors++
+        }
+
+        const sessionTx = this.db!.transaction(() => {
+          // 插入/更新 sessions_cache
+          this.db!.prepare(`
+            INSERT INTO sessions_cache
+              (id, platform, category, title, cwd, model, cost, status, message_count,
+               created_at, updated_at, raw_location, data_hash, extra)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              platform = excluded.platform,
+              category = excluded.category,
+              title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
+              cwd = excluded.cwd,
+              model = excluded.model,
+              cost = excluded.cost,
+              status = excluded.status,
+              message_count = excluded.message_count,
+              updated_at = excluded.updated_at,
+              raw_location = excluded.raw_location,
+              data_hash = excluded.data_hash,
+              extra = excluded.extra
+          `).run(
+            session.id, session.cli, session.category,
+            session.title, session.cwd,
+            session.model || null,
+            session.cost || null,
+            session.status || null,
+            session.messageCount || 0,
+            session.createdAt, session.updatedAt,
+            session.rawLocation, newHash,
+            session.extra ? JSON.stringify(session.extra) : '{}'
+          )
+
+          // 删除旧消息并重新插入
+          this.db!.prepare(
+            'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
+          ).run(session.id, session.cli)
+
+          // 删除旧 FTS 索引
+          this.db!.prepare(DELETE_FTS_SQL).run(session.id)
+
+          this.writeMessages(session, messages)
+        })
+
+        sessionTx()
+
+        // Auto-tag session
+        try {
+          const msgList = messages.map((m: SessionMessage) => ({ role: m.role, content: m.content }))
+          tagService.autoTagSession(session.id, session.cli, session.title, msgList)
+        } catch {
+          // tagging is best-effort
+        }
+
+        syncedSessions++
+      }
+    }
+
+    // H4：prune 源端已消失（被删除）的会话，避免“幽灵会话”残留
+    try {
+      this.pruneStaleSessions(succeededPlugins, seenKeys)
+    } catch (err) {
+      console.error('[Cache] Failed to prune stale sessions:', err)
     }
 
     // 更新同步时间
@@ -439,6 +450,97 @@ class CacheService {
     ).run('last_sync_at', new Date().toISOString())
 
     return { synced: syncedSessions, total: totalSessions, errors }
+  }
+
+  /**
+   * 将会话消息与 FTS 索引写入缓存（保证消息 id 会话内唯一，超长内容分块索引）
+   */
+  private writeMessages(session: UnifiedSession, messages: SessionMessage[]): void {
+    const insertMsg = this.db!.prepare(`
+      INSERT OR REPLACE INTO messages_cache
+        (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const insertFts = this.db!.prepare(INSERT_FTS_SQL)
+
+    const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
+    const segmentedTags = this.segmentText(tagsStr)
+    const segmentedTitle = this.segmentText(session.title || '')
+    const usedIds = new Set<string>()
+
+    for (const [idx, msg] of messages.entries()) {
+      const rawMsgId = uniqueMsgId(usedIds, msg.id || String(idx), idx)
+      const msgId = `${session.cli}_${session.id}_${rawMsgId}`
+      const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
+      const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
+      const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
+
+      insertMsg.run(
+        msgId, session.id, session.cli,
+        msg.role || 'user', contentStr,
+        thoughtStr,
+        toolCallsStr,
+        typeof msg.timestamp === 'number' ? msg.timestamp : null,
+        msg.model ? String(msg.model) : null
+      )
+
+      if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
+        const toolSummary = this.extractToolSummary(msg.toolCalls)
+        const segmentedToolSummary = this.segmentText(toolSummary)
+
+        // L5：超长消息分块建立 FTS 索引，避免 50000 字符截断导致后半内容不可搜索
+        const chunks = contentStr.length <= FTS_CHUNK_SIZE
+          ? [contentStr]
+          : Array.from({ length: Math.ceil(contentStr.length / FTS_CHUNK_SIZE) }, (_, i) =>
+              contentStr.slice(i * FTS_CHUNK_SIZE, (i + 1) * FTS_CHUNK_SIZE))
+
+        for (const chunk of chunks) {
+          insertFts.run(
+            this.segmentText(chunk),
+            segmentedTitle,
+            segmentedToolSummary,
+            session.cwd || '',
+            segmentedTags,
+            rawMsgId,
+            session.id,
+            session.cli,
+            msg.role
+          )
+        }
+      }
+    }
+  }
+
+  /**
+   * H4：删除源端已不存在、但缓存中仍残留的会话（幽灵会话）。
+   * 仅处理本次同步成功的插件；消息与 FTS 索引级联清理。
+   */
+  private pruneStaleSessions(succeededPlugins: Set<string>, seenKeys: Set<string>): void {
+    if (!this.db || succeededPlugins.size === 0) return
+
+    const placeholders = Array.from(succeededPlugins).map(() => '?').join(',')
+    const rows = this.db.prepare(
+      `SELECT id, platform FROM sessions_cache WHERE platform IN (${placeholders})`
+    ).all(...succeededPlugins) as Array<{ id: string, platform: string }>
+
+    const stale = rows.filter(r => !seenKeys.has(`${r.platform}::${r.id}`))
+    if (stale.length === 0) return
+
+    const delSession = this.db.prepare('DELETE FROM sessions_cache WHERE id = ? AND platform = ?')
+    const delMessages = this.db.prepare('DELETE FROM messages_cache WHERE session_id = ? AND platform = ?')
+    const delFts = this.db.prepare(DELETE_FTS_SQL)
+
+    const tx = this.db.transaction(() => {
+      for (const r of stale) {
+        delFts.run(r.id)
+        delMessages.run(r.id, r.platform)
+        delSession.run(r.id, r.platform)
+      }
+    })
+    tx()
+
+    console.log(`[Cache] Pruned ${stale.length} stale session(s) removed at source`)
   }
 
   /**
@@ -550,53 +652,7 @@ class CacheService {
 
         this.db!.prepare(DELETE_FTS_SQL).run(session.id)
 
-        const insertMsg = this.db!.prepare(`
-          INSERT OR REPLACE INTO messages_cache
-            (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-
-        const insertFts = this.db!.prepare(INSERT_FTS_SQL)
-
-        const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
-        const segmentedTags = this.segmentText(tagsStr)
-        const segmentedTitle = this.segmentText(session.title || '')
-
-        for (const [idx, msg] of messages.entries()) {
-          const rawMsgId = msg.id || String(idx)
-          const msgId = `${session.cli}_${session.id}_${rawMsgId}`
-          const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
-          const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
-          const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
-
-          insertMsg.run(
-            msgId, session.id, session.cli,
-            msg.role || 'user', contentStr,
-            thoughtStr,
-            toolCallsStr,
-            typeof msg.timestamp === 'number' ? msg.timestamp : null,
-            msg.model ? String(msg.model) : null
-          )
-
-          if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
-            const toolSummary = this.extractToolSummary(msg.toolCalls)
-            const fullContent = contentStr.slice(0, 50000)
-            const segmentedContent = this.segmentText(fullContent)
-            const segmentedToolSummary = this.segmentText(toolSummary)
-
-            insertFts.run(
-              segmentedContent,
-              segmentedTitle,
-              segmentedToolSummary,
-              session.cwd || '',
-              segmentedTags,
-              rawMsgId,
-              session.id,
-              session.cli,
-              msg.role
-            )
-          }
-        }
+        this.writeMessages(session, messages)
       })
       syncTx()
     } catch (err) {
@@ -683,9 +739,9 @@ class CacheService {
 
       const whereClause = conditions.join(' AND ')
 
-      // 1. 统计总匹配消息数及各平台分布
+      // 1. 统计去重后的匹配消息总数（同一消息的超长分块只计一次）及各平台分布
       const countSql = `
-        SELECT f.platform, COUNT(*) as c
+        SELECT f.platform, COUNT(DISTINCT f.message_id) as c
         FROM fts_messages f
         LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
         WHERE ${whereClause}
@@ -693,15 +749,170 @@ class CacheService {
       `
       const platformCounts = this.db.prepare(countSql).all(...params) as { platform: string, c: number }[]
       const platformMap: Record<string, number> = {}
-      let total = 0
+      let totalMessages = 0
       for (const p of platformCounts) {
         platformMap[p.platform] = p.c
-        total += p.c
+        totalMessages += p.c
       }
 
-      if (total === 0) return empty
+      if (totalMessages === 0) return empty
 
-      // 2. 查询明细
+      if (groupBy === 'session') {
+        // 2a. 统计匹配的会话总数（修正：此前 total 为消息数，分页基于消息行导致分组错乱）
+        const sessionCountSql = `
+          SELECT COUNT(*) AS c FROM (
+            SELECT f.session_id, f.platform
+            FROM fts_messages f
+            LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+            WHERE ${whereClause}
+            GROUP BY f.session_id, f.platform
+          )
+        `
+        const totalSessionsCount = (this.db.prepare(sessionCountSql).get(...params) as { c: number }).c
+        if (totalSessionsCount === 0) return empty
+
+        // 2b. 会话分组的分页取页：窗口函数取每组内 rank 最高的一条代表行，
+        //     LIMIT/OFFSET 作用于会话组而非消息行，翻页不再错乱
+        const groupPageSql = `
+          SELECT * FROM (
+            SELECT
+              f.rowid,
+              f.message_id,
+              f.session_id,
+              f.platform,
+              f.role,
+              s.title,
+              s.cwd,
+              s.tags,
+              s.updated_at,
+              f.tool_summary,
+              snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
+              f.rank,
+              ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
+            FROM fts_messages f
+            LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+            WHERE ${whereClause}
+          ) WHERE rn = 1
+          ORDER BY rank
+          LIMIT ? OFFSET ?
+        `
+        const pageRows = this.db.prepare(groupPageSql).all(...params, limit, offset) as Array<{
+          rowid: number
+          message_id: string
+          session_id: string
+          platform: string
+          role: string
+          title: string
+          cwd: string
+          tags: string
+          updated_at: number
+          tool_summary?: string
+          snippet: string
+          rank: number
+        }>
+
+        // 2c. 本页会话的匹配消息数与 top-5 片段
+        const keyConditions = pageRows.map(() => '(f.session_id = ? AND f.platform = ?)').join(' OR ')
+        const keyParams = pageRows.flatMap(r => [r.session_id, r.platform])
+
+        const countMap = new Map<string, number>()
+        const snippetMap = new Map<string, Array<{ message_id: string, role: string, snippet: string }>>()
+
+        if (pageRows.length > 0) {
+          const matchedCountSql = `
+            SELECT f.session_id, f.platform, COUNT(DISTINCT f.message_id) AS c
+            FROM fts_messages f
+            LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+            WHERE ${whereClause} AND (${keyConditions})
+            GROUP BY f.session_id, f.platform
+          `
+          const countRows = this.db.prepare(matchedCountSql).all(...params, ...keyParams) as Array<{ session_id: string, platform: string, c: number }>
+          for (const r of countRows) {
+            countMap.set(`${r.platform}::${r.session_id}`, r.c)
+          }
+
+          const snippetSql = `
+            SELECT * FROM (
+              SELECT
+                f.session_id,
+                f.platform,
+                f.message_id,
+                f.role,
+                snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
+                ROW_NUMBER() OVER (PARTITION BY f.session_id, f.platform ORDER BY f.rank) AS rn
+              FROM fts_messages f
+              LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
+              WHERE ${whereClause} AND (${keyConditions})
+            ) WHERE rn <= 5
+          `
+          const snippetRows = this.db.prepare(snippetSql).all(...params, ...keyParams) as Array<{
+            session_id: string
+            platform: string
+            message_id: string
+            role: string
+            snippet: string
+          }>
+          for (const r of snippetRows) {
+            const key = `${r.platform}::${r.session_id}`
+            if (!snippetMap.has(key)) snippetMap.set(key, [])
+            snippetMap.get(key)!.push({
+              message_id: r.message_id,
+              role: r.role,
+              snippet: this.cleanSnippetSpaces(r.snippet)
+            })
+          }
+        }
+
+        const parseTags = (raw: string): string[] => {
+          try {
+            return raw ? JSON.parse(raw) as string[] : []
+          } catch {
+            return []
+          }
+        }
+
+        const groupedSessions: SessionGroupedSearchResult[] = pageRows.map((r) => {
+          const key = `${r.platform}::${r.session_id}`
+          return {
+            session_id: r.session_id,
+            platform: r.platform,
+            title: r.title || '无标题会话',
+            cwd: r.cwd || '',
+            tags: parseTags(r.tags),
+            updated_at: r.updated_at || Date.now(),
+            matchedCount: countMap.get(key) || 1,
+            bestRank: r.rank,
+            snippets: snippetMap.get(key) || []
+          }
+        })
+
+        const results: SearchResultItem[] = pageRows.map(r => ({
+          rowid: r.rowid,
+          message_id: r.message_id || `msg_${r.rowid}`,
+          session_id: r.session_id,
+          platform: r.platform,
+          role: r.role,
+          title: r.title || '无标题会话',
+          cwd: r.cwd || '',
+          tags: parseTags(r.tags),
+          updated_at: r.updated_at || Date.now(),
+          snippet: this.cleanSnippetSpaces(r.snippet),
+          tool_summary: r.tool_summary || undefined,
+          rank: r.rank
+        }))
+
+        return {
+          results,
+          groupedSessions,
+          total: totalSessionsCount,
+          query,
+          page,
+          pageSize: limit,
+          platforms: platformMap
+        }
+      }
+
+      // 2. 消息平铺模式：查询明细并按 message_id 去重（超长消息的分块索引会命中多次）
       const searchSql = `
         SELECT
           f.rowid,
@@ -725,9 +936,7 @@ class CacheService {
         LIMIT ? OFFSET ?
       `
 
-      // 如果是按会话聚合，多拉取一些记录以供会话级聚合展示
-      const fetchLimit = groupBy === 'session' ? Math.max(100, limit * 5) : limit
-      const rows = this.db.prepare(searchSql).all(...params, fetchLimit, offset) as Array<{
+      const rows = this.db.prepare(searchSql).all(...params, limit * 5, 0) as Array<{
         rowid: number
         message_id: string
         session_id: string
@@ -743,7 +952,13 @@ class CacheService {
         rank: number
       }>
 
-      const results: SearchResultItem[] = rows.map((r) => {
+      const seenMessageIds = new Set<string>()
+      const results: SearchResultItem[] = []
+      for (const r of rows) {
+        const key = `${r.platform}::${r.message_id}`
+        if (seenMessageIds.has(key)) continue
+        seenMessageIds.add(key)
+
         let tags: string[] = []
         try {
           if (r.tags) tags = JSON.parse(r.tags) as string[]
@@ -751,7 +966,7 @@ class CacheService {
           tags = []
         }
 
-        return {
+        results.push({
           rowid: r.rowid,
           message_id: r.message_id || `msg_${r.rowid}`,
           session_id: r.session_id,
@@ -764,58 +979,14 @@ class CacheService {
           snippet: this.cleanSnippetSpaces(r.snippet),
           tool_summary: r.tool_summary || undefined,
           rank: r.rank
-        }
-      })
+        })
 
-      if (groupBy === 'session') {
-        const sessionMap = new Map<string, SessionGroupedSearchResult>()
-        for (const item of results) {
-          const key = `${item.platform}::${item.session_id}`
-          if (!sessionMap.has(key)) {
-            sessionMap.set(key, {
-              session_id: item.session_id,
-              platform: item.platform,
-              title: item.title,
-              cwd: item.cwd,
-              tags: item.tags,
-              updated_at: item.updated_at,
-              matchedCount: 0,
-              bestRank: item.rank,
-              snippets: []
-            })
-          }
-          const group = sessionMap.get(key)!
-          group.matchedCount++
-          if (item.rank < group.bestRank) {
-            group.bestRank = item.rank
-          }
-          if (group.snippets.length < 5) {
-            group.snippets.push({
-              message_id: item.message_id,
-              role: item.role,
-              snippet: item.snippet
-            })
-          }
-        }
-
-        const groupedSessions = Array.from(sessionMap.values())
-          .sort((a, b) => a.bestRank - b.bestRank)
-          .slice(0, limit)
-
-        return {
-          results,
-          groupedSessions,
-          total,
-          query,
-          page,
-          pageSize: limit,
-          platforms: platformMap
-        }
+        if (results.length >= limit + offset) break
       }
 
       return {
-        results,
-        total,
+        results: results.slice(offset, offset + limit),
+        total: totalMessages,
         query,
         page,
         pageSize: limit,

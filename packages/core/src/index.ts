@@ -131,6 +131,8 @@ export interface PluginStatusInfo {
   isEnabled: boolean
   sessionCount: number
   source: 'builtin' | 'user' | 'npm'
+  /** 最近一次加载/同步失败的原因（成功时为 null），用于插件面板排障展示 */
+  lastError?: string | null
 }
 
 /** 声明式 JSONL 插件配置格式 */
@@ -162,5 +164,9 @@ export interface TemplateSqliteConfig {
   titleColumn?: string
   updatedAtColumn?: string
   cwdColumn?: string
+  /** 消息表中指向会话的外键列名；缺省时自动探测（session_id / conversation_id 等常见命名） */
+  messageSessionIdColumn?: string
+  /** 消息排序列名（如 created_at / timestamp / rowid），缺省按查询返回顺序 */
+  messageOrderColumn?: string
   deleteSql?: string
 }
