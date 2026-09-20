@@ -10,11 +10,45 @@ import type {
   PatternSnippetEntity
 } from './memory-types'
 
+/** Grafeo 返回的 Memory 节点原始属性（tags/sourceMeta 以 JSON 字符串存储） */
+interface RawMemoryNode {
+  id: string
+  title?: string
+  type?: string
+  summary?: string
+  content?: string
+  confidence?: number
+  tagsJson?: string
+  sourceMetaJson?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+type MemoryRow = [
+  RawMemoryNode | null,
+  ProjectEntity | null,
+  TechConceptEntity | null,
+  ProblemEntity | null,
+  PatternSnippetEntity | null,
+  (RawMemoryNode | null)?
+]
+
+type GraphRow = [
+  RawMemoryNode | null,
+  ProjectEntity | null,
+  TechConceptEntity | null,
+  ProblemEntity | null,
+  RawMemoryNode | null,
+  ...unknown[]
+]
+
+type PairRow = [string | undefined, string | undefined]
+
 class MemoryService {
   /**
    * 保存或更新图记忆（含实体与拓扑关系）
    */
-  async saveMemory(item: Partial<MemoryGraphItem> & { title: string; content: string }): Promise<MemoryGraphItem> {
+  async saveMemory(item: Partial<MemoryGraphItem> & { title: string, content: string }): Promise<MemoryGraphItem> {
     await grafeoService.init()
     const now = Date.now()
     const id = item.id || `mem_${now}_${Math.random().toString(36).slice(2, 7)}`
@@ -202,10 +236,10 @@ class MemoryService {
         { id }
       )
 
-      const rows = (res.rows() || []) as any[]
+      const rows = (res.rows() || []) as unknown as MemoryRow[]
       if (rows.length === 0) return null
 
-      let mNode: Record<string, any> | null = null
+      let mNode: RawMemoryNode | null = null
       const projectsMap = new Map<string, ProjectEntity>()
       const techMap = new Map<string, TechConceptEntity>()
       const problemMap = new Map<string, ProblemEntity>()
@@ -242,7 +276,7 @@ class MemoryService {
   /**
    * 列表检索记忆（支持类型、项目、技术栈、关键词搜索）
    */
-  async listMemories(options: MemoryGraphQueryOptions = {}): Promise<{ items: MemoryGraphItem[]; total: number }> {
+  async listMemories(options: MemoryGraphQueryOptions = {}): Promise<{ items: MemoryGraphItem[], total: number }> {
     await grafeoService.init()
     try {
       const whereClauses: string[] = []
@@ -282,13 +316,13 @@ class MemoryService {
       `
 
       const res = await grafeoService.execute(query, params)
-      const rows = (res.rows() || []) as any[]
+      const rows = (res.rows() || []) as unknown as MemoryRow[]
       if (rows.length === 0) return { items: [], total: 0 }
 
       const memoriesMap = new Map<
         string,
         {
-          mNode: Record<string, any>
+          mNode: RawMemoryNode
           projects: Map<string, ProjectEntity>
           tech: Map<string, TechConceptEntity>
           problems: Map<string, ProblemEntity>
@@ -334,12 +368,12 @@ class MemoryService {
         const q = options.search.toLowerCase()
         items = items.filter(
           item =>
-            item.title.toLowerCase().includes(q) ||
-            item.summary.toLowerCase().includes(q) ||
-            item.content.toLowerCase().includes(q) ||
-            item.tags.some(t => t.toLowerCase().includes(q)) ||
-            item.techConcepts.some(t => t.name.toLowerCase().includes(q)) ||
-            item.problems.some(p => p.title.toLowerCase().includes(q))
+            item.title.toLowerCase().includes(q)
+            || item.summary.toLowerCase().includes(q)
+            || item.content.toLowerCase().includes(q)
+            || item.tags.some(t => t.toLowerCase().includes(q))
+            || item.techConcepts.some(t => t.name.toLowerCase().includes(q))
+            || item.problems.some(p => p.title.toLowerCase().includes(q))
         )
       }
 
@@ -379,7 +413,7 @@ class MemoryService {
   /**
    * 获取用于前端可视化拓扑图谱的数据 (Nodes & Edges)
    */
-  async getGraphData(options: { type?: string; project?: string; limit?: number } = {}): Promise<GraphVisualizationData> {
+  async getGraphData(_options: { type?: string, project?: string, limit?: number } = {}): Promise<GraphVisualizationData> {
     await grafeoService.init()
     try {
       const res = await grafeoService.execute(`
@@ -392,7 +426,7 @@ class MemoryService {
         LIMIT 200
       `)
 
-      const rows = (res.rows() || []) as any[]
+      const rows = (res.rows() || []) as unknown as GraphRow[]
       const nodesMap = new Map<string, GraphVisualizationData['nodes'][0]>()
       const edgesMap = new Map<string, GraphVisualizationData['edges'][0]>()
 
@@ -415,7 +449,7 @@ class MemoryService {
 
         // Memory 节点
         if (!nodesMap.has(m.id)) {
-          const color = typeColors[m.type] || '#64748b'
+          const color = typeColors[m.type || ''] || '#64748b'
           nodesMap.set(m.id, {
             id: m.id,
             label: 'Memory',
@@ -524,7 +558,7 @@ class MemoryService {
    * 获取知识图谱元数据（动态提取已存在的所有类型、项目、技术栈与统计）
    */
   async getDistinctMeta(): Promise<{
-    types: Array<{ name: string; count: number }>
+    types: Array<{ name: string, count: number }>
     projects: ProjectEntity[]
     techConcepts: TechConceptEntity[]
     total: number
@@ -533,7 +567,7 @@ class MemoryService {
     try {
       // 1. 统计各类型数量
       const typeRes = await grafeoService.execute('MATCH (m:Memory) RETURN m.type AS type')
-      const typeRows = (typeRes.rows() || []) as any[]
+      const typeRows = (typeRes.rows() || []) as unknown as PairRow[]
       const typeCountMap = new Map<string, number>()
       let total = 0
 
@@ -550,7 +584,7 @@ class MemoryService {
 
       // 2. 获取所有项目
       const projRes = await grafeoService.execute('MATCH (p:Project) RETURN p.name AS name, p.cwd AS cwd')
-      const projRows = (projRes.rows() || []) as any[]
+      const projRows = (projRes.rows() || []) as unknown as PairRow[]
       const projectMap = new Map<string, ProjectEntity>()
       for (const row of projRows) {
         const [name, cwd] = row
@@ -561,7 +595,7 @@ class MemoryService {
 
       // 3. 获取所有技术概念
       const techRes = await grafeoService.execute('MATCH (t:TechConcept) RETURN t.name AS name, t.category AS category')
-      const techRows = (techRes.rows() || []) as any[]
+      const techRows = (techRes.rows() || []) as unknown as PairRow[]
       const techMap = new Map<string, TechConceptEntity>()
       for (const row of techRows) {
         const [name, category] = row
@@ -613,15 +647,15 @@ class MemoryService {
   }
 
   private formatMemoryNode(
-    m: Record<string, any>,
+    m: RawMemoryNode,
     projects: ProjectEntity[] = [],
     techConcepts: TechConceptEntity[] = [],
     problems: ProblemEntity[] = [],
     snippets: PatternSnippetEntity[] = [],
     supersededIds: string[] = []
   ): MemoryGraphItem {
-    let tags: string[] = []
-    let sourceMeta: Record<string, any> = {}
+    let tags: string[]
+    let sourceMeta: MemoryNodeData['sourceMeta']
 
     try {
       tags = JSON.parse(m.tagsJson || '[]')

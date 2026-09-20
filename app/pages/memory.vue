@@ -15,7 +15,7 @@ const toast = useToast()
 const { confirm } = useConfirm()
 
 // 获取记忆列表
-const { data: memoryData, refresh: refreshList, status: listStatus } = await useFetch('/api/memory', {
+const { data: memoryData, refresh: refreshList } = await useFetch('/api/memory', {
   query: computed(() => ({
     type: selectedType.value !== 'all' ? selectedType.value : undefined,
     project: selectedProject.value !== 'all' ? selectedProject.value : undefined,
@@ -59,7 +59,7 @@ const allProjects = computed(() => {
 })
 
 // 预设类型的展示图标与颜色映射
-const presetMetaMap: Record<string, { label: string; icon: string; color: string }> = {
+const presetMetaMap: Record<string, { label: string, icon: string, color: string }> = {
   ADR: { label: '架构决策 (ADR)', icon: 'i-lucide-shield-check', color: 'blue' },
   Gotcha: { label: '避坑指南 (Gotcha)', icon: 'i-lucide-alert-triangle', color: 'amber' },
   BestPractice: { label: '最佳实践 (BestPractice)', icon: 'i-lucide-award', color: 'emerald' },
@@ -91,12 +91,6 @@ const typeFilters = computed(() => {
   return filterList
 })
 
-function refreshAll() {
-  refreshList()
-  refreshGraph()
-  refreshMeta()
-}
-
 function getTypeBadgeColor(type: string) {
   switch (type) {
     case 'ADR': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'
@@ -124,8 +118,9 @@ async function deleteItem(id: string) {
     toast.add({ title: '已从 Grafeo 图数据库删除该条记忆', color: 'success', icon: 'i-lucide-check-circle-2' })
     refreshList()
     refreshGraph()
-  } catch (err: any) {
-    toast.add({ title: `删除失败: ${err?.message || err}`, color: 'error', icon: 'i-lucide-alert-triangle' })
+    refreshMeta()
+  } catch (err) {
+    toast.add({ title: `删除失败: ${err instanceof Error ? err.message : String(err)}`, color: 'error', icon: 'i-lucide-alert-triangle' })
   }
 }
 
@@ -152,8 +147,6 @@ const newMemoryForm = ref<Partial<MemoryGraphItem>>({
   projects: [],
   techConcepts: []
 })
-const manualTechInput = ref('')
-const manualProjectInput = ref('')
 
 async function submitManualMemory() {
   if (!newMemoryForm.value.title || !newMemoryForm.value.content) {
@@ -179,8 +172,9 @@ async function submitManualMemory() {
     }
     refreshList()
     refreshGraph()
-  } catch (err: any) {
-    toast.add({ title: `保存失败: ${err?.message || err}`, color: 'error' })
+    refreshMeta()
+  } catch (err) {
+    toast.add({ title: `保存失败: ${err instanceof Error ? err.message : String(err)}`, color: 'error' })
   }
 }
 </script>
@@ -253,29 +247,48 @@ async function submitManualMemory() {
     <!-- Stats Bar -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80">
-        <div class="text-xs text-zinc-500 dark:text-zinc-400 font-medium">总沉淀记忆</div>
-        <div class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1">{{ totalCount }}</div>
+        <div class="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+          总沉淀记忆
+        </div>
+        <div class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1">
+          {{ totalCount }}
+        </div>
       </div>
       <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80">
         <div class="text-xs text-blue-500 font-medium flex items-center gap-1">
-          <UIcon name="i-lucide-shield-check" class="w-3.5 h-3.5" />
+          <UIcon
+            name="i-lucide-shield-check"
+            class="w-3.5 h-3.5"
+          />
           <span>架构决策 (ADR)</span>
         </div>
-        <div class="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1">{{ adrCount }}</div>
+        <div class="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1">
+          {{ adrCount }}
+        </div>
       </div>
       <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80">
         <div class="text-xs text-amber-500 font-medium flex items-center gap-1">
-          <UIcon name="i-lucide-alert-triangle" class="w-3.5 h-3.5" />
+          <UIcon
+            name="i-lucide-alert-triangle"
+            class="w-3.5 h-3.5"
+          />
           <span>避坑指南 (Gotcha)</span>
         </div>
-        <div class="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">{{ gotchaCount }}</div>
+        <div class="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">
+          {{ gotchaCount }}
+        </div>
       </div>
       <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80">
         <div class="text-xs text-emerald-500 font-medium flex items-center gap-1">
-          <UIcon name="i-lucide-award" class="w-3.5 h-3.5" />
+          <UIcon
+            name="i-lucide-award"
+            class="w-3.5 h-3.5"
+          />
           <span>最佳实践 (BestPractice)</span>
         </div>
-        <div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">{{ bestPracticeCount }}</div>
+        <div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+          {{ bestPracticeCount }}
+        </div>
       </div>
     </div>
 
@@ -289,7 +302,10 @@ async function submitManualMemory() {
           :class="selectedType === filter.value ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'"
           @click="selectedType = filter.value"
         >
-          <UIcon :name="filter.icon" class="w-3.5 h-3.5" />
+          <UIcon
+            :name="filter.icon"
+            class="w-3.5 h-3.5"
+          />
           <span>{{ filter.label }}</span>
           <span
             v-if="typeof filter.count === 'number' && filter.count > 0"
@@ -308,8 +324,16 @@ async function submitManualMemory() {
           v-model="selectedProject"
           class="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-mono"
         >
-          <option value="all">所有项目</option>
-          <option v-for="p in allProjects" :key="p" :value="p">{{ p }}</option>
+          <option value="all">
+            所有项目
+          </option>
+          <option
+            v-for="p in allProjects"
+            :key="p"
+            :value="p"
+          >
+            {{ p }}
+          </option>
         </select>
 
         <div class="relative w-full md:w-64">
@@ -326,17 +350,28 @@ async function submitManualMemory() {
 
     <!-- Main View 1: Card List View -->
     <div v-if="viewMode === 'cards'">
-      <div v-if="memories.length === 0" class="text-center py-16 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 space-y-3">
+      <div
+        v-if="memories.length === 0"
+        class="text-center py-16 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 space-y-3"
+      >
         <div class="w-12 h-12 mx-auto rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 flex items-center justify-center">
-          <UIcon name="i-lucide-brain" class="w-6 h-6" />
+          <UIcon
+            name="i-lucide-brain"
+            class="w-6 h-6"
+          />
         </div>
-        <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">暂无符合条件的记忆记录</h3>
+        <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+          暂无符合条件的记忆记录
+        </h3>
         <p class="text-xs text-zinc-400 max-w-sm mx-auto">
           进入任意会话详情页，点击右上角「提炼记忆」，即可由 AI 自动泛化沉淀架构决策与避坑指南。
         </p>
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div
+        v-else
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
         <div
           v-for="item in memories"
           :key="item.id"
@@ -346,7 +381,10 @@ async function submitManualMemory() {
           <div class="space-y-2">
             <!-- Type & Meta Badges -->
             <div class="flex items-center justify-between gap-2">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium border" :class="getTypeBadgeColor(item.type)">
+              <span
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium border"
+                :class="getTypeBadgeColor(item.type)"
+              >
                 <span>{{ item.type }}</span>
               </span>
               <span class="text-[10px] text-zinc-400 font-mono">
@@ -368,7 +406,10 @@ async function submitManualMemory() {
           <!-- Entity Chips -->
           <div class="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/60">
             <!-- Tech concepts -->
-            <div v-if="item.techConcepts && item.techConcepts.length > 0" class="flex flex-wrap gap-1">
+            <div
+              v-if="item.techConcepts && item.techConcepts.length > 0"
+              class="flex flex-wrap gap-1"
+            >
               <span
                 v-for="tech in item.techConcepts.slice(0, 3)"
                 :key="tech.name"
@@ -376,14 +417,23 @@ async function submitManualMemory() {
               >
                 {{ tech.name }}
               </span>
-              <span v-if="item.techConcepts.length > 3" class="text-[10px] text-zinc-400 font-mono self-center">
+              <span
+                v-if="item.techConcepts.length > 3"
+                class="text-[10px] text-zinc-400 font-mono self-center"
+              >
                 +{{ item.techConcepts.length - 3 }}
               </span>
             </div>
 
             <!-- Projects -->
-            <div v-if="item.projects && item.projects.length > 0" class="flex items-center gap-1 text-[11px] text-zinc-400 font-mono">
-              <UIcon name="i-lucide-folder" class="w-3 h-3 text-zinc-400 shrink-0" />
+            <div
+              v-if="item.projects && item.projects.length > 0"
+              class="flex items-center gap-1 text-[11px] text-zinc-400 font-mono"
+            >
+              <UIcon
+                name="i-lucide-folder"
+                class="w-3 h-3 text-zinc-400 shrink-0"
+              />
               <span class="truncate">{{ item.projects.map(p => p.name).join(', ') }}</span>
             </div>
           </div>
@@ -392,7 +442,10 @@ async function submitManualMemory() {
     </div>
 
     <!-- Main View 2: Graph Topology View -->
-    <div v-else class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 min-h-[500px] flex flex-col items-center justify-center">
+    <div
+      v-else
+      class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 min-h-[500px] flex flex-col items-center justify-center"
+    >
       <div class="w-full h-full space-y-4">
         <div class="flex items-center justify-between">
           <div class="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-3">
@@ -416,10 +469,16 @@ async function submitManualMemory() {
               :style="{ borderColor: (node.color || '#64748b') + '66', backgroundColor: (node.color || '#64748b') + '15' }"
             >
               <div class="flex items-center justify-between gap-1">
-                <span class="font-mono text-[10px] px-1.5 py-0.2 rounded font-semibold" :style="{ color: node.color || '#64748b' }">
+                <span
+                  class="font-mono text-[10px] px-1.5 py-0.2 rounded font-semibold"
+                  :style="{ color: node.color || '#64748b' }"
+                >
                   {{ node.label }}
                 </span>
-                <span v-if="node.type" class="text-[10px] font-mono text-zinc-400">{{ node.type }}</span>
+                <span
+                  v-if="node.type"
+                  class="text-[10px] font-mono text-zinc-400"
+                >{{ node.type }}</span>
               </div>
               <div class="font-bold text-zinc-900 dark:text-zinc-100 mt-1.5 line-clamp-2">
                 {{ node.name }}
@@ -438,12 +497,18 @@ async function submitManualMemory() {
       @update:open="isDetailOpen = $event"
     >
       <template #content>
-        <div v-if="currentItem" class="p-6 space-y-5">
+        <div
+          v-if="currentItem"
+          class="p-6 space-y-5"
+        >
           <!-- Detail Header -->
           <div class="flex items-start justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
             <div class="space-y-1.5">
               <div class="flex items-center gap-2">
-                <span class="px-2.5 py-0.5 rounded-md text-xs font-mono font-semibold border" :class="getTypeBadgeColor(currentItem.type)">
+                <span
+                  class="px-2.5 py-0.5 rounded-md text-xs font-mono font-semibold border"
+                  :class="getTypeBadgeColor(currentItem.type)"
+                >
                   {{ currentItem.type }}
                 </span>
                 <span class="text-xs text-zinc-400 font-mono">
@@ -471,8 +536,13 @@ async function submitManualMemory() {
           <!-- Topology Entities Badges -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <!-- Tech Concepts -->
-            <div v-if="currentItem.techConcepts && currentItem.techConcepts.length > 0" class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5">
-              <div class="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">关联技术概念 (:TechConcept)</div>
+            <div
+              v-if="currentItem.techConcepts && currentItem.techConcepts.length > 0"
+              class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5"
+            >
+              <div class="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                关联技术概念 (:TechConcept)
+              </div>
               <div class="flex flex-wrap gap-1.5">
                 <span
                   v-for="t in currentItem.techConcepts"
@@ -485,12 +555,24 @@ async function submitManualMemory() {
             </div>
 
             <!-- Projects -->
-            <div v-if="currentItem.projects && currentItem.projects.length > 0" class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5">
-              <div class="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">适用项目上下文 (:Project)</div>
+            <div
+              v-if="currentItem.projects && currentItem.projects.length > 0"
+              class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5"
+            >
+              <div class="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                适用项目上下文 (:Project)
+              </div>
               <div class="space-y-1">
-                <div v-for="p in currentItem.projects" :key="p.name" class="text-xs font-mono text-zinc-700 dark:text-zinc-300">
+                <div
+                  v-for="p in currentItem.projects"
+                  :key="p.name"
+                  class="text-xs font-mono text-zinc-700 dark:text-zinc-300"
+                >
                   <span class="font-bold text-blue-600 dark:text-blue-400">{{ p.name }}</span>
-                  <span v-if="p.cwd" class="text-zinc-400 text-[11px] block truncate">{{ p.cwd }}</span>
+                  <span
+                    v-if="p.cwd"
+                    class="text-zinc-400 text-[11px] block truncate"
+                  >{{ p.cwd }}</span>
                 </div>
               </div>
             </div>
@@ -504,7 +586,10 @@ async function submitManualMemory() {
                 class="text-xs text-violet-600 dark:text-violet-400 hover:underline cursor-pointer flex items-center gap-1"
                 @click="copyMarkdown(currentItem.content)"
               >
-                <UIcon :name="copySuccess ? 'i-lucide-check' : 'i-lucide-copy'" class="w-3.5 h-3.5" />
+                <UIcon
+                  :name="copySuccess ? 'i-lucide-check' : 'i-lucide-copy'"
+                  class="w-3.5 h-3.5"
+                />
                 <span>{{ copySuccess ? '已复制' : '复制全文' }}</span>
               </button>
             </div>
@@ -562,29 +647,60 @@ async function submitManualMemory() {
           <div class="space-y-3 text-xs">
             <div class="space-y-1">
               <label class="font-semibold text-zinc-700 dark:text-zinc-300">记忆标题</label>
-              <UInput v-model="newMemoryForm.title" placeholder="例如：Nuxt 3 中 Grafeo 模块集成规范" class="w-full text-xs" />
+              <UInput
+                v-model="newMemoryForm.title"
+                placeholder="例如：Nuxt 3 中 Grafeo 模块集成规范"
+                class="w-full text-xs"
+              />
             </div>
 
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1">
                 <label class="font-semibold text-zinc-700 dark:text-zinc-300">类型 (Type)</label>
-                <UInput v-model="newMemoryForm.type" placeholder="ADR / Gotcha / BestPractice" class="w-full text-xs" />
+                <UInput
+                  v-model="newMemoryForm.type"
+                  placeholder="ADR / Gotcha / BestPractice"
+                  class="w-full text-xs"
+                />
               </div>
               <div class="space-y-1">
                 <label class="font-semibold text-zinc-700 dark:text-zinc-300">一句话摘要</label>
-                <UInput v-model="newMemoryForm.summary" placeholder="核心要点" class="w-full text-xs" />
+                <UInput
+                  v-model="newMemoryForm.summary"
+                  placeholder="核心要点"
+                  class="w-full text-xs"
+                />
               </div>
             </div>
 
             <div class="space-y-1">
               <label class="font-semibold text-zinc-700 dark:text-zinc-300">详细内容 (Markdown)</label>
-              <UTextarea v-model="newMemoryForm.content" :rows="5" placeholder="详细方案与经验..." class="w-full text-xs font-mono" />
+              <UTextarea
+                v-model="newMemoryForm.content"
+                :rows="5"
+                placeholder="详细方案与经验..."
+                class="w-full text-xs font-mono"
+              />
             </div>
           </div>
 
           <div class="flex justify-end gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-            <UButton color="neutral" variant="outline" size="sm" @click="isCreateOpen = false">取消</UButton>
-            <UButton color="primary" size="sm" icon="i-lucide-save" @click="submitManualMemory">存入图库</UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              @click="isCreateOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              color="primary"
+              size="sm"
+              icon="i-lucide-save"
+              @click="submitManualMemory"
+            >
+              存入图库
+            </UButton>
           </div>
         </div>
       </template>

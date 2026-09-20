@@ -2,16 +2,16 @@
  * AI Session Hub - 记忆图谱模块数据结构与类型定义
  */
 
-export type PresetMemoryType =
-  | 'ADR'
-  | 'Gotcha'
-  | 'BestPractice'
-  | 'Pattern'
-  | 'Workflow'
-  | 'Config'
-  | 'Security'
-  | 'Performance'
-  | 'ApiSpec'
+export type PresetMemoryType
+  = | 'ADR'
+    | 'Gotcha'
+    | 'BestPractice'
+    | 'Pattern'
+    | 'Workflow'
+    | 'Config'
+    | 'Security'
+    | 'Performance'
+    | 'ApiSpec'
 
 export type MemoryType = PresetMemoryType | (string & {})
 

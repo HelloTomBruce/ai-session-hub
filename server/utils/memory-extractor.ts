@@ -85,19 +85,20 @@ ${input.messagesContent.slice(0, 15000)}
 请根据上述内容，提炼出可复用的知识与经验记忆，以严格的 JSON 格式输出。
 `.trim()
 
-  let fullOutput = ''
+  let fullOutput: string
   try {
     fullOutput = await streamLLMCompletion(
       provider,
       MEMORY_EXTRACTION_SYSTEM_PROMPT,
       userPrompt,
-      chunk => {
+      (chunk) => {
         if (onProgress) onProgress(chunk)
       },
       0.1
     )
-  } catch (err: any) {
-    throw new Error(`LLM 记忆提炼请求失败: ${err?.message || err}`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`LLM 记忆提炼请求失败: ${message}`, { cause: err })
   }
 
   // 清洗 JSON 字符串
@@ -128,6 +129,6 @@ ${input.messagesContent.slice(0, 15000)}
     }
   } catch (err) {
     console.error('[Memory Extractor] Failed to parse JSON response:', fullOutput)
-    throw new Error('LLM 返回的记忆数据格式不合法，未能解析为标准 JSON。')
+    throw new Error('LLM 返回的记忆数据格式不合法，未能解析为标准 JSON。', { cause: err })
   }
 }

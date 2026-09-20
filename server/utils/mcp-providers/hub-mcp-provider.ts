@@ -20,8 +20,12 @@ export class HubMcpProvider implements McpProvider {
         url: 'http://localhost:3000/api/mcp/sse',
         disabled: false,
         configPath: 'server/utils/mcp-server-instance.ts',
-        toolsCount: 8,
+        toolsCount: 12,
         tools: [
+          {
+            name: 'search_sessions_fts',
+            description: '对本地所有 11+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词）'
+          },
           {
             name: 'list_sessions',
             description: '列出本地由 AI Session Hub 管理的所有 CLI 和 App 历史会话（支持按平台、CWD、关键词筛选）'
@@ -53,6 +57,18 @@ export class HubMcpProvider implements McpProvider {
           {
             name: 'evaluate_session_value',
             description: '对指定会话调用多维价值量化评估引擎 (ValueScoringEngine)'
+          },
+          {
+            name: 'recall_memories',
+            description: '从 Grafeo 图数据库记忆库中，按工作区路径、技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)'
+          },
+          {
+            name: 'search_memory_graph',
+            description: '获取 Grafeo 知识图谱的拓扑实体关系网络（Memory、Project、TechConcept、Problem 节点及关联边）'
+          },
+          {
+            name: 'save_memory',
+            description: '将当前对话中提炼的高价值架构决策、排坑避坑指南或最佳实践主动沉淀到 Grafeo 记忆图谱中'
           }
         ]
       }

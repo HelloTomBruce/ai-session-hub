@@ -22,10 +22,11 @@ export default defineEventHandler(async (event) => {
       success: true,
       item: saved
     }
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     throw createError({
       statusCode: 500,
-      statusMessage: `保存记忆失败: ${err?.message || err}`
+      statusMessage: `保存记忆失败: ${message}`
     })
   }
 })

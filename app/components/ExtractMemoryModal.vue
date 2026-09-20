@@ -26,7 +26,7 @@ const isSaving = ref(false)
 const extractedData = ref<Partial<MemoryGraphItem> | null>(null)
 
 // 预设类型列表
-const presetTypes: Array<{ label: string; value: PresetMemoryType; icon: string; color: string }> = [
+const presetTypes: Array<{ label: string, value: PresetMemoryType, icon: string, color: string }> = [
   { label: '架构决策 (ADR)', value: 'ADR', icon: 'i-lucide-shield-check', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800' },
   { label: '避坑指南 (Gotcha)', value: 'Gotcha', icon: 'i-lucide-alert-triangle', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
   { label: '最佳实践 (BestPractice)', value: 'BestPractice', icon: 'i-lucide-award', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
@@ -41,7 +41,6 @@ const presetTypes: Array<{ label: string; value: PresetMemoryType; icon: string;
 const newTechInput = ref('')
 const newTagInput = ref('')
 const isCustomTypeMode = ref(false)
-const customTypeInput = ref('')
 
 function resetState() {
   userPrompt.value = ''
@@ -142,8 +141,8 @@ async function startExtract() {
         }
       }
     }
-  } catch (err: any) {
-    errorMessage.value = err?.message || '提炼异常'
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : '提炼异常'
     isExtracting.value = false
   }
 }
@@ -189,7 +188,7 @@ async function saveToGraph() {
 
   isSaving.value = true
   try {
-    const res = await $fetch<{ success: boolean; item: MemoryGraphItem }>('/api/memory', {
+    const res = await $fetch<{ success: boolean, item: MemoryGraphItem }>('/api/memory', {
       method: 'POST',
       body: extractedData.value
     })
@@ -204,10 +203,10 @@ async function saveToGraph() {
       emit('saved', res.item)
       emit('update:open', false)
     }
-  } catch (err: any) {
+  } catch (err) {
     toast.add({
       title: '保存至 Grafeo 图库失败',
-      description: err?.message || '请检查服务端日志',
+      description: err instanceof Error ? err.message : '请检查服务端日志',
       color: 'error',
       icon: 'i-lucide-alert-triangle'
     })

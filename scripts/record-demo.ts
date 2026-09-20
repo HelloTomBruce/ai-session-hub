@@ -1,4 +1,4 @@
-import { chromium } from 'playwright'
+import { chromium, type Page } from 'playwright'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -19,7 +19,7 @@ if (!fs.existsSync(RECORDINGS_DIR)) {
 }
 
 // Bezier mouse movement simulation helper
-async function smoothMouseMove(page: any, targetX: number, targetY: number, steps = 20) {
+async function smoothMouseMove(page: Page, targetX: number, targetY: number, steps = 20) {
   // Update virtual cursor in DOM
   await page.evaluate(({ x, y, duration }: { x: number, y: number, duration: number }) => {
     const cursor = document.getElementById('ai-virtual-cursor')
@@ -33,7 +33,7 @@ async function smoothMouseMove(page: any, targetX: number, targetY: number, step
   await page.waitForTimeout(steps * 16)
 }
 
-async function smoothClick(page: any, selector?: string, x?: number, y?: number) {
+async function smoothClick(page: Page, selector?: string, x?: number, y?: number) {
   let clickX = x ?? 0
   let clickY = y ?? 0
 
@@ -203,7 +203,7 @@ async function main() {
   console.log(`\n🎉 Success! Compact Demo video recorded and saved to:\n📁 ${RECORDINGS_DIR}`)
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Recording failed:', err)
   process.exit(1)
 })

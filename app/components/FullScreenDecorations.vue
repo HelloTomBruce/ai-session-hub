@@ -69,7 +69,7 @@ onMounted(() => {
     '#38bdf8', // Luminous Cyan (Insight)
     '#c084fc', // Soft Amethyst (Memory)
     '#34d399', // Pale Emerald (Growth)
-    '#fb7185'  // Rose Quartz (Spark)
+    '#fb7185' // Rose Quartz (Spark)
   ]
 
   // Create Embers (Floating Thought Spores)
@@ -95,12 +95,12 @@ onMounted(() => {
     const v: [number, number, number][] = [
       [0, -s * 1.3, 0], // Top
       [s, 0, 0], [0, 0, s], [-s, 0, 0], [0, 0, -s], // Middle ring
-      [0, s * 1.3, 0]  // Bottom
+      [0, s * 1.3, 0] // Bottom
     ]
     const e: [number, number][] = [
       [0, 1], [0, 2], [0, 3], [0, 4], // Top to ring
       [1, 2], [2, 3], [3, 4], [4, 1], // Ring edges
-      [5, 1], [5, 2], [5, 3], [5, 4]  // Bottom to ring
+      [5, 1], [5, 2], [5, 3], [5, 4] // Bottom to ring
     ]
     return { vertices: v, edges: e }
   }
@@ -140,19 +140,19 @@ onMounted(() => {
     cx: number, cy: number
   ): [number, number, number] => {
     // Rotate Y
-    let x1 = x * Math.cos(rotY) + z * Math.sin(rotY)
-    let y1 = y
-    let z1 = -x * Math.sin(rotY) + z * Math.cos(rotY)
+    const x1 = x * Math.cos(rotY) + z * Math.sin(rotY)
+    const y1 = y
+    const z1 = -x * Math.sin(rotY) + z * Math.cos(rotY)
 
     // Rotate X
-    let x2 = x1
-    let y2 = y1 * Math.cos(rotX) - z1 * Math.sin(rotX)
-    let z2 = y1 * Math.sin(rotX) + z1 * Math.cos(rotX)
+    const x2 = x1
+    const y2 = y1 * Math.cos(rotX) - z1 * Math.sin(rotX)
+    const z2 = y1 * Math.sin(rotX) + z1 * Math.cos(rotX)
 
     // Rotate Z
-    let x3 = x2 * Math.cos(rotZ) - y2 * Math.sin(rotZ)
-    let y3 = x2 * Math.sin(rotZ) + y2 * Math.cos(rotZ)
-    let z3 = z2
+    const x3 = x2 * Math.cos(rotZ) - y2 * Math.sin(rotZ)
+    const y3 = x2 * Math.sin(rotZ) + y2 * Math.cos(rotZ)
+    const z3 = z2
 
     const fov = 350
     const scale = fov / (fov + z3 + 100)
@@ -313,10 +313,10 @@ onMounted(() => {
     <div class="absolute inset-0 opacity-40 dark:opacity-25 transition-opacity duration-1000">
       <!-- Amber/Gold Starlight Focus (Wisdom Hearth) -->
       <div class="absolute top-[15%] left-[20%] w-[45vw] h-[45vw] max-w-[600px] max-h-[600px] rounded-full bg-amber-500/20 dark:bg-amber-500/15 blur-[120px] animate-breathe-1" />
-      
+
       <!-- Deep Cyan Caustic Pool (Clarity & Flow) -->
       <div class="absolute bottom-[20%] right-[15%] w-[50vw] h-[50vw] max-w-[650px] max-h-[650px] rounded-full bg-sky-500/20 dark:bg-sky-500/15 blur-[130px] animate-breathe-2" />
-      
+
       <!-- Violet Resonance Glow (Memory & Synthesis) -->
       <div class="absolute top-[55%] left-[45%] w-[40vw] h-[40vw] max-w-[500px] max-h-[500px] rounded-full bg-violet-500/15 dark:bg-violet-500/10 blur-[110px] animate-breathe-3" />
     </div>
@@ -327,18 +327,66 @@ onMounted(() => {
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="orbitGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.6" />
-          <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.2" />
-          <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0" />
+        <linearGradient
+          id="orbitGrad1"
+          x1="0%"
+          y1="0%"
+          x2="100%"
+          y2="100%"
+        >
+          <stop
+            offset="0%"
+            stop-color="#f59e0b"
+            stop-opacity="0.6"
+          />
+          <stop
+            offset="50%"
+            stop-color="#38bdf8"
+            stop-opacity="0.2"
+          />
+          <stop
+            offset="100%"
+            stop-color="#8b5cf6"
+            stop-opacity="0"
+          />
         </linearGradient>
       </defs>
 
       <!-- Center-Right Celestial Astrolabe Ring Structure -->
-      <g transform="translate(850, 480)" class="astrolabe-group">
-        <circle cx="0" cy="0" r="320" fill="none" stroke="url(#orbitGrad1)" stroke-width="0.8" stroke-dasharray="4,8" class="astrolabe-slow-cw" />
-        <circle cx="0" cy="0" r="240" fill="none" stroke="#f59e0b" stroke-width="0.6" stroke-opacity="0.3" stroke-dasharray="1,6" class="astrolabe-slow-ccw" />
-        <circle cx="0" cy="0" r="160" fill="none" stroke="#38bdf8" stroke-width="0.6" stroke-opacity="0.25" />
+      <g
+        transform="translate(850, 480)"
+        class="astrolabe-group"
+      >
+        <circle
+          cx="0"
+          cy="0"
+          r="320"
+          fill="none"
+          stroke="url(#orbitGrad1)"
+          stroke-width="0.8"
+          stroke-dasharray="4,8"
+          class="astrolabe-slow-cw"
+        />
+        <circle
+          cx="0"
+          cy="0"
+          r="240"
+          fill="none"
+          stroke="#f59e0b"
+          stroke-width="0.6"
+          stroke-opacity="0.3"
+          stroke-dasharray="1,6"
+          class="astrolabe-slow-ccw"
+        />
+        <circle
+          cx="0"
+          cy="0"
+          r="160"
+          fill="none"
+          stroke="#38bdf8"
+          stroke-width="0.6"
+          stroke-opacity="0.25"
+        />
       </g>
     </svg>
 

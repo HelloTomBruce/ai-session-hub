@@ -1,6 +1,6 @@
 import { extractMemoryFromSession } from '../../utils/memory-extractor'
 import { memoryService } from '../../utils/memory-service'
-import type { MemoryExtractInput } from '../../utils/memory-types'
+import type { MemoryExtractInput, MemoryGraphItem } from '../../utils/memory-types'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
       let savedItem = null
       if (autoSave && extracted.title && extracted.content) {
         sendEvent('status', { message: '正在写入 Grafeo 图数据库...' })
-        savedItem = await memoryService.saveMemory(extracted as any)
+        savedItem = await memoryService.saveMemory(extracted as Partial<MemoryGraphItem> & { title: string, content: string })
       }
 
       sendEvent('done', {
@@ -45,8 +45,8 @@ export default defineEventHandler(async (event) => {
         savedItem
       })
       res.end()
-    } catch (err: any) {
-      sendEvent('error', { message: err?.message || '记忆提炼失败' })
+    } catch (err) {
+      sendEvent('error', { message: err instanceof Error ? err.message : '记忆提炼失败' })
       res.end()
     }
     return
@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
     const extracted = await extractMemoryFromSession(body)
     let savedItem = null
     if (autoSave && extracted.title && extracted.content) {
-      savedItem = await memoryService.saveMemory(extracted as any)
+      savedItem = await memoryService.saveMemory(extracted as Partial<MemoryGraphItem> & { title: string, content: string })
     }
 
     return {
@@ -65,10 +65,10 @@ export default defineEventHandler(async (event) => {
       extracted,
       savedItem
     }
-  } catch (err: any) {
+  } catch (err) {
     throw createError({
       statusCode: 500,
-      statusMessage: err?.message || '记忆提炼失败'
+      statusMessage: err instanceof Error ? err.message : '记忆提炼失败'
     })
   }
 })

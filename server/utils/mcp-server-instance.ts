@@ -10,6 +10,7 @@ import { distillSessionsContent } from './distillator'
 import { mcpLogger } from './mcp-logger'
 import { knowledgeService } from './knowledge-service'
 import { memoryService } from './memory-service'
+import type { ProblemEntity, ProjectEntity, TechConceptEntity } from './memory-types'
 import { evaluateSessionValue } from './evaluator-engine'
 import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
@@ -258,7 +259,7 @@ export function createMcpServer() {
               tech: {
                 type: 'array',
                 items: { type: 'string' },
-                description: '当前使用或相关的技术栈实体列表（如 [\"Nuxt\", \"Grafeo\", \"SQLite\"]）'
+                description: '当前使用或相关的技术栈实体列表（如 ["Nuxt", "Grafeo", "SQLite"]）'
               },
               type: {
                 type: 'string',
@@ -857,9 +858,9 @@ export function createMcpServer() {
         const summary = (args.summary as string) || title
         const content = (args.content as string) || ''
         const tags = (args.tags as string[]) || []
-        const projects = (args.projects as any[]) || []
-        const techConcepts = (args.techConcepts as any[]) || []
-        const problems = (args.problems as any[]) || []
+        const projects = (args.projects as ProjectEntity[]) || []
+        const techConcepts = (args.techConcepts as TechConceptEntity[]) || []
+        const problems = (args.problems as ProblemEntity[]) || []
 
         const saved = await memoryService.saveMemory({
           title,
