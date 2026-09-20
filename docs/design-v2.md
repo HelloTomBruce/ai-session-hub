@@ -286,43 +286,41 @@ interface SessionTag {
 #### 5.1.1 实体提取管线
 
 ```
-蒸馏管线输出的每个 Action/Decision → LLM 实体提取
+蒸馏管线 / 会话记忆抽取输出的每条知识 → LLM 实体提取
                                       ↓
-                         函数名 / 模块 / 框架 / API / 错误 / 模式
+                  Memory 节点 + Project / TechConcept / Problem / PatternSnippet 实体
                                       ↓
-                         图存储 (SQLite 关系模拟)
+                     图存储 (Grafeo 嵌入式图数据库)
 ```
 
-#### 5.1.2 图存储模型
+> **架构决策（ADR 0001）**：图存储选型由原规划的「SQLite 关系模拟」变更为 **Grafeo 嵌入式图数据库**（`@grafeo-db/js`），并以 Grafeo 记忆图谱作为全部知识沉淀（蒸馏 ADR / Gotcha / Pattern 等）的**唯一存储**。原知识金库（SQLite `knowledge_vault` 平表）停止新写入，存量迁移后退役；SQLite 仅保留 `session_evaluations` 作为写入知识层前的量化评估质量门。详见 `docs/adr/0001-unify-knowledge-vault-and-memory-graph.md`。
 
-```sql
-CREATE TABLE graph_entities (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,              -- function|module|framework|api|error|pattern|tool
-  aliases TEXT DEFAULT '[]',
-  first_seen INTEGER,
-  last_seen INTEGER,
-  session_count INTEGER DEFAULT 1
-);
+#### 5.1.2 图存储模型（Grafeo）
 
-CREATE TABLE graph_edges (
-  id TEXT PRIMARY KEY,
-  source_id TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  relation TEXT NOT NULL,          -- calls|extends|fixes|discusses|depends_on
-  weight INTEGER DEFAULT 1,
-  last_seen INTEGER
-);
+存储于 `~/.session-hub/memory.grafeo`，嵌入式、零外部服务，支持 Cypher 查询与文本索引：
 
-CREATE TABLE graph_session_refs (
-  entity_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  relevance REAL DEFAULT 1.0,
-  PRIMARY KEY (entity_id, session_id)
-);
 ```
+节点 (Labels)：
+  Memory          -- 知识实体：id, title, type, summary, content,
+                     confidence, tagsJson, sourceMetaJson, createdAt, updatedAt
+                     type 开放可扩展：ADR | Gotcha | BestPractice | Pattern |
+                     Workflow | Config | Security | Performance | ApiSpec | 自定义
+  Project         -- 项目实体：name, cwd
+  TechConcept     -- 技术概念：name, category(framework|library|language|tool|db|infra|other)
+  Problem         -- 问题实体：title, symptom, errorCode
+  PatternSnippet  -- 代码模式片段：title, code, language, rules
+
+关系 (Edges)：
+  (Memory)-[:APPLIES_TO]->(Project)      -- 知识适用项目
+  (Memory)-[:RELATES_TO]->(TechConcept)  -- 关联技术栈
+  (Memory)-[:SOLVES]->(Problem)          -- 解决的问题
+  (Memory)-[:PRODUCES]->(PatternSnippet) -- 产出的代码模式
+  (Memory)-[:SUPERSEDES]->(Memory)       -- 知识演进覆盖链
+
+索引：Memory.title / Memory.summary 文本索引
+```
+
+写入前按 `(type, 规范化 title)` 查重：内容相同则更新原节点，内容演进则新建节点并建立 SUPERSEDES 边。
 
 #### 5.1.3 前端交互
 
@@ -442,9 +440,10 @@ Adapters → 缓存层 (SQLite + FTS5) → REST API → Vue SPA
 ```
 Adapters → 缓存层 → REST → SPA
                 ↓              ↓
-            知识图谱      定时蒸馏管线
-                              ↓
+            记忆图谱        定时蒸馏管线
+            (Grafeo)             ↓
                           ADR + 报告持久化
+                          (统一写入 Grafeo)
                               ↓
                           MCP SSE Server
 ```
@@ -464,7 +463,7 @@ Adapters → 缓存层 → REST → SPA
 | 组件 | 选型 | 理由 |
 |------|------|------|
 | 全文搜索 | SQLite FTS5 | 零依赖，内建 |
-| 图存储 | SQLite 关系模拟 | < 10 万节点，足够 |
+| 图存储 | Grafeo 嵌入式图数据库 | 原生图模型与 Cypher 查询，嵌入式零外部服务（ADR 0001） |
 | 定时任务 | node-cron | 轻量，无外部依赖 |
 
 ---
@@ -478,10 +477,13 @@ Adapters → 缓存层 → REST → SPA
 | `sessions_cache` | 统一会话缓存 | 1 |
 | `messages_cache` | 消息缓存 | 1 |
 | `fts_messages` | FTS5 全文索引 | 1 |
-| `graph_entities` | 图谱实体 | 2 |
-| `graph_edges` | 实体关系 | 2 |
-| `graph_session_refs` | 实体-会话关联 | 2 |
-| `adr_records` | ADR 持久化 | 2 |
+| `graph_entities` | ~~图谱实体~~（已废弃，见 ADR 0001：改用 Grafeo 图模型） | 2 |
+| `graph_edges` | ~~实体关系~~（已废弃，同上） | 2 |
+| `graph_session_refs` | ~~实体-会话关联~~（已废弃，同上） | 2 |
+| `memory.grafeo` | Grafeo 图谱库（Memory/Project/TechConcept/Problem/PatternSnippet，独立文件） | 2 |
+| `session_evaluations` | 会话量化评估（写入知识层的质量门） | 2 |
+| `knowledge_vault` | ~~知识金库平表~~（已废弃，存量迁移至 Grafeo 后退役） | 2 |
+| `adr_records` | ADR 持久化（随知识沉淀统一存入 Grafeo Memory 节点） | 2 |
 | `reports` | 复盘报告 | 2 |
 | `tag_defs` | 标签定义 | 1 |
 
@@ -499,13 +501,20 @@ POST /api/sessions/batch-tag            # 批量标签
 POST /api/cache/sync                    # 触发缓存同步
 GET  /api/cache/status                  # 缓存状态
 
-# Phase 2
-GET  /api/graph/entities?q=&type=       # 搜索实体
-GET  /api/graph/entities/:id           # 实体详情
-GET  /api/reports?type=weekly          # 历次报告
-POST /api/reports/generate             # 触发报告
-GET  /api/insights/profile             # 个人画像
-GET  /api/insights/trends              # 效率趋势
+# Phase 2（已实现以实际路由为准；知识相关端点见 ADR 0001）
+GET  /api/memory?type=&project=&tech=&search=   # 记忆列表检索（Grafeo）
+GET  /api/memory/:id                            # 记忆详情（含图谱关联）
+GET  /api/memory/graph                          # 图谱拓扑数据（可视化）
+GET  /api/memory/meta                           # 类型/项目/技术栈元数据
+POST /api/memory/extract                        # 触发会话记忆抽取
+POST /api/memory/recall                         # 面向 Agent 的智能召回
+GET  /api/knowledge/*                           # 已废弃：代理至 /api/memory/*，一版本周期后删除
+GET  /api/graph/entities?q=&type=               # 搜索实体（规划项，由 /api/memory/graph 覆盖）
+GET  /api/graph/entities/:id                    # 实体详情（规划项，同上）
+GET  /api/reports?type=weekly                   # 历次报告
+POST /api/reports/generate                      # 触发报告
+GET  /api/insights/profile                      # 个人画像
+GET  /api/insights/trends                       # 效率趋势
 ```
 
 ---
