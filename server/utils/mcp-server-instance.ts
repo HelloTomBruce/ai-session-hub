@@ -244,7 +244,7 @@ export function createMcpServer() {
         },
         {
           name: 'recall_memories',
-          description: '从基于 Grafeo 图数据库的本地记忆库中，按工作区路径、涉及的技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)',
+          description: '从基于 Grafeo 图数据库的本地记忆库中，按工作区路径、涉及的技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)。返回摘要级信息（id/title/summary/置信度/实体标签，不含正文与代码片段）；需要完整内容时用 get_memory 按 id 拉取。',
           inputSchema: {
             type: 'object',
             properties: {
@@ -270,6 +270,20 @@ export function createMcpServer() {
                 description: '最大返回条数（默认 10）'
               }
             }
+          }
+        },
+        {
+          name: 'get_memory',
+          description: '按 id 获取记忆的完整内容：完整正文 (content)、代码片段 (snippets)、全部实体关联 (projects/techConcepts/problems) 及演进链 (SUPERSEDES)。通常先通过 recall_memories 召回拿到 id，再用此工具拉取详情。',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: '记忆节点的 id（来自 recall_memories 返回）'
+              }
+            },
+            required: ['id']
           }
         },
         {
@@ -804,23 +818,66 @@ export function createMcpServer() {
               text: JSON.stringify(
                 {
                   count: memories.length,
-                  memories: memories.map(m => ({
-                    id: m.id,
-                    title: m.title,
-                    type: m.type,
-                    summary: m.summary,
-                    content: m.content,
-                    confidence: m.confidence,
-                    tags: m.tags,
-                    projects: m.projects,
-                    techConcepts: m.techConcepts,
-                    problems: m.problems,
-                    snippets: m.snippets
-                  }))
+                  memories,
+                  hint: '以上为摘要级信息；需要完整正文与代码片段时，用 get_memory 按对应 id 拉取。'
                 },
                 null,
                 2
               )
+            }
+          ]
+        }
+      }
+
+      if (name === 'get_memory') {
+        const id = (args.id as string) || ''
+
+        if (!id) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'error',
+            durationMs: Date.now() - startTime,
+            responsePreview: 'Missing required parameter: id'
+          })
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'Missing required parameter: id' }) }],
+            isError: true
+          }
+        }
+
+        const memory = await memoryService.getMemory(id)
+
+        if (!memory) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'error',
+            durationMs: Date.now() - startTime,
+            responsePreview: `Memory not found: ${id}`
+          })
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: `Memory not found: ${id}` }) }],
+            isError: true
+          }
+        }
+
+        mcpLogger.addLog({
+          type: 'tool',
+          name,
+          params: args,
+          status: 'success',
+          durationMs: Date.now() - startTime,
+          responsePreview: `Fetched memory: ${memory.title}`
+        })
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(memory, null, 2)
             }
           ]
         }

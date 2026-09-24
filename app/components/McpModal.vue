@@ -148,8 +148,15 @@ const exposedTools = [
     name: 'recall_memories',
     tag: 'Grafeo 记忆召回',
     color: 'violet',
-    desc: '基于 Grafeo 图数据库按工作区路径、涉及的技术栈实体或关键词召回相关避坑指南、架构决策与最佳实践。',
+    desc: '基于 Grafeo 图数据库按工作区路径、涉及的技术栈实体或关键词召回相关避坑指南、架构决策与最佳实践。返回摘要级信息（不含正文与代码片段），控制上下文占用。',
     params: 'query, cwd, tech (技术实体数组), type, limit'
+  },
+  {
+    name: 'get_memory',
+    tag: 'Grafeo 记忆详情',
+    color: 'violet',
+    desc: '按 id 获取记忆的完整正文、代码片段与全部实体关联，与 recall_memories 的摘要级返回配套使用。',
+    params: 'id (必需)'
   },
   {
     name: 'search_memory_graph',
@@ -380,7 +387,7 @@ const copyCode = (text: string, index: number) => {
           class="flex-1 overflow-y-auto p-5 space-y-3"
         >
           <div class="text-xs text-zinc-500 dark:text-zinc-400 pb-1">
-            Session Hub 对外提供以下 9 个标准 MCP 工具，外部 Agent 连接后可直接调用检索或沉淀知识：
+            Session Hub 对外提供以下 {{ exposedTools.length }} 个标准 MCP 工具，外部 Agent 连接后可直接调用检索或沉淀知识：
           </div>
 
           <div

@@ -64,6 +64,23 @@ export interface MemoryGraphItem extends MemoryNodeData {
   supersededIds?: string[]
 }
 
+/**
+ * 召回场景的轻量返回项（L0/L1 级）：不含 content / snippets 等大字段。
+ * 语义：recall = 发现，详情用 getMemory(id) 拉取完整 MemoryGraphItem。
+ */
+export interface MemoryRecallItem {
+  id: string
+  title: string
+  type: string
+  summary: string
+  confidence: number
+  tags: string[]
+  updatedAt: number
+  projects: ProjectEntity[]
+  techConcepts: TechConceptEntity[]
+  problems: { title: string }[]
+}
+
 export interface MemoryExtractInput {
   sessionTitle?: string
   cwd?: string

@@ -1,6 +1,7 @@
 import { grafeoService } from './grafeo-service'
 import type {
   MemoryGraphItem,
+  MemoryRecallItem,
   MemoryNodeData,
   MemoryGraphQueryOptions,
   GraphVisualizationData,
@@ -236,6 +237,7 @@ class MemoryService {
         { id }
       )
 
+      // SAFETY: Grafeo 返回的行结构为 [m, p, t, pb, ps, ...]，与 MemoryRow 元组一致；列缺省时为 null，下游已做空值过滤。
       const rows = (res.rows() || []) as unknown as MemoryRow[]
       if (rows.length === 0) return null
 
@@ -316,6 +318,7 @@ class MemoryService {
       `
 
       const res = await grafeoService.execute(query, params)
+      // SAFETY: Grafeo 返回的行结构为 [m, p, t, pb, ps, ...]，与 MemoryRow 元组一致；列缺省时为 null，下游已做空值过滤。
       const rows = (res.rows() || []) as unknown as MemoryRow[]
       if (rows.length === 0) return { items: [], total: 0 }
 
@@ -567,6 +570,7 @@ class MemoryService {
     try {
       // 1. 统计各类型数量
       const typeRes = await grafeoService.execute('MATCH (m:Memory) RETURN m.type AS type')
+      // SAFETY: 查询 RETURN 单列 type，Grafeo 行即 [type]，与 PairRow 形状兼容。
       const typeRows = (typeRes.rows() || []) as unknown as PairRow[]
       const typeCountMap = new Map<string, number>()
       let total = 0
@@ -584,6 +588,7 @@ class MemoryService {
 
       // 2. 获取所有项目
       const projRes = await grafeoService.execute('MATCH (p:Project) RETURN p.name AS name, p.cwd AS cwd')
+      // SAFETY: 查询 RETURN name, cwd 两列，与 PairRow 形状一致。
       const projRows = (projRes.rows() || []) as unknown as PairRow[]
       const projectMap = new Map<string, ProjectEntity>()
       for (const row of projRows) {
@@ -595,6 +600,7 @@ class MemoryService {
 
       // 3. 获取所有技术概念
       const techRes = await grafeoService.execute('MATCH (t:TechConcept) RETURN t.name AS name, t.category AS category')
+      // SAFETY: 查询 RETURN name, category 两列，与 PairRow 形状一致。
       const techRows = (techRes.rows() || []) as unknown as PairRow[]
       const techMap = new Map<string, TechConceptEntity>()
       for (const row of techRows) {
@@ -625,7 +631,7 @@ class MemoryService {
     tech?: string[]
     type?: string
     limit?: number
-  }): Promise<MemoryGraphItem[]> {
+  }): Promise<MemoryRecallItem[]> {
     const { items } = await this.listMemories({
       type: params.type,
       cwd: params.cwd,
@@ -643,7 +649,27 @@ class MemoryService {
       })
     }
 
-    return items
+    return items.map(item => this.toRecallItem(item))
+  }
+
+  /**
+   * 裁剪为召回轻量项：去掉 content / snippets / supersededIds 等大字段，
+   * 供 MCP recall_memories 与 REST /api/memory/recall 返回。
+   * 完整内容通过 getMemory(id) 拉取。
+   */
+  private toRecallItem(item: MemoryGraphItem): MemoryRecallItem {
+    return {
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      summary: item.summary,
+      confidence: item.confidence,
+      tags: item.tags,
+      updatedAt: item.updatedAt,
+      projects: item.projects.map(p => ({ name: p.name, cwd: p.cwd })),
+      techConcepts: item.techConcepts.map(t => ({ name: t.name, category: t.category })),
+      problems: item.problems.map(p => ({ title: p.title }))
+    }
   }
 
   private formatMemoryNode(
