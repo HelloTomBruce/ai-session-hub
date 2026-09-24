@@ -200,6 +200,18 @@ Session Hub 原生支持 MCP (Model Context Protocol) SSE 服务端协议。
 
 配置后，AI 即可在对话中直接调用 Session Hub 检索跨工具的会话上下文、排错经验与 ADR 架构决策！
 
+### 配套 Agent Skill（推荐）
+
+MCP 工具描述只告诉 Agent「每个工具是什么」，而 [`skills/session-hub/SKILL.md`](skills/session-hub/SKILL.md) 教会 Agent「什么时候用、按什么流程用」：记忆召回的两级模式（recall 摘要 → 按需 get 详情）、沉淀规范、会话检索流程与常见错误。
+
+安装（以支持 Agent Skills 的客户端为例）：
+```bash
+# pi / 通用 agents 技能目录
+cp -r skills/session-hub ~/.agents/skills/
+# 或 pi 专属
+cp -r skills/session-hub ~/.pi/agent/skills/
+```
+
 ---
 
 ## 📄 License
