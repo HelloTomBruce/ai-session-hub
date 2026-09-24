@@ -58,6 +58,7 @@ const isSyncing = ref(false)
 const error = ref('')
 
 const { activePlugins, getPluginMeta } = usePlugins()
+const { confirm } = useConfirm()
 
 const toast = useToast()
 
@@ -108,7 +109,14 @@ const handleSearch = async (targetPage = 1) => {
   }
 }
 
-const handleSync = async () => {
+const handleSync = async (force = false) => {
+  if (force && !await confirm({
+    title: '强制全量重建会重新索引所有会话的正文与工具调用，耗时较长，确定继续吗？',
+    danger: true,
+    confirmLabel: '全量重建'
+  })) {
+    return
+  }
   isSyncing.value = true
   try {
     const res = await $fetch<{
@@ -117,7 +125,7 @@ const handleSync = async () => {
         result?: { synced: number, total: number, errors: number }
         stats?: { sessions: number, messages: number, fts_entries: number }
       }
-    }>('/api/cache/sync', { method: 'POST' })
+    }>(`/api/cache/sync${force ? '?force=true' : ''}`, { method: 'POST' })
 
     if (res.success) {
       const totalSessions = res.data?.stats?.sessions ?? res.data?.result?.total ?? 0
@@ -187,10 +195,25 @@ watch([selectedPlatform, selectedRole, viewMode], () => {
           color="neutral"
           icon="i-lucide-refresh-cw"
           :loading="isSyncing"
-          @click="handleSync"
+          @click="handleSync()"
         >
-          {{ isSyncing ? '正在重建索引...' : '增量同步/重建索引' }}
+          {{ isSyncing ? '正在重建索引...' : '增量同步' }}
         </UButton>
+        <UDropdownMenu
+          :items="[[{
+            label: '强制全量重建索引',
+            icon: 'i-lucide-database-zap',
+            onSelect: () => handleSync(true)
+          }]]"
+        >
+          <UButton
+            size="sm"
+            variant="outline"
+            color="neutral"
+            icon="i-lucide-chevron-down"
+            :disabled="isSyncing"
+          />
+        </UDropdownMenu>
       </div>
     </div>
 
@@ -332,7 +355,7 @@ watch([selectedPlatform, selectedRole, viewMode], () => {
         color="warning"
         variant="solid"
         :loading="isSyncing"
-        @click="handleSync"
+        @click="handleSync()"
       >
         一键同步缓存
       </UButton>

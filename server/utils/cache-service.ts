@@ -449,6 +449,16 @@ class CacheService {
   }
 
   /**
+   * 强制全量重建索引：复用 schema 迁移的既有机制，
+   * 哈希置空后下次 sync 所有会话重新建索引。
+   */
+  rebuildAll(): { synced: number, total: number, errors: number } {
+    this.init()
+    this.db?.prepare('UPDATE sessions_cache SET data_hash = NULL').run()
+    return this.sync()
+  }
+
+  /**
    * 从缓存中获取会话列表（仅返回当前已启用的插件会话）
    */
   getCachedSessions(platformFilter?: string, searchQuery?: string): UnifiedSession[] {

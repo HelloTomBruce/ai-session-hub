@@ -108,12 +108,6 @@ CREATE TABLE IF NOT EXISTS session_evaluations (
 );
 `.trim()
 
-// 重建 FTS 索引
-export const REBUILD_FTS_SQL = `
-INSERT INTO fts_messages(fts_messages)
-SELECT 'rebuild'
-`.trim()
-
 // 插入/更新 FTS 索引
 export const INSERT_FTS_SQL = `
 INSERT INTO fts_messages(content, title, tool_summary, cwd, tags, message_id, session_id, platform, role)
