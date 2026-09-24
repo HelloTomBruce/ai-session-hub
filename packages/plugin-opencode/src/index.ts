@@ -105,16 +105,6 @@ interface OpenCodeV2ContentItem {
   time?: { created?: number }
 }
 
-interface OpenCodeV2MessageData {
-  text?: string
-  summary?: string
-  reason?: string
-  agent?: string
-  model?: { id?: string, providerID?: string }
-  time?: { created?: number }
-  content?: OpenCodeV2ContentItem[]
-}
-
 export class OpenCodePlugin implements SessionPlugin {
   readonly manifest: SessionPluginManifest = {
     id: 'opencode',
@@ -358,58 +348,58 @@ export class OpenCodePlugin implements SessionPlugin {
   private getMessagesLegacy(db: Database.Database, id: string): SessionMessage[] {
     const messages: SessionMessage[] = []
     const msgs = db.prepare(`SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC`).all(id) as OpenCodeMessageRow[]
-      for (const m of msgs) {
-        let msgData: OpenCodeMessageData = {}
+    for (const m of msgs) {
+      let msgData: OpenCodeMessageData = {}
+      try {
+        msgData = typeof m.data === 'string' ? JSON.parse(m.data) as OpenCodeMessageData : (m.data || {})
+      } catch {
+        // ignore
+      }
+
+      const role = msgData.role || 'assistant'
+      const model = msgData.model?.modelID || msgData.modelID || ''
+
+      const parts = db.prepare(`SELECT * FROM part WHERE message_id = ? ORDER BY id ASC`).all(m.id) as OpenCodePartRow[]
+      let content = ''
+      let thought = ''
+      const toolCalls: SessionToolCall[] = []
+
+      for (const p of parts) {
+        let pData: OpenCodePartData = {}
         try {
-          msgData = typeof m.data === 'string' ? JSON.parse(m.data) as OpenCodeMessageData : (m.data || {})
+          pData = typeof p.data === 'string' ? JSON.parse(p.data) as OpenCodePartData : (p.data || {})
         } catch {
           // ignore
         }
 
-        const role = msgData.role || 'assistant'
-        const model = msgData.model?.modelID || msgData.modelID || ''
-
-        const parts = db.prepare(`SELECT * FROM part WHERE message_id = ? ORDER BY id ASC`).all(m.id) as OpenCodePartRow[]
-        let content = ''
-        let thought = ''
-        const toolCalls: SessionToolCall[] = []
-
-        for (const p of parts) {
-          let pData: OpenCodePartData = {}
-          try {
-            pData = typeof p.data === 'string' ? JSON.parse(p.data) as OpenCodePartData : (p.data || {})
-          } catch {
-            // ignore
-          }
-
-          const pType = pData.type || p.type
-          if (pType === 'text') {
-            const text = pData.text || pData.content || ''
-            if (text) content += (content ? '\n\n' : '') + text
-          } else if (pType === 'reasoning') {
-            const reasonText = pData.text || pData.content || ''
-            if (reasonText) thought += (thought ? '\n' : '') + reasonText
-          } else if (pType === 'tool' || pType === 'tool_call' || pType === 'tool_use') {
-            toolCalls.push({
-              name: pData.tool || pData.name || 'tool',
-              arguments: pData.state?.input || pData.input || pData.args || pData.arguments || {},
-              output: pData.state?.output || pData.output
-            })
-          }
-        }
-
-        if (content || thought || toolCalls.length) {
-          messages.push({
-            id: m.id,
-            role: role as SessionMessage['role'],
-            content: content || (thought ? `*(Thinking)*\n${thought}` : ''),
-            timestamp: msgData.time?.created || m.time_created,
-            model,
-            thought: thought || undefined,
-            toolCalls: toolCalls.length ? toolCalls : undefined
+        const pType = pData.type || p.type
+        if (pType === 'text') {
+          const text = pData.text || pData.content || ''
+          if (text) content += (content ? '\n\n' : '') + text
+        } else if (pType === 'reasoning') {
+          const reasonText = pData.text || pData.content || ''
+          if (reasonText) thought += (thought ? '\n' : '') + reasonText
+        } else if (pType === 'tool' || pType === 'tool_call' || pType === 'tool_use') {
+          toolCalls.push({
+            name: pData.tool || pData.name || 'tool',
+            arguments: pData.state?.input || pData.input || pData.args || pData.arguments || {},
+            output: pData.state?.output || pData.output
           })
         }
       }
+
+      if (content || thought || toolCalls.length) {
+        messages.push({
+          id: m.id,
+          role: role as SessionMessage['role'],
+          content: content || (thought ? `*(Thinking)*\n${thought}` : ''),
+          timestamp: msgData.time?.created || m.time_created,
+          model,
+          thought: thought || undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined
+        })
+      }
+    }
 
     return messages
   }
