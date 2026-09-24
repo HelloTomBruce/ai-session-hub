@@ -166,7 +166,7 @@ Session Hub 采用 Iconify 图标系统（Nuxt UI 内置）。编写插件时，
    ```bash
    pnpm dev
    ```
-   访问 `http://localhost:3000` 即可开始使用。
+   访问 `http://localhost:3877` 即可开始使用。
 
 4. **构建生产版本**
    ```bash
@@ -186,7 +186,7 @@ Session Hub 原生支持 MCP (Model Context Protocol) SSE 服务端协议。
 {
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }
@@ -196,7 +196,7 @@ Session Hub 原生支持 MCP (Model Context Protocol) SSE 服务端协议。
 添加 SSE MCP 服务器：
 - **Name**: `session-hub`
 - **Type**: `sse`
-- **URL**: `http://localhost:3000/api/mcp/sse`
+- **URL**: `http://localhost:3877/api/mcp/sse`
 
 配置后，AI 即可在对话中直接调用 Session Hub 检索跨工具的会话上下文、排错经验与 ADR 架构决策！
 

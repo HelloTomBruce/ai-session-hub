@@ -60,7 +60,7 @@ const configs = [
     title: 'Claude Code CLI',
     desc: '在终端一键运行添加 Session Hub MCP 服务',
     type: 'cli',
-    code: `claude mcp add session-hub -- http://localhost:3000/api/mcp/sse`
+    code: `claude mcp add session-hub -- http://localhost:3877/api/mcp/sse`
   },
   {
     title: 'Cursor / VS Code MCP 配置',
@@ -69,7 +69,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -82,7 +82,7 @@ const configs = [
   "mcpServers": {
     "session-hub": {
       "type": "sse",
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -94,7 +94,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -106,7 +106,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -115,7 +115,7 @@ const configs = [
     title: 'Antigravity (AGY CLI)',
     desc: '使用 agy 终端一键连接',
     type: 'cli',
-    code: `agy mcp add session-hub --url http://localhost:3000/api/mcp/sse`
+    code: `agy mcp add session-hub --url http://localhost:3877/api/mcp/sse`
   },
   {
     title: 'WorkBuddy (~/.workbuddy/mcp.json)',
@@ -124,7 +124,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -136,7 +136,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3000/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/sse"
     }
   }
 }`
@@ -330,13 +330,13 @@ const copyCode = (text: string, index: number) => {
               </span>
             </div>
             <div class="flex items-center justify-between bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 font-mono text-xs text-zinc-700 dark:text-zinc-300">
-              <span>http://localhost:3000/api/mcp/sse</span>
+              <span>http://localhost:3877/api/mcp/sse</span>
               <UButton
                 size="xs"
                 variant="ghost"
                 color="neutral"
                 :icon="copiedIndex === 999 ? 'i-lucide-check' : 'i-lucide-copy'"
-                @click="copyCode('http://localhost:3000/api/mcp/sse', 999)"
+                @click="copyCode('http://localhost:3877/api/mcp/sse', 999)"
               >
                 {{ copiedIndex === 999 ? '已复制' : '复制' }}
               </UButton>

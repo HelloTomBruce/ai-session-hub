@@ -15,6 +15,11 @@ export default defineNuxtConfig({
     '/': { ssr: false }
   },
 
+  devServer: {
+    // 避开常见的 3000，减少与其他本地项目的端口冲突
+    port: 3877
+  },
+
   compatibilityDate: '2026-06-30',
 
   eslint: {

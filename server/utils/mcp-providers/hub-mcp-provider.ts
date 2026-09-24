@@ -17,10 +17,10 @@ export class HubMcpProvider implements McpProvider {
         platform: this.platform,
         platformName: this.platformName,
         type: 'sse',
-        url: 'http://localhost:3000/api/mcp/sse',
+        url: 'http://localhost:3877/api/mcp/sse',
         disabled: false,
         configPath: 'server/utils/mcp-server-instance.ts',
-        toolsCount: 12,
+        toolsCount: 13,
         tools: [
           {
             name: 'search_sessions_fts',
@@ -60,7 +60,11 @@ export class HubMcpProvider implements McpProvider {
           },
           {
             name: 'recall_memories',
-            description: '从 Grafeo 图数据库记忆库中，按工作区路径、技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)'
+            description: '从 Grafeo 图数据库记忆库中，按工作区路径、技术栈、关键词或记忆分类召回相关经验（返回摘要级信息，详情用 get_memory 拉取）'
+          },
+          {
+            name: 'get_memory',
+            description: '按 id 获取记忆的完整正文、代码片段与全部实体关联，与 recall_memories 的摘要级返回配套'
           },
           {
             name: 'search_memory_graph',

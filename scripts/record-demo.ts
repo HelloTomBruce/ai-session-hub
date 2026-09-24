@@ -7,7 +7,7 @@ import path from 'node:path'
  * Optimized for compact laptop screens and complete 100% UI capture.
  */
 
-const BASE_URL = process.env.URL || 'http://localhost:3000'
+const BASE_URL = process.env.URL || 'http://localhost:3877'
 const RECORDINGS_DIR = path.resolve(process.cwd(), 'recordings')
 
 // Compact viewport: perfectly fits MacBook displays without overflowing
@@ -94,7 +94,7 @@ async function main() {
   try {
     await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 30000 })
   } catch {
-    console.log('⚠️ Server not responding on http://localhost:3000, please make sure `pnpm dev` is running!')
+    console.log('⚠️ Server not responding on http://localhost:3877, please make sure `pnpm dev` is running!')
     await browser.close()
     process.exit(1)
   }

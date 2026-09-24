@@ -222,7 +222,7 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
     hasSkills: false,
     hasMcp: true,
     configPaths: {
-      mcp: 'http://localhost:3000/api/mcp/sse'
+      mcp: 'http://localhost:3877/api/mcp/sse'
     }
   }
 }
