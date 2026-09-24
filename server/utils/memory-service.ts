@@ -416,19 +416,39 @@ class MemoryService {
   /**
    * 获取用于前端可视化拓扑图谱的数据 (Nodes & Edges)
    */
-  async getGraphData(_options: { type?: string, project?: string, limit?: number } = {}): Promise<GraphVisualizationData> {
+  async getGraphData(options: { type?: string, project?: string, limit?: number } = {}): Promise<GraphVisualizationData> {
     await grafeoService.init()
     try {
+      const whereClauses: string[] = []
+      const params: Record<string, unknown> = {}
+
+      if (options.type && options.type !== 'all') {
+        whereClauses.push('m.type = $type')
+        params.type = options.type
+      }
+
+      if (options.project && options.project !== 'all') {
+        // 依赖 OPTIONAL MATCH 出的 p：没有关联该项目的 Memory 行在此被过滤
+        whereClauses.push('p.name = $project')
+        params.project = options.project
+      }
+
+      const filterStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+      // LIMIT 不支持参数化，此处先收敛为安全整数（截断小数 + 钳位）再内联
+      const limit = Math.trunc(Math.min(Math.max(Number(options.limit) || 200, 1), 500))
+
       const res = await grafeoService.execute(`
         MATCH (m:Memory)
         OPTIONAL MATCH (m)-[r1:APPLIES_TO]->(p:Project)
         OPTIONAL MATCH (m)-[r2:RELATES_TO]->(t:TechConcept)
         OPTIONAL MATCH (m)-[r3:SOLVES]->(pb:Problem)
         OPTIONAL MATCH (m)-[r4:SUPERSEDES]->(old:Memory)
+        ${filterStr}
         RETURN m, p, t, pb, old, r1, r2, r3, r4
-        LIMIT 200
-      `)
+        LIMIT ${limit}
+      `, params)
 
+      // SAFETY: Grafeo 返回的行结构为 [m, p, t, pb, m2, ...]，与 GraphRow 元组一致；列缺省时为 null。
       const rows = (res.rows() || []) as unknown as GraphRow[]
       const nodesMap = new Map<string, GraphVisualizationData['nodes'][0]>()
       const edgesMap = new Map<string, GraphVisualizationData['edges'][0]>()
@@ -547,10 +567,12 @@ class MemoryService {
         }
       }
 
-      return {
-        nodes: Array.from(nodesMap.values()),
-        edges: Array.from(edgesMap.values())
-      }
+      const nodes = Array.from(nodesMap.values())
+      const nodeIds = new Set(nodes.map(n => n.id))
+      // 丢弃端点不在当前结果集内的边（SUPERSEDES 目标可能已被过滤或截断）
+      const edges = Array.from(edgesMap.values()).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+
+      return { nodes, edges }
     } catch (err) {
       console.error('[MemoryService] Error getting graph data:', err)
       return { nodes: [], edges: [] }

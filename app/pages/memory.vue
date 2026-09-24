@@ -108,6 +108,19 @@ function openDetail(item: MemoryGraphItem) {
   isDetailOpen.value = true
 }
 
+// 拓扑图谱中点击 Memory 节点：按 id 拉取完整内容后打开详情抽屉
+async function handleGraphNodeClick(id: string) {
+  try {
+    const res = await $fetch<{ success: boolean, item: MemoryGraphItem }>(`/api/memory/${id}`)
+    if (res?.item) {
+      openDetail(res.item)
+    }
+  } catch (err) {
+    console.error('[Memory] 加载记忆详情失败:', err)
+    toast.add({ title: '加载记忆详情失败', color: 'error', icon: 'i-lucide-alert-circle' })
+  }
+}
+
 async function deleteItem(id: string) {
   if (!await confirm({ title: '确定要从 Grafeo 图谱中永久删除此条记忆吗？', danger: true, confirmLabel: '删除' })) return
   try {
@@ -447,44 +460,26 @@ async function submitManualMemory() {
       class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 min-h-[500px] flex flex-col items-center justify-center"
     >
       <div class="w-full h-full space-y-4">
-        <div class="flex items-center justify-between">
-          <div class="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-3">
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block" /> 记忆节点 (:Memory)</span>
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> 项目节点 (:Project)</span>
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> 技术概念 (:TechConcept)</span>
-            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> 痛点异常 (:Problem)</span>
-          </div>
+        <div class="flex items-center justify-end">
           <span class="text-xs font-mono text-zinc-400">
             {{ graphData.nodes.length }} 节点 • {{ graphData.edges.length }} 拓扑关系
           </span>
         </div>
 
-        <!-- Graph Canvas / Visual Representation -->
-        <div class="relative w-full h-96 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden flex items-center justify-center p-4">
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full h-full overflow-y-auto p-2">
-            <div
-              v-for="node in graphData.nodes"
-              :key="node.id"
-              class="p-3 rounded-lg border text-xs flex flex-col justify-between shadow-xs transition-transform hover:scale-102"
-              :style="{ borderColor: (node.color || '#64748b') + '66', backgroundColor: (node.color || '#64748b') + '15' }"
-            >
-              <div class="flex items-center justify-between gap-1">
-                <span
-                  class="font-mono text-[10px] px-1.5 py-0.2 rounded font-semibold"
-                  :style="{ color: node.color || '#64748b' }"
-                >
-                  {{ node.label }}
-                </span>
-                <span
-                  v-if="node.type"
-                  class="text-[10px] font-mono text-zinc-400"
-                >{{ node.type }}</span>
+        <!-- 拓扑图谱：力导向渲染（节点可拖拽 / 滚轮缩放，点击 Memory 节点查看详情） -->
+        <div class="relative w-full h-96 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden">
+          <ClientOnly>
+            <MemoryGraphChart
+              :data="graphData"
+              class="w-full h-full"
+              @node-click="handleGraphNodeClick"
+            />
+            <template #fallback>
+              <div class="w-full h-full flex items-center justify-center text-xs text-zinc-400">
+                拓扑图谱加载中…
               </div>
-              <div class="font-bold text-zinc-900 dark:text-zinc-100 mt-1.5 line-clamp-2">
-                {{ node.name }}
-              </div>
-            </div>
-          </div>
+            </template>
+          </ClientOnly>
         </div>
       </div>
     </div>
