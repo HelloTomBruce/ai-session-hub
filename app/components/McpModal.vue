@@ -60,7 +60,7 @@ const configs = [
     title: 'Claude Code CLI',
     desc: '在终端一键运行添加 Session Hub MCP 服务',
     type: 'cli',
-    code: `claude mcp add session-hub -- http://localhost:3877/api/mcp/sse`
+    code: `claude mcp add session-hub -- http://localhost:3877/api/mcp/streamable`
   },
   {
     title: 'Cursor / VS Code MCP 配置',
@@ -69,7 +69,7 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3877/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/streamable"
     }
   }
 }`
@@ -79,10 +79,11 @@ const configs = [
     desc: '在 OpenCode 中配置跨会话与 Grafeo 记忆图谱增强',
     type: 'json',
     code: `{
-  "mcpServers": {
+  "mcp": {
     "session-hub": {
-      "type": "sse",
-      "url": "http://localhost:3877/api/mcp/sse"
+      "type": "remote",
+      "url": "http://localhost:3877/api/mcp/streamable",
+      "enabled": true
     }
   }
 }`
@@ -94,14 +95,14 @@ const configs = [
     code: `{
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3877/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/streamable"
     }
   }
 }`
   },
   {
     title: 'Pi CLI (~/.pi/agent/mcp.json)',
-    desc: 'Pi 智能代理跨会话记忆与知识增强',
+    desc: 'Pi 智能代理跨会话记忆与知识增强（Pi 使用 SSE 协议）',
     type: 'json',
     code: `{
   "mcpServers": {
@@ -113,9 +114,9 @@ const configs = [
   },
   {
     title: 'Antigravity (AGY CLI)',
-    desc: '使用 agy 终端一键连接',
+    desc: '使用 agy 终端一键连接（Streamable HTTP 协议）',
     type: 'cli',
-    code: `agy mcp add session-hub --url http://localhost:3877/api/mcp/sse`
+    code: `agy mcp add session-hub --url http://localhost:3877/api/mcp/streamable`
   },
   {
     title: 'WorkBuddy (~/.workbuddy/mcp.json)',
@@ -324,25 +325,37 @@ const copyCode = (text: string, index: number) => {
           <!-- Endpoint Card -->
           <div class="p-3.5 bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-2">
             <div class="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center justify-between">
-              <span>本地 SSE 广播端点</span>
+              <span>本地 MCP 端点（Streamable HTTP）</span>
               <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                 ACTIVE
               </span>
             </div>
             <div class="flex items-center justify-between bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 font-mono text-xs text-zinc-700 dark:text-zinc-300">
-              <span>http://localhost:3877/api/mcp/sse</span>
+              <span>http://localhost:3877/api/mcp/streamable</span>
               <UButton
                 size="xs"
                 variant="ghost"
                 color="neutral"
                 :icon="copiedIndex === 999 ? 'i-lucide-check' : 'i-lucide-copy'"
-                @click="copyCode('http://localhost:3877/api/mcp/sse', 999)"
+                @click="copyCode('http://localhost:3877/api/mcp/streamable', 999)"
               >
                 {{ copiedIndex === 999 ? '已复制' : '复制' }}
               </UButton>
             </div>
+            <div class="flex items-center justify-between bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded px-3 py-1.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+              <span>http://localhost:3877/api/mcp/sse（旧版 SSE 客户端，如 Pi）</span>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :icon="copiedIndex === 998 ? 'i-lucide-check' : 'i-lucide-copy'"
+                @click="copyCode('http://localhost:3877/api/mcp/sse', 998)"
+              >
+                {{ copiedIndex === 998 ? '已复制' : '复制' }}
+              </UButton>
+            </div>
             <p class="text-[11px] text-zinc-400">
-              任何支持 Model Context Protocol (SSE) 的外部编码 Agent 均可通过此地址连接本平台。
+              现代客户端（OpenCode / AGY / Claude / Codex / Cursor）请使用 Streamable HTTP 地址；仅支持旧版 SSE 协议的客户端（如 Pi）使用第二个地址。
             </p>
           </div>
 

@@ -217,12 +217,12 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
     icon: 'i-heroicons-square-3-stack-3d',
     color: 'text-purple-400',
     badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-    description: 'AI Session Hub 本地内置 MCP SSE 服务与跨端知识中枢',
+    description: 'AI Session Hub 本地内置 MCP 服务（Streamable HTTP + 旧版 SSE 双协议）与跨端知识中枢',
     hasSessions: false,
     hasSkills: false,
     hasMcp: true,
     configPaths: {
-      mcp: 'http://localhost:3877/api/mcp/sse'
+      mcp: 'http://localhost:3877/api/mcp/streamable'
     }
   }
 }

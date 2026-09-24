@@ -55,8 +55,9 @@
 - **结构化 ADR 架构决策提炼**：自动识别技术选型、上下文与后果，支持一键批量归档至「知识资产库」。
 - **知识资产中心**：集中检索已沉淀的 ADR，支持多格式全量导出。
 
-### 5. 🔌 内置 MCP SSE 服务端
-- 内置 `/api/mcp/sse` 端点，支持 Model Context Protocol (MCP) 标准协议。
+### 5. 🔌 内置 MCP 服务端（Streamable HTTP + SSE 双协议）
+- 内置 `/api/mcp/streamable` 端点（Streamable HTTP，推荐），同时保留 `/api/mcp/sse`（旧版 SSE）端点，支持 Model Context Protocol (MCP) 标准协议。
+- OpenCode、AGY、Claude Code、Codex、Cursor 等现代客户端请使用 Streamable HTTP 地址；仅支持旧版 SSE 协议的客户端（如 Pi）使用 SSE 地址。
 - 可在 Claude Code、Cursor、AGY、OpenCode 等工具中直接配置 Session Hub 作为 MCP 服务器，实现跨 Agent 知识联动。
 
 ---
@@ -178,7 +179,9 @@ Session Hub 采用 Iconify 图标系统（Nuxt UI 内置）。编写插件时，
 
 ## 🤖 内置 MCP SSE 服务
 
-Session Hub 原生支持 MCP (Model Context Protocol) SSE 服务端协议。
+Session Hub 原生支持 MCP (Model Context Protocol) 服务端协议，提供两个端点：
+- **Streamable HTTP（推荐）**：`http://localhost:3877/api/mcp/streamable` — 适用于 OpenCode、AGY、Claude Code、Codex、Cursor 等现代客户端
+- **旧版 SSE**：`http://localhost:3877/api/mcp/sse` — 适用于仅支持 SSE 协议的客户端（如 Pi）
 
 ### 在 Claude Code 中配置
 在 `~/.claude.json` 中添加：
@@ -186,17 +189,15 @@ Session Hub 原生支持 MCP (Model Context Protocol) SSE 服务端协议。
 {
   "mcpServers": {
     "session-hub": {
-      "url": "http://localhost:3877/api/mcp/sse"
+      "url": "http://localhost:3877/api/mcp/streamable"
     }
   }
 }
 ```
 
 ### 在 Cursor / 其他客户端中配置
-添加 SSE MCP 服务器：
 - **Name**: `session-hub`
-- **Type**: `sse`
-- **URL**: `http://localhost:3877/api/mcp/sse`
+- **URL**: `http://localhost:3877/api/mcp/streamable`（旧版 SSE 客户端填 `http://localhost:3877/api/mcp/sse`）
 
 配置后，AI 即可在对话中直接调用 Session Hub 检索跨工具的会话上下文、排错经验与 ADR 架构决策！
 

@@ -136,8 +136,8 @@ useHead({
               @click="isMcpModalOpen = true"
             >
               <span class="w-2 h-2 rounded-full bg-emerald-500 group-hover:animate-ping" />
-              <span class="font-medium">MCP SSE</span>
-              <span class="text-zinc-400">/api/mcp/sse</span>
+              <span class="font-medium">MCP</span>
+              <span class="text-zinc-400">/api/mcp/streamable</span>
               <UIcon
                 name="i-lucide-chevron-right"
                 class="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform"

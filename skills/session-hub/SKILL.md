@@ -9,7 +9,8 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
 
 ## 连接
 
-- SSE 地址：`http://localhost:3877/api/mcp/sse`
+- Streamable HTTP 地址（推荐，OpenCode / AGY / Claude / Codex / Cursor）：`http://localhost:3877/api/mcp/streamable`
+- 旧版 SSE 地址（Pi 等仅支持 SSE 的客户端）：`http://localhost:3877/api/mcp/sse`
 - 服务由 session-hub 项目提供（项目目录下 `pnpm dev` 启动）。连接失败（connection refused）时，提示用户先启动服务。
 
 ## 记忆召回：两级模式（省上下文）
