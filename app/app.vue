@@ -23,6 +23,7 @@ useHead({
     { name: 'description', content: 'AI Session Hub - 聚合管理多平台 CLI 与 Desktop Apps 的会话与知识沉淀' }
   ],
   link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
     { rel: 'icon', href: '/favicon.ico' }
   ]
 })

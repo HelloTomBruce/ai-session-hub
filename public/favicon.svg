@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="72%">
+      <stop offset="0%" stop-color="#3730a3"/>
+      <stop offset="60%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#0f0c29"/>
+    </radialGradient>
+    <linearGradient id="gem" x1="18" y1="16" x2="46" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset=".55" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fef3c7" stop-opacity=".85"/>
+      <stop offset="45%" stop-color="#fbbf24" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="42%" cy="38%" r="68%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="65%" stop-color="#fef9c3"/>
+      <stop offset="100%" stop-color="#fcd34d"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Deep indigo orb -->
+  <circle cx="32" cy="32" r="31" fill="url(#bg)"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#8b5cf6" stroke-opacity=".35"/>
+
+  <!-- Memory-slot tick ring -->
+  <g stroke="#a78bfa" stroke-opacity=".5" stroke-width="1.5" stroke-linecap="round">
+    <line x1="32" y1="3.5" x2="32" y2="7.5"/>
+    <line x1="32" y1="56.5" x2="32" y2="60.5"/>
+    <line x1="3.5" y1="32" x2="7.5" y2="32"/>
+    <line x1="56.5" y1="32" x2="60.5" y2="32"/>
+  </g>
+
+  <!-- Warm halo behind the crystal -->
+  <circle cx="32" cy="31.5" r="16" fill="url(#halo)"/>
+
+  <!-- Memory crystal: pointy-top hexagon -->
+  <path d="M32 15.5 45.9 23.5 45.9 39.5 32 47.5 18.1 39.5 18.1 23.5Z" fill="url(#gem)"/>
+  <!-- Facets -->
+  <path d="M32 15.5V47.5M32 31.5 45.9 23.5M32 31.5l13.9 8M32 31.5l-13.9 8M32 31.5l-13.9-8" stroke="#fff" stroke-opacity=".38"/>
+  <path d="M32 15.5 45.9 23.5 32 31.5 18.1 23.5Z" fill="#fff" fill-opacity=".16"/>
+  <!-- Crystal edge -->
+  <path d="M32 15.5 45.9 23.5 45.9 39.5 32 47.5 18.1 39.5 18.1 23.5Z" fill="none" stroke="#fff" stroke-opacity=".55"/>
+
+  <!-- Memory core -->
+  <circle cx="32" cy="31.5" r="5.2" fill="url(#core)"/>
+
+  <!-- Sparkle -->
+  <path d="M49 12.6l.9 1.5 1.5.9-1.5.9-.9 1.5-.9-1.5-1.5-.9 1.5-.9Z" fill="#fff" fill-opacity=".9"/>
+</svg>

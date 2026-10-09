@@ -75,7 +75,8 @@ session-hub/
 │   ├── plugin-opencode/       # @session-hub/plugin-opencode: OpenCode CLI 插件
 │   ├── plugin-codex/          # @session-hub/plugin-codex: Codex App 插件
 │   ├── plugin-agy/            # @session-hub/plugin-agy: Antigravity (AGY) 插件
-│   └── plugin-workbuddy/      # @session-hub/plugin-workbuddy: WorkBuddy 插件
+│   ├── plugin-workbuddy/      # @session-hub/plugin-workbuddy: WorkBuddy 插件
+│   └── plugin-zcode/          # @session-hub/plugin-zcode: ZCode 桌面端与 CLI 插件
 ├── app/                       # Nuxt 3 前端界面与交互层
 ├── server/                    # Nitro 后端引擎、PluginManager 与 SQLite 缓存层
 └── pnpm-workspace.yaml
@@ -92,6 +93,7 @@ session-hub/
 | **`@session-hub/plugin-codex`** | Codex App | SQLite / Rollout | 高性能解析 Thread 会话与 Rollout 日志 |
 | **`@session-hub/plugin-agy`** | AGY CLI | JSONL | 深度解析 Brain 轨迹、Prompt 交互与工具流 |
 | **`@session-hub/plugin-workbuddy`**| WorkBuddy | SQLite | 企业级工作助手本地会话解析 |
+| **`@session-hub/plugin-zcode`**    | ZCode | SQLite | 智谱 ZCode 桌面端与 CLI 智能体任务与思考链会话解析 |
 
 ---
 

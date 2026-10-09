@@ -5,12 +5,14 @@
   "scripts": {
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "build": "pnpm run build:packages && nuxt build",
+    "start": "PORT=3877 node .output/server/index.mjs",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
     "postinstall": "pnpm run build:packages && nuxt prepare",
     "lint": "eslint .",
     "typecheck": "pnpm run build:packages && nuxt typecheck",
-    "record:demo": "tsx scripts/record-demo.ts"
+    "record:demo": "tsx scripts/record-demo.ts",
+    "favicon": "node scripts/generate-favicon.mjs"
   },
   "dependencies": {
     "@grafeo-db/js": "^0.5.42",
@@ -25,6 +27,7 @@
     "@session-hub/plugin-opencode": "workspace:*",
     "@session-hub/plugin-pi": "workspace:*",
     "@session-hub/plugin-workbuddy": "workspace:*",
+    "@session-hub/plugin-zcode": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "echarts": "^6.1.0",
     "nuxt": "^4.5.2",

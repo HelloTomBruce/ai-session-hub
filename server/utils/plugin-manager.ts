@@ -14,6 +14,7 @@ import { OpenCodePlugin } from '@session-hub/plugin-opencode'
 import { CodexPlugin } from '@session-hub/plugin-codex'
 import { AgyPlugin } from '@session-hub/plugin-agy'
 import { WorkBuddyPlugin } from '@session-hub/plugin-workbuddy'
+import { ZCodePlugin } from '@session-hub/plugin-zcode'
 
 const HUB_DIR = path.join(os.homedir(), '.session-hub')
 const PLUGINS_DIR = path.join(HUB_DIR, 'plugins')
@@ -39,6 +40,7 @@ export class PluginManager {
     this.register(new CodexPlugin())
     this.register(new AgyPlugin())
     this.register(new WorkBuddyPlugin())
+    this.register(new ZCodePlugin())
   }
 
   /**

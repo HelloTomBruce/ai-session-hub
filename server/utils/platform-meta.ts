@@ -210,6 +210,23 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
       sessions: '~/.mimocode/sessions/'
     }
   },
+  zcode: {
+    id: 'zcode',
+    name: 'ZCode',
+    category: 'app',
+    icon: 'i-heroicons-code-bracket',
+    color: 'text-cyan-400',
+    badgeBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+    description: '智谱 Z.ai 研发的 AI 原生编码桌面端与 CLI，支持智能体规划、多模型调用与任务追踪',
+    hasSessions: true,
+    hasSkills: true,
+    hasMcp: true,
+    configPaths: {
+      sessions: '~/.zcode/cli/db/db.sqlite',
+      skills: '~/.zcode/cli/plugins/',
+      mcp: '~/.zcode/cli/config.json'
+    }
+  },
   hub: {
     id: 'hub',
     name: 'Session Hub (内置)',

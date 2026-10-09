@@ -100,7 +100,8 @@ const platformIcons: Record<string, string> = {
   kimi: 'i-lucide-bot',
   trae: 'i-lucide-pen-tool',
   cursor: 'i-lucide-cursor-arrow',
-  mimo: 'i-lucide-smartphone'
+  mimo: 'i-lucide-smartphone',
+  zcode: 'i-lucide-code-2'
 }
 
 const colorClassMap: Record<string, { bar: string, text: string, bg: string }> = {

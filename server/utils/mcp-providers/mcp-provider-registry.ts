@@ -7,6 +7,7 @@ import { ReasonixMcpProvider } from './reasonix-mcp-provider'
 import { AgyMcpProvider } from './agy-mcp-provider'
 import { HubMcpProvider } from './hub-mcp-provider'
 import { OpenCodeMcpProvider } from './opencode-mcp-provider'
+import { ZCodeMcpProvider } from './zcode-mcp-provider'
 import type { UnifiedMcpServer, McpStats, McpServerDetailResponse } from '../mcp-manager-types'
 
 export class McpProviderRegistry {
@@ -237,3 +238,4 @@ mcpRegistry
   .register(new ReasonixMcpProvider())
   .register(new AgyMcpProvider())
   .register(new OpenCodeMcpProvider())
+  .register(new ZCodeMcpProvider())

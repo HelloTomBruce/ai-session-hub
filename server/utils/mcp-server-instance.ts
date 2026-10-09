@@ -15,7 +15,7 @@ import { evaluateSessionValue } from './evaluator-engine'
 import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
 
-const ALL_PLATFORMS = ['all', 'pi', 'opencode', 'agy', 'claude', 'codex', 'workbuddy', 'reasonix', 'kimi', 'trae', 'cursor', 'mimo']
+const ALL_PLATFORMS = ['all', 'pi', 'opencode', 'agy', 'claude', 'codex', 'workbuddy', 'reasonix', 'kimi', 'trae', 'cursor', 'mimo', 'zcode']
 
 export function createMcpServer() {
   const server = new Server(
@@ -37,7 +37,7 @@ export function createMcpServer() {
       tools: [
         {
           name: 'search_sessions_fts',
-          description: '对本地所有 11+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词），快速找回历史上下文与报错解决记录',
+          description: '对本地所有 12+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词），快速找回历史上下文与报错解决记录',
           inputSchema: {
             type: 'object',
             properties: {
@@ -47,7 +47,7 @@ export function createMcpServer() {
               },
               platform: {
                 type: 'string',
-                description: '可选平台过滤：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo',
+                description: '可选平台过滤：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo | zcode',
                 enum: ALL_PLATFORMS
               },
               role: {
@@ -75,7 +75,7 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo',
+                description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo | zcode',
                 enum: ALL_PLATFORMS
               },
               cwd: {
@@ -101,7 +101,7 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo)'
+                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo, zcode)'
               },
               sessionId: {
                 type: 'string',
@@ -224,7 +224,7 @@ export function createMcpServer() {
             properties: {
               platform: {
                 type: 'string',
-                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo)'
+                description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo, zcode)'
               },
               sessionId: {
                 type: 'string',

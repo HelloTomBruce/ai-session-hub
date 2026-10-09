@@ -131,6 +131,21 @@ const configs = [
 }`
   },
   {
+    title: 'ZCode (~/.zcode/cli/config.json)',
+    desc: '智谱 ZCode 桌面端与 CLI 跨会话与知识记忆增强',
+    type: 'json',
+    code: `{
+  "mcp": {
+    "servers": {
+      "session-hub": {
+        "type": "http",
+        "url": "http://localhost:3877/api/mcp/streamable"
+      }
+    }
+  }
+}`
+  },
+  {
     title: 'Trae / Windsurf / Continue',
     desc: '通用 SSE MCP 服务接入配置',
     type: 'json',

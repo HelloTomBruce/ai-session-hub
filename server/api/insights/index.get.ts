@@ -98,7 +98,8 @@ export default defineEventHandler(async (_event) => {
       kimi: 'Kimi CLI',
       trae: 'Trae',
       cursor: 'Cursor',
-      mimo: 'Mimo CLI'
+      mimo: 'Mimo CLI',
+      zcode: 'ZCode'
     }
 
     const platforms: PlatformStatItem[] = Object.entries(platformCounts)

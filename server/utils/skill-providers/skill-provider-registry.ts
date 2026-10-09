@@ -4,6 +4,7 @@ import os from 'node:os'
 import type { SkillProvider } from './base-skill-provider'
 import { DirectorySkillProvider } from './directory-skill-provider'
 import { ClaudePluginSkillProvider } from './claude-plugin-skill-provider'
+import { ZCodeSkillProvider } from './zcode-skill-provider'
 import type { UnifiedSkill, SkillStats, SkillDetailResponse } from '../skill-types'
 
 const homeDir = os.homedir()
@@ -199,3 +200,4 @@ skillRegistry
     category: 'custom'
   }))
   .register(new ClaudePluginSkillProvider())
+  .register(new ZCodeSkillProvider())

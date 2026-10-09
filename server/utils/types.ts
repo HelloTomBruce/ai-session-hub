@@ -1,4 +1,4 @@
-export type PlatformType = 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'workbuddy' | 'reasonix' | string
+export type PlatformType = 'pi' | 'opencode' | 'agy' | 'claude' | 'codex' | 'workbuddy' | 'reasonix' | 'zcode' | string
 export type CliType = PlatformType
 export type CategoryType = 'cli' | 'app'
 

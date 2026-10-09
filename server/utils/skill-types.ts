@@ -1,4 +1,4 @@
-export type PlatformSkillSource = 'all' | 'agents' | 'pi' | 'codex' | 'agy' | 'workbuddy' | 'reasonix' | 'opencode' | 'claude'
+export type PlatformSkillSource = 'all' | 'agents' | 'pi' | 'codex' | 'agy' | 'workbuddy' | 'reasonix' | 'opencode' | 'claude' | 'zcode'
 
 export interface UnifiedSkill {
   id: string

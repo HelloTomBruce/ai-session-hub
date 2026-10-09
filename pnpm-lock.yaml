@@ -44,6 +44,9 @@ importers:
       '@session-hub/plugin-workbuddy':
         specifier: workspace:*
         version: link:packages/plugin-workbuddy
+      '@session-hub/plugin-zcode':
+        specifier: workspace:*
+        version: link:packages/plugin-zcode
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -164,6 +167,24 @@ importers:
         version: 6.0.3
 
   packages/plugin-workbuddy:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/plugin-zcode:
     devDependencies:
       '@session-hub/core':
         specifier: workspace:*
