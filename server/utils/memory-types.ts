@@ -27,6 +27,13 @@ export interface MemoryNodeData {
     platform?: string
     extractedAt?: number
     sourceExcerpt?: string
+    // Rubric v2 评估沉淀溯源
+    sessionId?: string
+    sessionTitle?: string
+    score?: number
+    grade?: string
+    category?: string
+    evaluatorVersion?: number
     extra?: Record<string, unknown>
   }
   createdAt: number

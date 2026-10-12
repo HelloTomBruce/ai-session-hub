@@ -1,4 +1,4 @@
-import type { SessionMessage, UnifiedSession } from './types'
+import type { SessionMessage, UnifiedSession } from '@session-hub/core'
 
 export interface CompactedMessage {
   role: 'user' | 'assistant' | 'tool_summary'
@@ -119,9 +119,12 @@ export function compactSessionForAI(session: UnifiedSession, messages: SessionMe
   }
 }
 
-function safeParseJson(str: string): unknown {
+function safeParseJson(str: string): Record<string, unknown> {
   try {
-    return JSON.parse(str)
+    const parsed: unknown = JSON.parse(str)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {}
   } catch {
     return {}
   }

@@ -23,6 +23,9 @@ importers:
       '@nuxt/ui':
         specifier: ^4.11.0
         version: 4.11.0(d148c749ade69e17d7a2e1c02c2af7f8)
+      '@session-hub/analyzer':
+        specifier: workspace:*
+        version: link:packages/analyzer
       '@session-hub/core':
         specifier: workspace:*
         version: link:packages/core
@@ -81,6 +84,18 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  packages/analyzer:
+    devDependencies:
+      '@session-hub/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/core:
     devDependencies:

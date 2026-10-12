@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -103,6 +103,13 @@ CREATE TABLE IF NOT EXISTS session_evaluations (
   sub_scores_json TEXT DEFAULT '{}',
   signals_json TEXT DEFAULT '[]',
   summary_reason TEXT DEFAULT '',
+  -- Rubric v2 (schema v4)
+  strategy_json TEXT DEFAULT '[]',      -- 各策略原始分/confidence/信号
+  flags_json TEXT DEFAULT '{}',         -- veto flags
+  evaluator_version INTEGER DEFAULT 2,
+  harvest_status TEXT DEFAULT '',       -- '' | 'candidate' | 'extracted' | 'skipped'
+  memory_node_id TEXT DEFAULT '',       -- 抽取写入的 Grafeo 节点 id
+  evidence_hash TEXT DEFAULT '',        -- 消息指纹（LLM 缓存复用）
   evaluated_at INTEGER NOT NULL,
   PRIMARY KEY (session_id, platform)
 );

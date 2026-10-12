@@ -43,15 +43,15 @@ export interface HighValueSessionItem {
   isVaultWorthy: boolean
 }
 
-/** Shape of a row in the `session_evaluations` cache table. */
+/** Shape of a row in the `session_evaluations` cache table (schema v4, Rubric v2 column names). */
 interface CachedEvaluationRow {
   session_id: string
   platform: string
-  score: number
+  overall_score: number
   grade: 'S' | 'A' | 'B' | 'C'
-  signals: string
-  is_vault_worthy: number
-  updated_at: number
+  signals_json: string
+  is_worth_saving: number
+  evaluated_at: number
 }
 
 export default defineEventHandler(async (_event) => {
@@ -264,9 +264,9 @@ export default defineEventHandler(async (_event) => {
     if (db) {
       try {
         cachedEvaluations = db.prepare(`
-          SELECT session_id, platform, score, grade, signals, is_vault_worthy, updated_at
+          SELECT session_id, platform, overall_score, grade, signals_json, is_worth_saving, evaluated_at
           FROM session_evaluations
-          ORDER BY score DESC
+          ORDER BY overall_score DESC
           LIMIT 10
         `).all() as CachedEvaluationRow[]
       } catch {
@@ -278,7 +278,7 @@ export default defineEventHandler(async (_event) => {
       const session = adapterRegistry.getSession(row.platform, row.session_id)
       let parsedSignals: string[]
       try {
-        parsedSignals = JSON.parse(row.signals || '[]')
+        parsedSignals = JSON.parse(row.signals_json || '[]')
       } catch {
         parsedSignals = []
       }
@@ -288,11 +288,11 @@ export default defineEventHandler(async (_event) => {
         platform: row.platform,
         title: session?.title || row.session_id,
         cwd: session?.cwd || '',
-        updatedAt: row.updated_at || session?.updatedAt || Date.now(),
-        score: row.score,
+        updatedAt: row.evaluated_at || session?.updatedAt || Date.now(),
+        score: row.overall_score,
         grade: row.grade,
         signals: parsedSignals,
-        isVaultWorthy: Boolean(row.is_vault_worthy)
+        isVaultWorthy: Boolean(row.is_worth_saving)
       }
     })
 

@@ -1,15 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type { LLMProviderSettings } from '@session-hub/analyzer'
 
-export interface LLMProviderSettings {
-  enabled: boolean
-  providerType: 'openai-compatible' | 'gemini' | 'anthropic' | 'ollama' | 'deepseek'
-  baseUrl: string
-  apiKey: string
-  model: string
-  temperature: number
-}
+// 类型契约归属 @session-hub/analyzer；此处 re-export 保持既有 import 兼容
+export type { LLMProviderSettings }
 
 const CONFIG_DIR = path.join(os.homedir(), '.session-hub')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'llm-provider.json')

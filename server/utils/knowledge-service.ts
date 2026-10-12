@@ -1,6 +1,6 @@
 import { cacheService } from './cache-service'
-import type { PlatformType, UnifiedSession, SessionMessage } from './types'
-import type { QuantitativeEvaluationReport, ValueCategory, GradeLevel } from './evaluator-engine'
+import type { PlatformType } from './types'
+import type { QuantitativeEvaluationReport, ValueCategory, GradeLevel } from '@session-hub/analyzer'
 
 export interface KnowledgeItem {
   id: string
@@ -57,68 +57,18 @@ interface EvaluationRow {
   sub_scores_json?: string
   signals_json?: string
   summary_reason?: string
+  strategy_json?: string
+  flags_json?: string
+  evaluator_version?: number
+  harvest_status?: string
+  memory_node_id?: string
+  evidence_hash?: string
   evaluated_at: number
 }
 
+export type HarvestStatus = 'candidate' | 'extracted' | 'skipped'
+
 class KnowledgeService {
-  /**
-   * Save or update a knowledge item in the vault
-   */
-  saveItem(item: Partial<KnowledgeItem> & { title: string, type: ValueCategory, platform: string }): KnowledgeItem {
-    cacheService.init()
-    const db = cacheService.getDb()
-    if (!db) throw new Error('Database not initialized')
-
-    const now = Date.now()
-    const id = item.id || `kn_${item.type.toLowerCase()}_${now}_${Math.random().toString(36).slice(2, 7)}`
-    const tagsJson = JSON.stringify(item.tags || [])
-
-    const consequenceVal = item.consequences || item.consequence || ''
-    const record: KnowledgeItem = {
-      id,
-      sessionId: item.sessionId || '',
-      platform: item.platform,
-      type: item.type,
-      title: item.title,
-      context: item.context || '',
-      decision: item.decision || '',
-      consequences: consequenceVal,
-      consequence: consequenceVal,
-      tags: item.tags || [],
-      score: item.score || 80,
-      grade: item.grade || 'A',
-      sourceCwd: item.sourceCwd || '',
-      rawMarkdown: item.rawMarkdown || '',
-      createdAt: item.createdAt || now,
-      updatedAt: now
-    }
-
-    db.prepare(`
-      INSERT OR REPLACE INTO knowledge_vault
-        (id, session_id, platform, type, title, context, decision, consequence,
-         tags, score, grade, source_cwd, raw_markdown, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.sessionId,
-      record.platform,
-      record.type,
-      record.title,
-      record.context,
-      record.decision,
-      record.consequence,
-      tagsJson,
-      record.score,
-      record.grade,
-      record.sourceCwd,
-      record.rawMarkdown,
-      record.createdAt,
-      record.updatedAt
-    )
-
-    return record
-  }
-
   /**
    * List knowledge items with filtering and search
    */
@@ -214,17 +164,23 @@ class KnowledgeService {
   /**
    * Save session evaluation report
    */
-  saveEvaluation(report: QuantitativeEvaluationReport, platform: string): void {
+  saveEvaluation(report: QuantitativeEvaluationReport, platform: string, evidenceHash = ''): void {
     cacheService.init()
     const db = cacheService.getDb()
     if (!db) return
 
     try {
+      // INSERT OR REPLACE 会清空未列出的列，先取旧的 harvest 状态保持幂等
+      const prev = db.prepare(
+        'SELECT harvest_status, memory_node_id FROM session_evaluations WHERE session_id = ? AND platform = ?'
+      ).get(report.sessionId, platform) as { harvest_status?: string, memory_node_id?: string } | undefined
+
       db.prepare(`
         INSERT OR REPLACE INTO session_evaluations
           (session_id, platform, overall_score, grade, category, is_worth_saving,
-           sub_scores_json, signals_json, summary_reason, evaluated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           sub_scores_json, signals_json, summary_reason,
+           strategy_json, flags_json, evaluator_version, harvest_status, memory_node_id, evidence_hash, evaluated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         report.sessionId,
         platform,
@@ -235,10 +191,32 @@ class KnowledgeService {
         JSON.stringify(report.subScores || {}),
         JSON.stringify(report.signals || []),
         report.summaryReason || '',
+        JSON.stringify((report as { signalDetails?: unknown }).signalDetails || report.signals || []),
+        JSON.stringify(report.flags || {}),
+        report.evaluatorVersion || 2,
+        prev?.harvest_status || '',
+        prev?.memory_node_id || '',
+        evidenceHash,
         report.evaluatedAt || Date.now()
       )
     } catch (err) {
       console.error('[Knowledge] Error saving evaluation:', err)
+    }
+  }
+
+  /**
+   * 沉淀完成后回写 harvest 状态与 Grafeo 记忆节点 id
+   */
+  updateHarvestResult(sessionId: string, platform: string, status: HarvestStatus, memoryNodeId = ''): void {
+    cacheService.init()
+    const db = cacheService.getDb()
+    if (!db) return
+    try {
+      db.prepare(
+        'UPDATE session_evaluations SET harvest_status = ?, memory_node_id = ? WHERE session_id = ? AND platform = ?'
+      ).run(status, memoryNodeId, sessionId, platform)
+    } catch (err) {
+      console.error('[Knowledge] Error updating harvest result:', err)
     }
   }
 
@@ -266,6 +244,13 @@ class KnowledgeService {
         suggestedAction: row.is_worth_saving === 1 ? 'auto_archive_adr' : 'search_index_only',
         subScores: JSON.parse(row.sub_scores_json || '{}') as QuantitativeEvaluationReport['subScores'],
         signals: JSON.parse(row.signals_json || '[]') as string[],
+        signalDetails: [],
+        flags: this.parseJsonObject(row.flags_json || '{}', {}),
+        vetoed: false,
+        lowConfidence: false,
+        evaluatorVersion: row.evaluator_version || 1,
+        harvestStatus: row.harvest_status || '',
+        memoryNodeId: row.memory_node_id || '',
         summaryReason: row.summary_reason || '',
         evaluatedAt: row.evaluated_at
       }
@@ -273,58 +258,6 @@ class KnowledgeService {
       console.error('[Knowledge] Error getting evaluation:', err)
       return null
     }
-  }
-
-  /**
-   * Auto harvest high-value knowledge from session evaluation
-   */
-  autoHarvestFromEvaluation(
-    session: UnifiedSession,
-    report: QuantitativeEvaluationReport,
-    messages: SessionMessage[] = []
-  ): KnowledgeItem | null {
-    if (!report.isWorthSaving || report.category === 'Trivial') return null
-
-    // Extract rationale and context from messages
-    const thoughtSnippets = messages.map(m => m.thought || '').filter(t => t.length > 20)
-    const contextStr = thoughtSnippets.length > 0
-      ? thoughtSnippets.slice(0, 2).join('\n---\n')
-      : `来自 ${session.cli.toUpperCase()} 会话 [${session.title}]`
-
-    const decisionStr = report.signals.join('；\n') || session.title
-    const consequenceStr = `已在项目 ${session.cwd} 中落地并通过量化评估 (${report.overallScore}分·${report.grade}级)。`
-
-    return this.saveItem({
-      sessionId: session.id,
-      platform: session.cli,
-      type: report.category,
-      title: session.title,
-      context: contextStr,
-      decision: decisionStr,
-      consequences: consequenceStr,
-      consequence: consequenceStr,
-      tags: (session.extra?.tags as string[]) || [session.cli, report.category.toLowerCase()],
-      score: report.overallScore,
-      grade: report.grade,
-      sourceCwd: session.cwd,
-      rawMarkdown: this.formatItemToMarkdown({
-        id: `kn_${Date.now()}`,
-        sessionId: session.id,
-        platform: session.cli,
-        type: report.category,
-        title: session.title,
-        context: contextStr,
-        decision: decisionStr,
-        consequences: consequenceStr,
-        consequence: consequenceStr,
-        tags: (session.extra?.tags as string[]) || [],
-        score: report.overallScore,
-        grade: report.grade,
-        sourceCwd: session.cwd,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      })
-    })
   }
 
   /**
@@ -366,6 +299,14 @@ ${item.consequences || item.consequence || '正常落地与维护'}
 > 导出时间：${new Date().toLocaleString()} · 共 ${targetItems.length} 条资产
 
   ` + targetItems.map(item => this.formatItemToMarkdown(item)).join('\n\n---\n\n')
+  }
+
+  private parseJsonObject<T>(raw: string, fallback: T): T {
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      return fallback
+    }
   }
 
   private rowToItem(row: KnowledgeRow | undefined): KnowledgeItem | null {

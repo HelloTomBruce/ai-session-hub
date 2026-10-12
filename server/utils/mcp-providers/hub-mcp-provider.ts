@@ -52,7 +52,7 @@ export class HubMcpProvider implements McpProvider {
           },
           {
             name: 'capture_session_insight',
-            description: '直接向 Session Hub 知识金库写入一条新的经验资产'
+            description: '直接向 Session Hub 记忆图谱（Grafeo）写入一条新的经验资产，按会话与标题自动去重、演进'
           },
           {
             name: 'evaluate_session_value',

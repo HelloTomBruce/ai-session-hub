@@ -10,8 +10,9 @@ import { distillSessionsContent } from './distillator'
 import { mcpLogger } from './mcp-logger'
 import { knowledgeService } from './knowledge-service'
 import { memoryService } from './memory-service'
+import { knowledgeHarvest } from './knowledge-harvest'
 import type { ProblemEntity, ProjectEntity, TechConceptEntity } from './memory-types'
-import { evaluateSessionValue } from './evaluator-engine'
+import { evaluateSessionValue } from '@session-hub/analyzer'
 import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
 
@@ -152,7 +153,7 @@ export function createMcpServer() {
         },
         {
           name: 'capture_session_insight',
-          description: '直接向 Session Hub 知识金库写入一条新的经验资产（ADR/Gotcha/Pattern/Milestone）',
+          description: '直接向 Session Hub 记忆图谱（Grafeo）写入一条新的经验资产（ADR/Gotcha/Pattern/Milestone），按会话与标题自动去重、演进',
           inputSchema: {
             type: 'object',
             properties: {
@@ -697,15 +698,48 @@ export function createMcpServer() {
         const sessionId = (args.sessionId as string) || undefined
         const platform = (args.platform as PlatformType) || 'pi'
 
-        const item = knowledgeService.saveItem({
+        // 关联会话信息（标题/工作区）；找不到时静默降级为无会话手工资产
+        let sessionTitle: string | undefined
+        let cwd: string | undefined
+        if (sessionId) {
+          const linkedSession = adapterRegistry.getSession(platform, sessionId)
+          if (linkedSession) {
+            sessionTitle = linkedSession.title
+            cwd = linkedSession.cwd
+          }
+        }
+
+        const result = await knowledgeHarvest.captureManual({
+          title,
+          type,
+          summary,
+          solution,
+          tags,
           sessionId,
           platform,
-          type,
-          title,
-          context: summary,
-          decision: solution,
-          tags
+          sessionTitle,
+          cwd
         })
+
+        if (result.status === 'candidate' || !result.item) {
+          mcpLogger.addLog({
+            type: 'tool',
+            name,
+            params: args,
+            status: 'error',
+            durationMs: Date.now() - startTime,
+            error: result.reason || '沉淀失败'
+          })
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `资产沉淀失败: ${result.reason || '内容为空'}`
+              }
+            ],
+            isError: true
+          }
+        }
 
         mcpLogger.addLog({
           type: 'tool',
@@ -713,7 +747,7 @@ export function createMcpServer() {
           params: args,
           status: 'success',
           durationMs: Date.now() - startTime,
-          responsePreview: `Saved knowledge ${item.id} (${type}: ${title})`
+          responsePreview: `Captured memory ${result.item.id} (${type}: ${title}, dedup=${result.dedup})`
         })
 
         return {
@@ -722,8 +756,9 @@ export function createMcpServer() {
               type: 'text',
               text: JSON.stringify({
                 success: true,
-                message: '资产成功沉淀至 Session Hub Knowledge Vault',
-                item
+                message: '资产已沉淀至 Session Hub 记忆图谱（Grafeo）',
+                dedup: result.dedup,
+                item: result.item
               }, null, 2)
             }
           ]

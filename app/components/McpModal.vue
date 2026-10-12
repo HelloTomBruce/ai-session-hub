@@ -220,7 +220,7 @@ const exposedTools = [
     name: 'capture_session_insight',
     tag: '资产沉淀 (写)',
     color: 'emerald',
-    desc: '允许外部 Agent 在解决复杂技术难题后，主动向 Session Hub 写入一条新的技术决策或踩坑记录。',
+    desc: '允许外部 Agent 在解决复杂技术难题后，主动向 Session Hub 记忆图谱（Grafeo）写入一条技术决策或踩坑记录，自动去重。',
     params: 'title (必需), type (必需), summary (必需), solution (必需), tags'
   },
   {

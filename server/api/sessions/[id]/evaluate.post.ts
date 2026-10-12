@@ -1,4 +1,4 @@
-import { evaluateSessionValue, type EvaluationContext } from '../../../utils/evaluator-engine'
+import { evaluateSessionValue, type EvaluationContext } from '@session-hub/analyzer'
 import { knowledgeService } from '../../../utils/knowledge-service'
 import { cacheService } from '../../../utils/cache-service'
 import { getSessionMessages } from '../../../utils/session-service'
@@ -67,15 +67,10 @@ export default defineEventHandler(async (event) => {
   // 5. Save Evaluation Cache
   knowledgeService.saveEvaluation(report, activeSession.cli)
 
-  // 6. Optional Auto-Harvest Knowledge
-  let harvestedKnowledge = null
-  if (body.autoHarvest || report.isWorthSaving) {
-    harvestedKnowledge = knowledgeService.autoHarvestFromEvaluation(activeSession, report, messages)
-  }
-
+  // 6. 资产沉淀统一走流式接口的 LLM 抽取；非流式仅保存评估（候选状态不落假资产）
   return {
     success: true,
     data: report,
-    harvestedKnowledge
+    harvestStatus: report.isWorthSaving ? 'candidate' : 'skipped'
   }
 })

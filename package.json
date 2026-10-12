@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "typecheck": "pnpm run build:packages && nuxt typecheck",
     "record:demo": "tsx scripts/record-demo.ts",
-    "favicon": "node scripts/generate-favicon.mjs"
+    "favicon": "node scripts/generate-favicon.mjs",
+    "test": "node --import tsx --test test/evaluator/*.test.ts"
   },
   "dependencies": {
     "@grafeo-db/js": "^0.5.42",
@@ -20,6 +21,7 @@
     "@iconify-json/simple-icons": "^1.2.94",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@nuxt/ui": "^4.11.0",
+    "@session-hub/analyzer": "workspace:*",
     "@session-hub/core": "workspace:*",
     "@session-hub/plugin-agy": "workspace:*",
     "@session-hub/plugin-claude": "workspace:*",

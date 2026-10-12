@@ -1,4 +1,4 @@
-import type { LLMProviderSettings } from './llm-provider-config'
+import type { LLMProviderSettings } from './types.js'
 
 export interface StreamChunkCallback {
   (chunk: string): void

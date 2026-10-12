@@ -179,11 +179,41 @@ class CacheService {
         }
       }
 
+      if (currentVersion < 4) {
+        this.migrateSessionEvaluationsV4()
+      }
+
       this.db.exec(CREATE_SCHEMA_SQL)
       this.db.prepare(
         'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'
       ).run('schema_version', String(SCHEMA_VERSION))
       console.log(`[Cache] Database migrated from v${currentVersion} to v${SCHEMA_VERSION}`)
+    }
+  }
+
+  /**
+   * v4：session_evaluations 增加 Rubric v2 字段（旧库 ALTER，幂等）
+   */
+  private migrateSessionEvaluationsV4(): void {
+    if (!this.db) return
+    const columns = this.db.prepare('PRAGMA table_info(session_evaluations)').all() as Array<{ name: string }>
+    const existing = new Set(columns.map(c => c.name))
+    const additions: Array<[string, string]> = [
+      ['strategy_json', 'TEXT DEFAULT \'[]\''],
+      ['flags_json', 'TEXT DEFAULT \'{}\''],
+      ['evaluator_version', 'INTEGER DEFAULT 2'],
+      ['harvest_status', 'TEXT DEFAULT \'\''],
+      ['memory_node_id', 'TEXT DEFAULT \'\''],
+      ['evidence_hash', 'TEXT DEFAULT \'\'']
+    ]
+    for (const [name, ddl] of additions) {
+      if (!existing.has(name)) {
+        try {
+          this.db.exec(`ALTER TABLE session_evaluations ADD COLUMN ${name} ${ddl}`)
+        } catch (err) {
+          console.error(`[Cache] Failed to add column ${name}:`, err)
+        }
+      }
     }
   }
 

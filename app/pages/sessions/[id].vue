@@ -656,8 +656,11 @@ const backUrl = computed(() => {
     <!-- Top Nav / Back Banner -->
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 shadow-sm">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="flex items-start md:items-center gap-3">
-          <NuxtLink :to="backUrl">
+        <div class="flex items-start md:items-center gap-3 min-w-0 flex-1">
+          <NuxtLink
+            :to="backUrl"
+            class="shrink-0"
+          >
             <UButton
               variant="outline"
               color="neutral"
@@ -668,19 +671,22 @@ const backUrl = computed(() => {
             </UButton>
           </NuxtLink>
 
-          <div class="space-y-0.5">
-            <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+          <div class="space-y-0.5 min-w-0 flex-1">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5 shrink-0">
                 <UIcon
                   :name="getPluginMeta(platform).icon"
                   class="w-3.5 h-3.5"
                 />
                 {{ getPluginMeta(platform).name }}
               </span>
-              <span class="text-xs text-zinc-400 font-mono">ID: {{ sessionId }}</span>
+              <span class="text-xs text-zinc-400 font-mono truncate min-w-0">ID: {{ sessionId }}</span>
             </div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-base font-bold text-zinc-900 dark:text-zinc-100">
+            <div class="flex items-center gap-2 min-w-0">
+              <h1
+                class="text-base font-bold text-zinc-900 dark:text-zinc-100 truncate min-w-0"
+                :title="session?.title || '会话详情'"
+              >
                 {{ session?.title || '会话详情' }}
               </h1>
               <UButton
@@ -688,6 +694,7 @@ const backUrl = computed(() => {
                 variant="ghost"
                 color="neutral"
                 icon="i-lucide-edit-3"
+                class="shrink-0"
                 title="修改会话标题"
                 @click="openEditModal"
               />
@@ -695,7 +702,7 @@ const backUrl = computed(() => {
           </div>
         </div>
 
-        <div class="flex items-center gap-2 self-end md:self-auto">
+        <div class="flex items-center gap-2 self-end md:self-auto shrink-0">
           <UButton
             size="sm"
             variant="outline"

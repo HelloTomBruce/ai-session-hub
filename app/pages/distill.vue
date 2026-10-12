@@ -289,8 +289,8 @@ const archiveAllAdrs = async () => {
       count++
     }
     toast.add({
-      title: `成功将 ${count} 条 ADR 架构决策归档至「知识资产库」`,
-      description: '可在导航栏「知识资产库」中随时检索与导出',
+      title: `成功将 ${count} 条 ADR 架构决策归档至「记忆图谱」`,
+      description: '已写入 Grafeo 记忆图谱，可在导航栏「记忆图谱」中查看与检索（重复归档自动更新同一节点）',
       color: 'success',
       icon: 'i-lucide-check-circle-2'
     })
@@ -668,7 +668,7 @@ const archiveAllAdrs = async () => {
                   :disabled="selectedAdrIds.length === 0"
                   @click="archiveAllAdrs"
                 >
-                  批量归档至知识库 ({{ selectedAdrIds.length }})
+                  批量归档至记忆图谱 ({{ selectedAdrIds.length }})
                 </UButton>
               </div>
             </div>

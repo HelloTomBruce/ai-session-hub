@@ -201,6 +201,64 @@ export class CodexPlugin implements SessionPlugin {
                   timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
                 })
               }
+            } else if (type === 'response_item' && payload.type === 'function_call') {
+              // Codex 的工具调用（exec_command / apply_patch / write_stdin ...）
+              // arguments 是 JSON 字符串，解析为对象；cmd 数组额外拍平成 command 字符串，
+              // 供评估证据层 / 工具时间线直接消费。
+              const rawArgs = typeof payload.arguments === 'string' ? payload.arguments : ''
+              let parsedArgs: Record<string, unknown> | undefined
+              if (rawArgs) {
+                try {
+                  const v = JSON.parse(rawArgs)
+                  if (v && typeof v === 'object') parsedArgs = v as Record<string, unknown>
+                } catch {
+                  // apply_patch 等非 JSON 文本参数原样保留
+                  parsedArgs = { input: rawArgs }
+                }
+              }
+              if (parsedArgs && Array.isArray(parsedArgs.cmd)) {
+                const flat = (parsedArgs.cmd as unknown[])
+                  .filter((c): c is string => typeof c === 'string')
+                  .join(' ')
+                if (flat) parsedArgs.command = flat
+              }
+              const lastMsg = messages[messages.length - 1]
+              if (!lastMsg || lastMsg.role !== 'assistant') {
+                messages.push({
+                  id: payload.id,
+                  role: 'assistant',
+                  content: '',
+                  timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
+                })
+              }
+              const host = messages[messages.length - 1]
+              if (host) {
+                host.toolCalls = [
+                  ...(host.toolCalls || []),
+                  {
+                    id: payload.call_id || payload.id,
+                    name: payload.name || 'unknown',
+                    type: 'function_call',
+                    arguments: parsedArgs || {}
+                  }
+                ]
+              }
+            } else if (type === 'response_item' && payload.type === 'function_call_output') {
+              // 按 call_id 回填工具输出（截断保护，避免缓存膨胀）
+              const callId = payload.call_id
+              const outputRaw = typeof payload.output === 'string'
+                ? payload.output
+                : JSON.stringify(payload.output ?? '')
+              if (callId) {
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  const m = messages[i]
+                  const tc = m?.toolCalls?.find(t => (t.id ?? undefined) === callId)
+                  if (tc) {
+                    tc.output = outputRaw.length > 4000 ? `${outputRaw.slice(0, 4000)}...[truncated]` : outputRaw
+                    break
+                  }
+                }
+              }
             } else if (type === 'event_msg') {
               const item = payload.item || {}
               if (item.type === 'UserMessage' && item.content) {

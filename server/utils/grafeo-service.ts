@@ -45,9 +45,16 @@ class GrafeoService {
         this.initialized = true
         console.log(`[GrafeoService] Initialized GrafeoDB at ${this.dbPath} (v${this.db.version()})`)
       } catch (err) {
-        console.error('[GrafeoService] Failed to initialize persistent DB, fallback to in-memory:', err)
-        this.db = GrafeoDB.create()
-        this.initialized = true
+        // 不再静默降级内存库：降级会造成「读取谎报空数据 + 写入静默丢失」双重事故。
+        // 典型场景是 memory.grafeo 被其他进程（如遗留的生产 server）独占锁定（GRAFEO-X001），
+        // 此时必须让错误显式透出，由调用方/API 层向用户报告。
+        this.initialized = false
+        this.db = null
+        throw new Error(
+          `[GrafeoService] 无法打开持久化图数据库 ${this.dbPath}：${(err as { message?: string })?.message || String(err)}`
+          + '（常见原因：文件被其他进程锁定，如另一个 session-hub 实例正在运行）',
+          { cause: err }
+        )
       } finally {
         this.initPromise = null
       }

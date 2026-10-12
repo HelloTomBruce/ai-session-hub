@@ -1,5 +1,5 @@
 import { getLLMProviderSettings } from './llm-provider-config'
-import { streamLLMCompletion, type StreamChunkCallback } from './llm-stream-client'
+import { streamLLMCompletion, type StreamChunkCallback } from '@session-hub/analyzer'
 import type { MemoryGraphItem, MemoryExtractInput } from './memory-types'
 
 const MEMORY_EXTRACTION_SYSTEM_PROMPT = `

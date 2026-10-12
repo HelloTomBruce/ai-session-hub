@@ -1,0 +1,38 @@
+{
+  "name": "@session-hub/analyzer",
+  "version": "1.0.0",
+  "description": "Session decomposition & analysis engine for AI Session Hub — evidence normalization, Rubric v2 value evaluation, session compaction and LLM stream client (pure logic, no host IO)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "session-hub",
+    "session-analysis",
+    "evaluation-engine",
+    "evidence-normalization"
+  ],
+  "author": "Session Hub Team",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@session-hub/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@session-hub/core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  }
+}

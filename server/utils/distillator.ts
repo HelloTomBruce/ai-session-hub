@@ -1,8 +1,8 @@
 import type { PlatformType, SessionMessage, UnifiedSession } from './types'
-import { compactSessionForAI } from './session-compactor'
+import { compactSessionForAI } from '@session-hub/analyzer'
 import { getCachedSessionSummary, saveCachedSessionSummary, type SingleSessionSummary } from './distill-cache'
 import type { LLMProviderSettings } from './llm-provider-config'
-import { streamLLMCompletion } from './llm-stream-client'
+import { streamLLMCompletion } from '@session-hub/analyzer'
 
 export interface ADRItem {
   id: string

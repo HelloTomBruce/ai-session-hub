@@ -3,7 +3,7 @@ import path from 'node:path'
 import { adapterRegistry } from '../../../../utils/adapter-registry'
 import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, type AIEvaluationResult } from '../../../../utils/evaluator-rubric'
 import { getLLMProviderSettings } from '../../../../utils/llm-provider-config'
-import { streamLLMCompletion } from '../../../../utils/llm-stream-client'
+import { streamLLMCompletion } from '@session-hub/analyzer'
 import type { PlatformType, SessionMessage, SessionToolCall, UnifiedSession } from '../../../../utils/types'
 
 export default defineEventHandler(async (event) => {

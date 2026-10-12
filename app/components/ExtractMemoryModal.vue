@@ -308,9 +308,10 @@ async function saveToGraph() {
               取消
             </UButton>
             <UButton
-              color="primary"
+              color="neutral"
               size="sm"
               icon="i-lucide-sparkles"
+              class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
               @click="startExtract"
             >
               开始智能提炼
@@ -539,9 +540,10 @@ async function saveToGraph() {
                 取消
               </UButton>
               <UButton
-                color="primary"
+                color="neutral"
                 size="sm"
                 icon="i-lucide-save"
+                class="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                 :loading="isSaving"
                 @click="saveToGraph"
               >

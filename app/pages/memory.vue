@@ -108,6 +108,18 @@ function openDetail(item: MemoryGraphItem) {
   isDetailOpen.value = true
 }
 
+// 深链支持：/memory?id=mem_xxx 自动打开详情
+onMounted(async () => {
+  const id = useRoute().query.id
+  if (typeof id !== 'string' || !id) return
+  try {
+    const res = await $fetch<{ success: boolean, item: MemoryGraphItem }>(`/api/memory/${encodeURIComponent(id)}`)
+    if (res?.item) openDetail(res.item)
+  } catch (err) {
+    console.error('[Memory] 深链加载失败:', err)
+  }
+})
+
 // 拓扑图谱中点击 Memory 节点：按 id 拉取完整内容后打开详情抽屉
 async function handleGraphNodeClick(id: string) {
   try {
