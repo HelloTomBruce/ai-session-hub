@@ -423,7 +423,7 @@ class CacheService {
   /**
    * 从缓存中获取会话列表（仅返回当前已启用的插件会话）
    */
-  getCachedSessions(platformFilter?: string, searchQuery?: string): UnifiedSession[] {
+  getCachedSessions(platformFilter?: string, searchQuery?: string, options: { limit?: number } = {}): UnifiedSession[] {
     this.init()
     if (!this.db) return []
 
@@ -459,6 +459,11 @@ class CacheService {
       }
 
       sql += ' ORDER BY updated_at DESC'
+
+      // 防止全量会话一次性载入内存/响应：默认 2000 上限，调用方可显式覆盖
+      const limit = Math.min(Math.max(1, Math.trunc(options.limit || 2000)), 5000)
+      sql += ' LIMIT ?'
+      params.push(limit)
 
       const rows = this.db.prepare(sql).all(...params) as SessionCacheRow[]
       return rows.map(r => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
@@ -693,13 +698,11 @@ class CacheService {
           s.cwd,
           s.tags,
           s.updated_at,
-          m.content as raw_content,
           f.tool_summary,
           snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
           f.rank
         FROM fts_messages f
         LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
-        LEFT JOIN messages_cache m ON m.id = f.message_id
         WHERE ${whereClause}
         ORDER BY f.rank
         LIMIT ? OFFSET ?
@@ -717,7 +720,6 @@ class CacheService {
         cwd: string
         tags: string
         updated_at: number
-        raw_content?: string
         tool_summary?: string
         snippet: string
         rank: number
