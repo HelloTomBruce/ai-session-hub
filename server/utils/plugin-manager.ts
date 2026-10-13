@@ -78,26 +78,32 @@ export class PluginManager {
       const files = fs.readdirSync(PLUGINS_DIR)
       for (const file of files) {
         if (file.endsWith('.json') && file !== 'plugins-config.json') {
-          const fullPath = path.join(PLUGINS_DIR, file)
-          try {
-            const raw = fs.readFileSync(fullPath, 'utf-8')
-            const cfg = JSON.parse(raw) as Record<string, unknown>
-            if (cfg.id && typeof cfg.id === 'string') {
-              if (cfg.type === 'template-sqlite' || cfg.dbPath) {
-                const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
-                this.register(plugin)
-              } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
-                const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
-                this.register(plugin)
-              }
-            }
-          } catch (e) {
-            console.error(`[PluginManager] Error loading JSON plugin ${file}:`, e)
-          }
+          this.loadDeclarativeJsonFromFile(path.join(PLUGINS_DIR, file))
         }
       }
     } catch (err) {
       console.error('[PluginManager] Error scanning JSON plugins:', err)
+    }
+  }
+
+  /**
+   * 从单个 JSON 文件构建声明式模板插件（initSync 与 loadExternalPlugins 共用）
+   */
+  private loadDeclarativeJsonFromFile(fullPath: string) {
+    try {
+      const raw = fs.readFileSync(fullPath, 'utf-8')
+      const cfg = JSON.parse(raw) as Record<string, unknown>
+      if (cfg.id && typeof cfg.id === 'string') {
+        if (cfg.type === 'template-sqlite' || cfg.dbPath) {
+          const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
+          this.register(plugin)
+        } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
+          const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
+          this.register(plugin)
+        }
+      }
+    } catch (e) {
+      console.error(`[PluginManager] Error loading JSON plugin ${fullPath}:`, e)
     }
   }
 
@@ -217,22 +223,11 @@ export class PluginManager {
 
         // 1. 声明式 JSON 插件配置 (*.plugin.json 或 *.json)
         if (file.endsWith('.json') && file !== 'plugins-config.json') {
-          try {
-            const raw = fs.readFileSync(fullPath, 'utf-8')
-            const cfg = JSON.parse(raw) as Record<string, unknown>
-            if (cfg.id && typeof cfg.id === 'string') {
-              if (cfg.type === 'template-sqlite' || cfg.dbPath) {
-                const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
-                this.register(plugin)
-                console.log(`[PluginManager] Loaded declarative SQLite plugin: ${cfg.id}`)
-              } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
-                const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
-                this.register(plugin)
-                console.log(`[PluginManager] Loaded declarative JSONL plugin: ${cfg.id}`)
-              }
-            }
-          } catch (e) {
-            console.error(`[PluginManager] Error loading JSON plugin ${file}:`, e)
+          const before = this.plugins.size
+          this.loadDeclarativeJsonFromFile(fullPath)
+          const added = Array.from(this.plugins.values()).slice(before)
+          for (const plugin of added) {
+            console.log(`[PluginManager] Loaded declarative plugin: ${plugin.manifest.id}`)
           }
         }
 

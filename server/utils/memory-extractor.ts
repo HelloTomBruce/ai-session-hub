@@ -169,6 +169,9 @@ ${input.messagesContent.slice(0, MAX_CONTEXT)}
       .filter(q => typeof q === 'string' && q.trim().length >= 8)
       .slice(0, 5)
 
+    // 证据校验只算一次，sourceMeta 与返回值共用（避免重复遍历会话正文）
+    const evidenceVerified = verifyEvidenceQuotes(evidenceQuotes, input.messagesContent)
+
     return {
       title: str(parsed.title) || input.sessionTitle || '提炼记忆',
       type: str(parsed.type) || 'BestPractice',
@@ -197,10 +200,10 @@ ${input.messagesContent.slice(0, MAX_CONTEXT)}
         platform: input.platform,
         extractedAt: Date.now(),
         evidenceQuotes,
-        evidenceVerified: verifyEvidenceQuotes(evidenceQuotes, input.messagesContent)
+        evidenceVerified
       },
       // 管线校验结果（非 LLM 自报）：由调用方决定 confidence/status 处置
-      evidenceVerified: verifyEvidenceQuotes(evidenceQuotes, input.messagesContent)
+      evidenceVerified
     }
   } catch (err) {
     console.error('[Memory Extractor] Failed to parse JSON response:', fullOutput.slice(0, 500))

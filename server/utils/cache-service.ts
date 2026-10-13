@@ -286,22 +286,43 @@ class CacheService {
   }
 
   /**
-   * 提取 Tool Calls 关键摘要（用于全文检索）
+   * 提取 Tool Calls 关键摘要（用于全文检索）。
+   * 优先结构化遍历参数对象收集路径/命令片段；参数不是可遍历对象时
+   * 回退到字符串正则（覆盖历史插件产出的预序列化形态）。
    */
   private extractToolSummary(toolCalls?: SessionToolCall[]): string {
     if (!toolCalls || !toolCalls.length) return ''
     const parts: string[] = []
+    const pathPattern = /[\w\-./\\]+\.(?:[a-zA-Z0-9]{1,10})/g
+    const cmdKeys = new Set(['command', 'cmd', 'script'])
+
+    const collectFromValue = (value: unknown, depth: number) => {
+      if (parts.length >= 15 || depth > 4) return
+      if (typeof value === 'string') {
+        const matches = value.match(pathPattern)
+        if (matches) parts.push(...matches)
+      } else if (Array.isArray(value)) {
+        for (const item of value.slice(0, 10)) collectFromValue(item, depth + 1)
+      } else if (value && typeof value === 'object') {
+        for (const [key, v] of Object.entries(value)) {
+          if (parts.length >= 15) break
+          if (cmdKeys.has(key.toLowerCase()) && typeof v === 'string') parts.push(v)
+          else collectFromValue(v, depth + 1)
+        }
+      }
+    }
+
     for (const tool of toolCalls) {
+      if (parts.length >= 15) break
       const name = tool.name || tool.type || ''
       if (name) parts.push(name)
       const args = tool.arguments || tool.args || tool.input
       if (args && typeof args === 'object') {
-        const str = JSON.stringify(args)
-        // 提取有价值的路径或命令片段
-        const matches = str.match(/[\w\-./\\]+\.(?:[a-zA-Z0-9]{1,10})/g)
+        collectFromValue(args, 0)
+      } else if (typeof args === 'string') {
+        // 非标准形态（预序列化字符串）：回退正则提取
+        const matches = args.match(pathPattern)
         if (matches) parts.push(...matches)
-        const cmdMatches = str.match(/["'](?:command|cmd|script)["']:\s*["']([^"']+)["']/i)
-        if (cmdMatches && cmdMatches[1]) parts.push(cmdMatches[1])
       }
     }
     return parts.slice(0, 15).join(' ')
