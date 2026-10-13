@@ -13,6 +13,20 @@ import type {
   PatternSnippetEntity
 } from './memory-types'
 
+/** 同键写入互斥（内存级）：防止并发 saveMemoryWithDedup 双双 miss 产生重复节点 */
+const memoryWriteChains = new Map<string, Promise<unknown>>()
+
+export async function withMemoryWriteLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = memoryWriteChains.get(key) ?? Promise.resolve()
+  const next = prev.catch(() => {}).then(fn)
+  memoryWriteChains.set(key, next)
+  try {
+    return await next
+  } finally {
+    if (memoryWriteChains.get(key) === next) memoryWriteChains.delete(key)
+  }
+}
+
 /** Grafeo 返回的 Memory 节点原始属性（tags/sourceMeta 以 JSON 字符串存储） */
 interface RawMemoryNode {
   id: string
@@ -71,29 +85,49 @@ class MemoryService {
     item: Partial<MemoryGraphItem> & { title: string, content: string },
     sessionKey?: { sessionId: string, platform: string }
   ): Promise<SaveWithDedupResult> {
-    const { items: existing } = await this.listMemories({ limit: 500 })
+    // 会话键回填：调用方未在 sourceMeta 中携带 sessionKey 时自动注入，
+    // 保证「按 sessionKey 去重」与「节点记录的溯源信息」一致（旧实现二者会脱节）
+    if (sessionKey?.sessionId && item.sourceMeta?.sessionId !== sessionKey.sessionId) {
+      item = {
+        ...item,
+        sourceMeta: { ...item.sourceMeta, sessionId: sessionKey.sessionId, platform: sessionKey.platform }
+      }
+    }
+    const normTitle = normalizeTitleForDedup(item.title)
+    const type = item.type || 'BestPractice'
+    // 同键串行化：带会话键的写入（评估沉淀/手工捕获主路径）按会话键互斥；
+    // 无会话键的手工资产退化按 类型+标题 键互斥
+    const lockKey = sessionKey?.sessionId
+      ? `session:${sessionKey.platform}:${sessionKey.sessionId}`
+      : `title:${type}:${normTitle}`
+    return withMemoryWriteLock(lockKey, () =>
+      this.saveMemoryWithDedupInner(item, sessionKey, type, normTitle)
+    )
+  }
 
-    // 1. 同源会话去重
+  private async saveMemoryWithDedupInner(
+    item: Partial<MemoryGraphItem> & { title: string, content: string },
+    sessionKey: { sessionId: string, platform: string } | undefined,
+    type: string,
+    normTitle: string
+  ): Promise<SaveWithDedupResult> {
+    await grafeoService.init()
+
+    // 1. 同源会话去重（sourceMetaJson 粗筛 + JS 精校，替代旧的全量 listMemories(500)）
     if (sessionKey?.sessionId) {
-      const bySession = existing.find(m =>
-        m.sourceMeta?.sessionId === sessionKey.sessionId
-        && m.sourceMeta?.platform === sessionKey.platform
-      )
+      const bySession = await this.findMemoryBySessionKey(sessionKey)
       if (bySession) {
-        const saved = await this.saveMemory({ ...item, id: bySession.id })
+        const saved = await this.saveMemory({ ...item, id: bySession.id, createdAt: bySession.createdAt })
         return { item: saved, dedup: 'updated-session' }
       }
     }
 
     // 2. 同类型同标题去重
-    const normTitle = normalizeTitleForDedup(item.title)
-    const byTitle = existing.find(m =>
-      m.type === (item.type || 'BestPractice') && normalizeTitleForDedup(m.title) === normTitle
-    )
+    const byTitle = await this.findMemoryByTitle(type, normTitle)
     if (byTitle) {
       const sim = contentSimilarity(byTitle.content, item.content)
       if (sim >= 0.8) {
-        const saved = await this.saveMemory({ ...item, id: byTitle.id })
+        const saved = await this.saveMemory({ ...item, id: byTitle.id, createdAt: byTitle.createdAt })
         return { item: saved, dedup: 'updated-title' }
       }
       // 内容演进：新建 + SUPERSEDES（合并调用方显式指定的 supersededIds，去重）
@@ -107,179 +141,257 @@ class MemoryService {
   }
 
   /**
+   * 定向查询：同源会话记忆（sourceMetaJson CONTAINS 粗筛 + JS 精校 platform/sessionId）
+   */
+  private async findMemoryBySessionKey(sessionKey: { sessionId: string, platform: string }): Promise<MemoryGraphItem | null> {
+    try {
+      const res = await grafeoService.execute(
+        `MATCH (m:Memory) WHERE m.sourceMetaJson CONTAINS $sessionId RETURN m`,
+        { sessionId: sessionKey.sessionId }
+      )
+      const rows = (res.rows() || []) as unknown as Array<[RawMemoryNode | null]>
+      for (const [m] of rows) {
+        if (!m?.id) continue
+        const candidate = this.formatMemoryNode(m)
+        if (
+          candidate.sourceMeta?.sessionId === sessionKey.sessionId
+          && candidate.sourceMeta?.platform === sessionKey.platform
+        ) {
+          return candidate
+        }
+      }
+      return null
+    } catch (err) {
+      console.error('[MemoryService] Error in findMemoryBySessionKey:', err)
+      return null
+    }
+  }
+
+  /**
+   * 定向查询：同类型同规范化标题记忆（lower() 粗筛 + JS normalizeTitleForDedup 精校）
+   */
+  private async findMemoryByTitle(type: string, normTitle: string): Promise<MemoryGraphItem | null> {
+    try {
+      const res = await grafeoService.execute(
+        `MATCH (m:Memory) WHERE m.type = $type AND lower(m.title) = $lowerTitle RETURN m`,
+        { type, lowerTitle: normTitle }
+      )
+      const rows = (res.rows() || []) as unknown as Array<[RawMemoryNode | null]>
+      for (const [m] of rows) {
+        if (!m?.id) continue
+        const candidate = this.formatMemoryNode(m)
+        if (normalizeTitleForDedup(candidate.title) === normTitle) return candidate
+      }
+      return null
+    } catch (err) {
+      console.error('[MemoryService] Error in findMemoryByTitle:', err)
+      return null
+    }
+  }
+
+  /**
    * 保存或更新图记忆（含实体与拓扑关系）
+   *
+   * 事务语义：节点 upsert 与关系重建在单个 Grafeo 事务内完成，失败整体回滚。
+   * 旧实现「DETACH DELETE + CREATE」分两条语句且无事务——中间失败即丢数据，
+   * 且 DETACH DELETE 会切断其他记忆指向本节点的 SUPERSEDES 演进边；
+   * 现改为 MERGE + SET（保留节点身份与入边），仅清理本节点出边后重建。
    */
   async saveMemory(item: Partial<MemoryGraphItem> & { title: string, content: string }): Promise<MemoryGraphItem> {
     await grafeoService.init()
+    const db = grafeoService.getDb()
     const now = Date.now()
     const id = item.id || `mem_${now}_${Math.random().toString(36).slice(2, 7)}`
     const type = item.type || 'BestPractice'
-    const summary = item.summary || item.title
+    // 标题规范化存储（trim + 折叠连续空白）：保证 Cypher 层 lower() 粗筛与
+    // JS 层 normalizeTitleForDedup 精校一致，空白变体标题不再漏判
+    const title = item.title.trim().replace(/\s+/g, ' ')
+    const summary = item.summary || title
     const confidence = typeof item.confidence === 'number' ? item.confidence : 90
     const tags = Array.isArray(item.tags) ? item.tags : []
     const tagsJson = JSON.stringify(tags)
     const sourceMetaJson = JSON.stringify(item.sourceMeta || {})
-    const createdAt = item.createdAt || now
-    const updatedAt = now
     // P2 状态分层：draft（低置信/证据存疑，不进召回）| confirmed（默认）
     const status = item.status === 'draft' ? 'draft' : 'confirmed'
 
-    // 1. 创建或更新 Memory 核心节点（若存在先清除旧关系再重建）
-    await grafeoService.execute(
-      `
-      MATCH (m:Memory {id: $id})
-      DETACH DELETE m
-    `,
-      { id }
-    )
-
-    await grafeoService.execute(
-      `
-      CREATE (m:Memory {
-        id: $id,
-        title: $title,
-        type: $type,
-        summary: $summary,
-        content: $content,
-        confidence: $confidence,
-        tagsJson: $tagsJson,
-        sourceMetaJson: $sourceMetaJson,
-        status: $status,
-        createdAt: $createdAt,
-        updatedAt: $updatedAt
-      })
-    `,
-      {
-        id,
-        title: item.title,
-        type,
-        summary,
-        content: item.content,
-        confidence,
-        tagsJson,
-        sourceMetaJson,
-        status,
-        createdAt,
-        updatedAt
+    // createdAt 保留：优先调用方显式指定，其次库内既有值（修复更新路径重置演进历史）
+    let existingCreatedAt: number | null = null
+    if (!item.createdAt) {
+      try {
+        const res = await db.execute('MATCH (m:Memory {id: $id}) RETURN m.createdAt', { id })
+        const rows = (res.rows() || []) as unknown as Array<[unknown]>
+        existingCreatedAt = rows.length > 0 ? Number(rows[0]?.[0]) || null : null
+      } catch {
+        existingCreatedAt = null
       }
-    )
-
-    // 2. 关联 Project
-    const projects: ProjectEntity[] = item.projects || []
-    for (const p of projects) {
-      if (!p.name) continue
-      await grafeoService.execute(
-        `MERGE (proj:Project {name: $name})`,
-        { name: p.name }
-      )
-      if (p.cwd) {
-        await grafeoService.execute(
-          `MATCH (proj:Project {name: $name}) SET proj.cwd = $cwd`,
-          { name: p.name, cwd: p.cwd }
-        )
-      }
-      await grafeoService.execute(
-        `MATCH (m:Memory {id: $id}), (proj:Project {name: $name}) CREATE (m)-[:APPLIES_TO]->(proj)`,
-        { id, name: p.name }
-      )
     }
+    const createdAt = item.createdAt || existingCreatedAt || now
+    const updatedAt = now
 
-    // 3. 关联 TechConcept
-    const techConcepts: TechConceptEntity[] = item.techConcepts || []
-    for (const t of techConcepts) {
-      if (!t.name) continue
-      await grafeoService.execute(
-        `MERGE (tc:TechConcept {name: $name})`,
-        { name: t.name }
-      )
-      if (t.category) {
-        await grafeoService.execute(
-          `MATCH (tc:TechConcept {name: $name}) SET tc.category = $category`,
-          { name: t.name, category: t.category }
-        )
-      }
-      await grafeoService.execute(
-        `MATCH (m:Memory {id: $id}), (tc:TechConcept {name: $name}) CREATE (m)-[:RELATES_TO]->(tc)`,
-        { id, name: t.name }
-      )
-    }
+    const tx = db.beginTransaction()
+    const run = (query: string, params?: Record<string, unknown>) => tx.execute(query, params)
 
-    // 4. 关联 Problem
-    const problems: ProblemEntity[] = item.problems || []
-    for (const prob of problems) {
-      if (!prob.title) continue
-      await grafeoService.execute(
-        `MERGE (pb:Problem {title: $title})`,
-        { title: prob.title }
-      )
-      if (prob.symptom || prob.errorCode) {
-        await grafeoService.execute(
-          `MATCH (pb:Problem {title: $title}) SET pb.symptom = $symptom, pb.errorCode = $errorCode`,
-          { title: prob.title, symptom: prob.symptom || '', errorCode: prob.errorCode || '' }
-        )
-      }
-      await grafeoService.execute(
-        `MATCH (m:Memory {id: $id}), (pb:Problem {title: $title}) CREATE (m)-[:SOLVES]->(pb)`,
-        { id, title: prob.title }
-      )
-    }
-
-    // 5. 关联 Snippet
-    const snippets: PatternSnippetEntity[] = item.snippets || []
-    for (const snip of snippets) {
-      if (!snip.code) continue
-      await grafeoService.execute(
-        `CREATE (ps:PatternSnippet {
-          title: $title,
-          code: $code,
-          language: $language,
-          rules: $rules
-        })`,
+    try {
+      // 1. 原子 upsert Memory 核心节点（MERGE 保留入边与节点身份）
+      await run(
+        `
+        MERGE (m:Memory {id: $id})
+        SET m.title = $title, m.type = $type, m.summary = $summary, m.content = $content,
+            m.confidence = $confidence, m.tagsJson = $tagsJson, m.sourceMetaJson = $sourceMetaJson,
+            m.status = $status, m.createdAt = $createdAt, m.updatedAt = $updatedAt
+      `,
         {
-          title: snip.title || '',
-          code: snip.code,
-          language: snip.language || '',
-          rules: snip.rules || ''
+          id,
+          title,
+          type,
+          summary,
+          content: item.content,
+          confidence,
+          tagsJson,
+          sourceMetaJson,
+          status,
+          createdAt,
+          updatedAt
         }
       )
-      await grafeoService.execute(
-        `MATCH (m:Memory {id: $id}), (ps:PatternSnippet {code: $code}) CREATE (m)-[:PRODUCES]->(ps)`,
-        { id, code: snip.code }
-      )
-    }
 
-    // 6. 关联演进覆盖 (SUPERSEDES)
-    const supersededIds = item.supersededIds || []
-    for (const oldId of supersededIds) {
-      if (!oldId || oldId === id) continue
-      await grafeoService.execute(
+      // 2. 清理本节点出边（保留其他记忆指向本节点的 SUPERSEDES 入边）。
+      // 注意：不可用 OPTIONAL MATCH——Grafeo 对 null 边绑定的结果集物化会报
+      // "edge column 1" 错误；无出边时节点不命中任何行，语义等价且安全。
+      await run(
         `
-        MATCH (m:Memory {id: $id}), (old:Memory {id: $oldId})
-        CREATE (m)-[:SUPERSEDES]->(old)
+        MATCH (m:Memory {id: $id})-[r]->()
+        DELETE r
       `,
-        { id, oldId }
+        { id }
       )
+
+      // 3. 关联 Project
+      const projects: ProjectEntity[] = item.projects || []
+      for (const p of projects) {
+        if (!p.name) continue
+        await run(
+          `MERGE (proj:Project {name: $name})`,
+          { name: p.name }
+        )
+        if (p.cwd) {
+          await run(
+            `MATCH (proj:Project {name: $name}) SET proj.cwd = $cwd`,
+            { name: p.name, cwd: p.cwd }
+          )
+        }
+        await run(
+          `MATCH (m:Memory {id: $id}), (proj:Project {name: $name}) CREATE (m)-[:APPLIES_TO]->(proj)`,
+          { id, name: p.name }
+        )
+      }
+
+      // 4. 关联 TechConcept
+      const techConcepts: TechConceptEntity[] = item.techConcepts || []
+      for (const t of techConcepts) {
+        if (!t.name) continue
+        await run(
+          `MERGE (tc:TechConcept {name: $name})`,
+          { name: t.name }
+        )
+        if (t.category) {
+          await run(
+            `MATCH (tc:TechConcept {name: $name}) SET tc.category = $category`,
+            { name: t.name, category: t.category }
+          )
+        }
+        await run(
+          `MATCH (m:Memory {id: $id}), (tc:TechConcept {name: $name}) CREATE (m)-[:RELATES_TO]->(tc)`,
+          { id, name: t.name }
+        )
+      }
+
+      // 5. 关联 Problem
+      const problems: ProblemEntity[] = item.problems || []
+      for (const prob of problems) {
+        if (!prob.title) continue
+        await run(
+          `MERGE (pb:Problem {title: $title})`,
+          { title: prob.title }
+        )
+        if (prob.symptom || prob.errorCode) {
+          await run(
+            `MATCH (pb:Problem {title: $title}) SET pb.symptom = $symptom, pb.errorCode = $errorCode`,
+            { title: prob.title, symptom: prob.symptom || '', errorCode: prob.errorCode || '' }
+          )
+        }
+        await run(
+          `MATCH (m:Memory {id: $id}), (pb:Problem {title: $title}) CREATE (m)-[:SOLVES]->(pb)`,
+          { id, title: prob.title }
+        )
+      }
+
+      // 6. 关联 Snippet
+      const snippets: PatternSnippetEntity[] = item.snippets || []
+      for (const snip of snippets) {
+        if (!snip.code) continue
+        await run(
+          `CREATE (ps:PatternSnippet {
+            title: $title,
+            code: $code,
+            language: $language,
+            rules: $rules
+          })`,
+          {
+            title: snip.title || '',
+            code: snip.code,
+            language: snip.language || '',
+            rules: snip.rules || ''
+          }
+        )
+        await run(
+          `MATCH (m:Memory {id: $id}), (ps:PatternSnippet {code: $code}) CREATE (m)-[:PRODUCES]->(ps)`,
+          { id, code: snip.code }
+        )
+      }
+
+      // 7. 关联演进覆盖 (SUPERSEDES)
+      const supersededIds = item.supersededIds || []
+      for (const oldId of supersededIds) {
+        if (!oldId || oldId === id) continue
+        await run(
+          `
+          MATCH (m:Memory {id: $id}), (old:Memory {id: $oldId})
+          CREATE (m)-[:SUPERSEDES]->(old)
+        `,
+          { id, oldId }
+        )
+      }
+
+      tx.commit()
+    } catch (err) {
+      try {
+        tx.rollback()
+      } catch {
+        // 事务可能已失效，忽略二次回滚错误
+      }
+      throw err
     }
 
     grafeoService.checkpoint()
 
     return {
       id,
-      title: item.title,
+      title,
       type,
       summary,
       content: item.content,
       confidence,
       tags,
       sourceMeta: item.sourceMeta,
-      status: item.status === 'draft' ? 'draft' : 'confirmed',
+      status,
       createdAt,
       updatedAt,
-      projects,
-      techConcepts,
-      problems,
-      snippets,
-      supersededIds
+      projects: item.projects || [],
+      techConcepts: item.techConcepts || [],
+      problems: item.problems || [],
+      snippets: item.snippets || [],
+      supersededIds: item.supersededIds || []
     }
   }
 
