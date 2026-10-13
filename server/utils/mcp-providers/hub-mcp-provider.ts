@@ -20,11 +20,11 @@ export class HubMcpProvider implements McpProvider {
         url: 'http://localhost:3877/api/mcp/streamable',
         disabled: false,
         configPath: 'server/utils/mcp-server-instance.ts',
-        toolsCount: 13,
+        toolsCount: 14,
         tools: [
           {
             name: 'search_sessions_fts',
-            description: '对本地所有 11+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词）'
+            description: '对本地所有 12+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词）'
           },
           {
             name: 'list_sessions',
@@ -73,6 +73,10 @@ export class HubMcpProvider implements McpProvider {
           {
             name: 'save_memory',
             description: '将当前对话中提炼的高价值架构决策、排坑避坑指南或最佳实践主动沉淀到 Grafeo 记忆图谱中'
+          },
+          {
+            name: 'rate_memory',
+            description: '对召回/使用过的记忆给出反馈（有用/无用），影响后续召回排序权重'
           }
         ]
       }

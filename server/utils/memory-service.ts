@@ -96,8 +96,9 @@ class MemoryService {
         const saved = await this.saveMemory({ ...item, id: byTitle.id })
         return { item: saved, dedup: 'updated-title' }
       }
-      // 内容演进：新建 + SUPERSEDES
-      const saved = await this.saveMemory({ ...item, supersededIds: [byTitle.id] })
+      // 内容演进：新建 + SUPERSEDES（合并调用方显式指定的 supersededIds，去重）
+      const mergedSuperseded = Array.from(new Set([...(item.supersededIds || []), byTitle.id]))
+      const saved = await this.saveMemory({ ...item, supersededIds: mergedSuperseded })
       return { item: saved, dedup: 'superseded' }
     }
 

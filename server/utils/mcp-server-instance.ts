@@ -329,7 +329,7 @@ export function createMcpServer() {
         },
         {
           name: 'save_memory',
-          description: '将当前对话中提炼的高价值架构决策、排坑避坑指南或最佳实践主动沉淀到 Grafeo 记忆图谱中（解耦会话存续，永久保留）',
+          description: '将当前对话中提炼的高价值架构决策、排坑避坑指南或最佳实践主动沉淀到 Grafeo 记忆图谱中（解耦会话存续，永久保留）。走统一去重管线：同源会话/同标题高相似度原地更新，内容演进自动建 SUPERSEDES 链',
           inputSchema: {
             type: 'object',
             properties: {
@@ -390,6 +390,11 @@ export function createMcpServer() {
                 type: 'array',
                 items: { type: 'string' },
                 description: '关联标签'
+              },
+              supersededIds: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '被本记忆演进替代的旧记忆 id 数组（建立 SUPERSEDES 链，旧节点自动退出召回）'
               }
             },
             required: ['title', 'content']
@@ -987,8 +992,10 @@ export function createMcpServer() {
         const projects = (args.projects as ProjectEntity[]) || []
         const techConcepts = (args.techConcepts as TechConceptEntity[]) || []
         const problems = (args.problems as ProblemEntity[]) || []
+        const supersededIds = (args.supersededIds as string[]) || []
 
-        const saved = await memoryService.saveMemory({
+        // P1 统一去重管线：与评估沉淀/手动提炼/capture_session_insight 同一入口
+        const { item: saved, dedup } = await memoryService.saveMemoryWithDedup({
           title,
           type,
           summary,
@@ -996,7 +1003,8 @@ export function createMcpServer() {
           tags,
           projects,
           techConcepts,
-          problems
+          problems,
+          supersededIds
         })
 
         mcpLogger.addLog({
@@ -1005,7 +1013,7 @@ export function createMcpServer() {
           params: args,
           status: 'success',
           durationMs: Date.now() - startTime,
-          responsePreview: `Saved memory ${saved.id} into Grafeo graph`
+          responsePreview: `Saved memory ${saved.id} into Grafeo graph (dedup=${dedup})`
         })
 
         return {
@@ -1016,6 +1024,7 @@ export function createMcpServer() {
                 {
                   success: true,
                   message: '记忆与实体拓扑已成功持久化至 Grafeo 图数据库',
+                  dedup,
                   item: saved
                 },
                 null,

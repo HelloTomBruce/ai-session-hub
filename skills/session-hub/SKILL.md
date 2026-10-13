@@ -1,11 +1,11 @@
 ---
 name: session-hub
-description: 当在项目中开始编码工作、需要召回历史工程经验（ADR/避坑/模式）时；当刚解决一个难题、踩过坑或做出架构决策、值得跨会话沉淀时；当需要按关键词、报错或文件路径全文检索历史 AI 编码会话时使用。需要 session-hub MCP 服务（SSE）。
+description: 当在项目中开始编码工作、需要召回历史工程经验（ADR/避坑/模式）时；当刚解决一个难题、踩过坑或做出架构决策、值得跨会话沉淀时；当需要按关键词、报错或文件路径全文检索历史 AI 编码会话时使用。需要 session-hub MCP 服务（Streamable HTTP，旧客户端可用 SSE）。
 ---
 
 # session-hub 记忆与会话中枢
 
-本地 MCP 服务，提供两类能力：**记忆图谱**（Grafeo，工程知识沉淀与召回）和**会话检索**（FTS5 全文索引，跨 11+ 个 AI 编码工具的历史会话）。
+本地 MCP 服务，提供两类能力：**记忆图谱**（Grafeo，工程知识沉淀与召回）和**会话检索**（FTS5 全文索引，跨 12+ 个 AI 编码工具的历史会话）。
 
 ## 连接
 
@@ -22,9 +22,10 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
    → 得到候选列表（摘要 + 实体标签）
 2. 凭 summary / techConcepts / problems 判断相关性
 3. 仅对确认相关的条目 get_memory(id) 拉完整正文与代码片段
+4. 消费完后 rate_memory(memory_id, useful) 反馈质量——影响后续召回排序
 ```
 
-- `cwd` 传当前项目路径——图谱按项目挂载记忆，带 cwd 会优先召回本项目沉淀
+- `cwd` 传当前项目路径。注意这是**硬过滤**：只召回挂载到该项目路径的记忆，未挂项目的全局记忆会被排除——找通用经验时不要传 cwd
 - `tech` 传当前技术栈实体名数组（如 `["Nuxt", "SQLite"]`），按技术匹配度排序
 - `type` 过滤：ADR | Gotcha | BestPractice | Pattern | Workflow | Config | Security | Performance | ApiSpec
 - `search_memory_graph(type?, project?, limit?)`：需要看实体关系拓扑时用（节点+边），日常召回不需要
@@ -32,6 +33,8 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
 ## 沉淀：save_memory
 
 **何时沉淀**：解决了一个非显而易见的难题、踩了坑并找到根因、做出架构/技术选型决策、发现可复用模式或配置范式。**不要**沉淀琐碎改动、一次性操作或会话过程性内容。
+
+`save_memory` 走统一去重管线：同源会话或同标题高相似度（≥0.8）会原地更新；同标题但内容已演进时自动新建并对旧节点建 SUPERSEDES 链——同主题直接保存即可，不要手动另起孤立节点。
 
 字段规范：
 
@@ -44,7 +47,7 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
 | `projects` | `[{name, cwd}]`，当前项目必挂 |
 | `techConcepts` | `[{name, category}]`，category ∈ framework/library/language/tool/db/infra/other |
 | `problems` | `[{title, symptom, errorCode}]`，有报错必挂（召回时可按问题命中） |
-| `supersededIds` | 内容演进替代旧记忆时传旧 id 数组，建立 SUPERSEDES 链；同主题新知识不要另起孤立节点 |
+| `supersededIds` | 明确要替代的旧记忆 id 数组（可选；同标题演进时管线会自动建链，无需手动传） |
 
 ## 会话检索
 
@@ -61,7 +64,9 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
 | 错误 | 正确做法 |
 |---|---|
 | recall 后把所有结果的详情全 get 一遍 | 两级模式：只拉 summary 判断后确认相关的 |
+| get_memory 消费完不反馈 | 调 `rate_memory(memory_id, useful)`，质量闭环影响后续排序 |
 | save_memory 不挂 techConcepts / projects | 实体是召回过滤的入口，不挂等于沉底 |
-| 同主题知识反复新建节点 | 查已有记忆，内容演进用 `supersededIds` 关联 |
+| 同主题知识反复新建节点 | 直接保存即可，去重管线自动原地更新或建 SUPERSEDES 链 |
+| 任何召回都传 cwd | cwd 是硬过滤，找未挂项目的通用经验时不要传 |
 | 把会话过程记录（"用户说/助手说"）写进 content | 沉淀要解耦会话：提炼为通用经验，去掉对话口吻 |
 | 连接失败就跳过 | 提示用户启动 session-hub 服务后重试 |
