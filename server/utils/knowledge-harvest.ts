@@ -1,15 +1,9 @@
 /**
- * 沉淀编排：LLM 真实抽取 / 手工捕获 → Grafeo 记忆图谱写入，带去重与演进链。
- *
- * 去重策略（幂等重跑）：
- * 1. 按 sourceMeta.sessionId 找已有节点 → 命中则更新同一节点（不新建）；
- * 2. 否则按 (type, 规范化 title) 查重：
- *    - 内容实质一致（行级 Jaccard >= 0.8）→ 更新原节点；
- *    - 内容演进 → 新建节点并连 SUPERSEDES 边。
+ * 沉淀编排：LLM 真实抽取 / 手工捕获 → Grafeo 记忆图谱写入。
+ * P1 起去重与演进链统一收敛到 memoryService.saveMemoryWithDedup（全路径共享）。
  */
 import { memoryService } from './memory-service'
 import { extractKnowledgeFromEvaluation } from './knowledge-extractor'
-import { normalizeTitleForDedup, contentSimilarity } from './harvest-dedup'
 import type { MemoryGraphItem, MemoryNodeData, ProjectEntity } from './memory-types'
 import type { UnifiedSession, SessionMessage } from './types'
 import type { QuantitativeEvaluationReport } from '@session-hub/analyzer'
@@ -145,39 +139,8 @@ class KnowledgeHarvestService {
     draft: PersistDraft,
     sessionKey?: { sessionId: string, platform: string }
   ): Promise<HarvestResult> {
-    const { items: existing } = await memoryService.listMemories({ limit: 500 })
-
-    // 1. sessionId 去重
-    if (sessionKey?.sessionId) {
-      const bySession = existing.find(m =>
-        m.sourceMeta?.sessionId === sessionKey.sessionId
-        && m.sourceMeta?.platform === sessionKey.platform
-      )
-      if (bySession) {
-        const item = await memoryService.saveMemory({ ...draft, id: bySession.id })
-        return { status: 'extracted', item, dedup: 'updated-session' }
-      }
-    }
-
-    // 2. title 去重
-    const normTitle = normalizeTitleForDedup(draft.title)
-    const byTitle = existing.find(m =>
-      m.type === draft.type && normalizeTitleForDedup(m.title) === normTitle
-    )
-    if (byTitle) {
-      const sim = contentSimilarity(byTitle.content, draft.content)
-      if (sim >= 0.8) {
-        const item = await memoryService.saveMemory({ ...draft, id: byTitle.id })
-        return { status: 'extracted', item, dedup: 'updated-title' }
-      }
-
-      // 内容演进：新建 + SUPERSEDES
-      const item = await memoryService.saveMemory({ ...draft, supersededIds: [byTitle.id] })
-      return { status: 'extracted', item, dedup: 'superseded' }
-    }
-
-    const item = await memoryService.saveMemory(draft)
-    return { status: 'extracted', item, dedup: 'created' }
+    const { item, dedup } = await memoryService.saveMemoryWithDedup(draft, sessionKey)
+    return { status: 'extracted', item, dedup }
   }
 }
 

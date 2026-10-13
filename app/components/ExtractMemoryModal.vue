@@ -81,6 +81,7 @@ async function startExtract() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionTitle: props.session.title,
+        sessionId: props.session.id,
         cwd: props.session.cwd,
         platform: props.session.cli,
         messagesContent,
@@ -361,6 +362,32 @@ async function saveToGraph() {
             >
               重新提炼
             </button>
+          </div>
+
+          <!-- 证据锚定（P1 质量管线）：会话原句引用，已程序校验 -->
+          <div
+            v-if="extractedData.sourceMeta?.evidenceQuotes?.length"
+            class="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/50 space-y-1.5"
+          >
+            <div class="flex items-center justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+              <span class="flex items-center gap-1">
+                <UIcon name="i-lucide-quote-check" class="w-3.5 h-3.5" />
+                证据锚定（会话原句，程序校验）
+              </span>
+              <span
+                v-if="extractedData.sourceMeta.evidenceVerified"
+                class="font-mono px-1.5 py-0.5 rounded bg-emerald-500/10"
+              >
+                {{ extractedData.sourceMeta.evidenceVerified.passed }}/{{ extractedData.sourceMeta.evidenceVerified.total }}
+              </span>
+            </div>
+            <div
+              v-for="(quote, qi) in extractedData.sourceMeta.evidenceQuotes"
+              :key="qi"
+              class="text-[11px] text-emerald-800/80 dark:text-emerald-200/70 border-l-2 border-emerald-400/50 pl-2 leading-relaxed"
+            >
+              “{{ quote }}”
+            </div>
           </div>
 
           <!-- Title & Type -->

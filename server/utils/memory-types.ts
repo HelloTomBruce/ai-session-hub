@@ -27,6 +27,10 @@ export interface MemoryNodeData {
     platform?: string
     extractedAt?: number
     sourceExcerpt?: string
+    /** 证据锚定：抽取自会话的原句引用（P1 质量管线） */
+    evidenceQuotes?: string[]
+    /** 证据校验结果：通过数/总数（由管线写入，非 LLM 自报） */
+    evidenceVerified?: { passed: number, total: number }
     // Rubric v2 评估沉淀溯源
     sessionId?: string
     sessionTitle?: string
@@ -38,6 +42,8 @@ export interface MemoryNodeData {
   }
   createdAt: number
   updatedAt: number
+  /** P2 状态分层：draft（低置信/证据存疑，不进召回）| confirmed（默认，含存量） */
+  status?: 'confirmed' | 'draft'
 }
 
 export interface ProjectEntity {
@@ -90,10 +96,14 @@ export interface MemoryRecallItem {
 
 export interface MemoryExtractInput {
   sessionTitle?: string
+  /** 会话溯源（写入 sourceMeta，并作为统一去重的同源会话键） */
+  sessionId?: string
   cwd?: string
   platform?: string
   messagesContent: string
   userInstructions?: string
+  /** 抽取引导（注入到 system prompt 的定向约束：评估分类引导 / 用户自由指引） */
+  guidance?: string
 }
 
 export interface MemoryGraphQueryOptions {

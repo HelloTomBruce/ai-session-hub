@@ -1,3 +1,5 @@
+import { distillSessionsContent } from '@session-hub/analyzer'
+import { fileSummaryStore } from '../../utils/distill-cache'
 import type { PlatformType, SessionMessage, UnifiedSession } from '../../utils/types'
 
 export default defineEventHandler(async (event) => {
@@ -19,7 +21,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const provider = getLLMProviderSettings()
-  const report = await distillSessionsContent(fullData, provider)
+  const report = await distillSessionsContent(fullData, provider, fileSummaryStore)
   return {
     success: true,
     data: report

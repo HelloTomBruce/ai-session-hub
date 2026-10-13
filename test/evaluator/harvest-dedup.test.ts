@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeTitleForDedup, contentSimilarity } from '../../server/utils/harvest-dedup'
-import { buildMessagesContent } from '../../server/utils/knowledge-extractor'
+import { buildMessagesContent } from '../../server/utils/memory-extractor'
 import type { SessionMessage } from '../../server/utils/types'
 
 test('标题规范化：大小写与空白折叠', () => {

@@ -1,4 +1,6 @@
 import { grafeoService } from './grafeo-service'
+import { normalizeTitleForDedup, contentSimilarity } from './harvest-dedup'
+import { recallStats } from './recall-stats'
 import type {
   MemoryGraphItem,
   MemoryRecallItem,
@@ -21,6 +23,7 @@ interface RawMemoryNode {
   confidence?: number
   tagsJson?: string
   sourceMetaJson?: string
+  status?: string
   createdAt?: number
   updatedAt?: number
 }
@@ -45,7 +48,63 @@ type GraphRow = [
 
 type PairRow = [string | undefined, string | undefined]
 
+/** 统一去重写入的动作语义 */
+export type MemoryDedupAction = 'created' | 'updated-session' | 'updated-title' | 'superseded'
+
+export interface SaveWithDedupResult {
+  item: MemoryGraphItem
+  dedup: MemoryDedupAction
+}
+
 class MemoryService {
+  /**
+   * 统一去重写入（P1 质量管线）：所有写入路径（评估沉淀/手动提炼/MCP）唯一入口。
+   *
+   * 去重语义（源自原 knowledge-harvest.persistDraft，收敛至此）：
+   * 1. 同源会话去重：sourceMeta.sessionId+platform 命中 → 原地更新（updated-session）
+   * 2. 同类型同规范化标题命中：
+   *    - 内容相似度 ≥ 0.8 → 原地更新（updated-title）
+   *    - 内容演进 → 新建 + SUPERSEDES 边（superseded）
+   * 3. 无命中 → 新建（created）
+   */
+  async saveMemoryWithDedup(
+    item: Partial<MemoryGraphItem> & { title: string, content: string },
+    sessionKey?: { sessionId: string, platform: string }
+  ): Promise<SaveWithDedupResult> {
+    const { items: existing } = await this.listMemories({ limit: 500 })
+
+    // 1. 同源会话去重
+    if (sessionKey?.sessionId) {
+      const bySession = existing.find(m =>
+        m.sourceMeta?.sessionId === sessionKey.sessionId
+        && m.sourceMeta?.platform === sessionKey.platform
+      )
+      if (bySession) {
+        const saved = await this.saveMemory({ ...item, id: bySession.id })
+        return { item: saved, dedup: 'updated-session' }
+      }
+    }
+
+    // 2. 同类型同标题去重
+    const normTitle = normalizeTitleForDedup(item.title)
+    const byTitle = existing.find(m =>
+      m.type === (item.type || 'BestPractice') && normalizeTitleForDedup(m.title) === normTitle
+    )
+    if (byTitle) {
+      const sim = contentSimilarity(byTitle.content, item.content)
+      if (sim >= 0.8) {
+        const saved = await this.saveMemory({ ...item, id: byTitle.id })
+        return { item: saved, dedup: 'updated-title' }
+      }
+      // 内容演进：新建 + SUPERSEDES
+      const saved = await this.saveMemory({ ...item, supersededIds: [byTitle.id] })
+      return { item: saved, dedup: 'superseded' }
+    }
+
+    const saved = await this.saveMemory(item)
+    return { item: saved, dedup: 'created' }
+  }
+
   /**
    * 保存或更新图记忆（含实体与拓扑关系）
    */
@@ -61,6 +120,8 @@ class MemoryService {
     const sourceMetaJson = JSON.stringify(item.sourceMeta || {})
     const createdAt = item.createdAt || now
     const updatedAt = now
+    // P2 状态分层：draft（低置信/证据存疑，不进召回）| confirmed（默认）
+    const status = item.status === 'draft' ? 'draft' : 'confirmed'
 
     // 1. 创建或更新 Memory 核心节点（若存在先清除旧关系再重建）
     await grafeoService.execute(
@@ -82,6 +143,7 @@ class MemoryService {
         confidence: $confidence,
         tagsJson: $tagsJson,
         sourceMetaJson: $sourceMetaJson,
+        status: $status,
         createdAt: $createdAt,
         updatedAt: $updatedAt
       })
@@ -95,6 +157,7 @@ class MemoryService {
         confidence,
         tagsJson,
         sourceMetaJson,
+        status,
         createdAt,
         updatedAt
       }
@@ -208,6 +271,7 @@ class MemoryService {
       confidence,
       tags,
       sourceMeta: item.sourceMeta,
+      status: item.status === 'draft' ? 'draft' : 'confirmed',
       createdAt,
       updatedAt,
       projects,
@@ -223,6 +287,8 @@ class MemoryService {
    */
   async getMemory(id: string): Promise<MemoryGraphItem | null> {
     await grafeoService.init()
+    // P3 闭环：记录实际拉取（区别于召回命中，权重更高）
+    recallStats.logUse(id)
     try {
       const res = await grafeoService.execute(
         `
@@ -661,17 +727,83 @@ class MemoryService {
       limit: params.limit || 10
     })
 
+    // P2 质量门：draft（低置信/证据存疑）不进召回，仅在 memory 页可见可提升
+    const recallable = items.filter(item => item.status !== 'draft')
+
+    // P3 时效治理：被新版本 SUPERSEDES 的旧节点退出召回（演进链由新版承接）
+    const supersededOldIds = await this.getSupersededIds()
+    const active = supersededOldIds.size > 0
+      ? recallable.filter(item => !supersededOldIds.has(item.id))
+      : recallable
+
     // 如果指定了 tech，优先排序匹配技术栈的条目
     if (params.tech && params.tech.length > 0) {
       const techSet = new Set(params.tech.map(t => t.toLowerCase()))
-      items.sort((a, b) => {
+      active.sort((a, b) => {
         const aMatches = a.techConcepts.filter(t => techSet.has(t.name.toLowerCase())).length
         const bMatches = b.techConcepts.filter(t => techSet.has(t.name.toLowerCase())).length
         return bMatches - aMatches
       })
     }
 
-    return items.map(item => this.toRecallItem(item))
+    // P3 质量分融合：confidence 40% + 命中/使用/反馈 40% + 时效 20%
+    const statsMap = recallStats.getAll()
+    const now = Date.now()
+    const qualityOf = (item: MemoryGraphItem): number => {
+      const conf = Math.min(100, Math.max(0, item.confidence)) / 100
+      const s = statsMap.get(item.id)
+      const feedback = s ? (s.useful - s.not_useful) : 0
+      const engagement = s
+        ? Math.min(1, (s.recall_count * 0.05 + s.use_count * 0.15 + Math.max(0, feedback) * 0.25))
+        : 0
+      const ageDays = (now - item.updatedAt) / 86_400_000
+      const freshness = Math.exp(-ageDays / 90) // 90 天半衰期
+      return conf * 0.4 + engagement * 0.4 + freshness * 0.2
+    }
+    active.sort((a, b) => qualityOf(b) - qualityOf(a))
+
+    const limited = active.slice(0, params.limit || 10)
+    // P3 闭环：记录召回命中（供后续质量分与热度统计）
+    recallStats.logRecall(limited.map(item => item.id))
+
+    return limited.map(item => this.toRecallItem(item))
+  }
+
+  /** P3：被新版本覆盖（SUPERSEDES 入边）的记忆 id 集合 */
+  private async getSupersededIds(): Promise<Set<string>> {
+    await grafeoService.init()
+    try {
+      const res = await grafeoService.execute(
+        `MATCH (old:Memory)<-[:SUPERSEDES]-(:Memory) RETURN DISTINCT old.id AS id`
+      )
+      const rows = Array.isArray(res) ? res : ((res as { records?: unknown[] })?.records ?? [])
+      const ids = new Set<string>()
+      for (const row of rows as Array<{ id?: string } | Record<string, unknown>>) {
+        const id = (row as { id?: string })?.id
+        if (id) ids.add(id)
+      }
+      return ids
+    } catch {
+      return new Set()
+    }
+  }
+
+  /**
+   * P2 状态提升：draft → confirmed（memory 页人工确认入口）
+   */
+  async confirmMemory(id: string): Promise<boolean> {
+    await grafeoService.init()
+    try {
+      await grafeoService.execute(
+        `MATCH (m:Memory {id: $id}) SET m.status = 'confirmed', m.updatedAt = $updatedAt`,
+        { id, updatedAt: Date.now() }
+      )
+      grafeoService.checkpoint()
+      return true
+    } catch (err) {
+      console.error('[MemoryService] Error confirming memory:', err)
+      return false
+    }
   }
 
   /**
@@ -726,6 +858,8 @@ class MemoryService {
       confidence: m.confidence || 90,
       tags,
       sourceMeta,
+      // 存量节点（P2 前写入）无 status 属性，视为 confirmed
+      status: m.status === 'draft' ? 'draft' : 'confirmed',
       createdAt: Number(m.createdAt) || Date.now(),
       updatedAt: Number(m.updatedAt) || Date.now(),
       projects,

@@ -133,6 +133,23 @@ async function handleGraphNodeClick(id: string) {
   }
 }
 
+const confirmingId = ref<string | null>(null)
+
+/** P2 状态提升：draft → confirmed，进入召回池 */
+async function confirmDraft(id: string) {
+  confirmingId.value = id
+  try {
+    await $fetch(`/api/memory/${id}/confirm`, { method: 'POST' })
+    toast.add({ title: '已确认提升，该记忆进入召回池', color: 'success', icon: 'i-lucide-shield-check' })
+    if (currentItem.value?.id === id) currentItem.value.status = 'confirmed'
+    refreshList()
+  } catch (err) {
+    toast.add({ title: '提升失败', description: err instanceof Error ? err.message : String(err), color: 'error' })
+  } finally {
+    confirmingId.value = null
+  }
+}
+
 async function deleteItem(id: string) {
   if (!await confirm({ title: '确定要从 Grafeo 图谱中永久删除此条记忆吗？', danger: true, confirmLabel: '删除' })) return
   try {
@@ -406,12 +423,22 @@ async function submitManualMemory() {
           <div class="space-y-2">
             <!-- Type & Meta Badges -->
             <div class="flex items-center justify-between gap-2">
-              <span
-                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium border"
-                :class="getTypeBadgeColor(item.type)"
-              >
-                <span>{{ item.type }}</span>
-              </span>
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium border"
+                  :class="getTypeBadgeColor(item.type)"
+                >
+                  <span>{{ item.type }}</span>
+                </span>
+                <span
+                  v-if="item.status === 'draft'"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border border-amber-300/60 bg-amber-50 text-amber-600 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-400"
+                  title="低置信或证据存疑，未进入召回池；确认后可提升为正式记忆"
+                >
+                  <UIcon name="i-lucide-shield-question" class="w-3 h-3" />
+                  draft 待确认
+                </span>
+              </div>
               <span class="text-[10px] text-zinc-400 font-mono">
                 {{ new Date(item.updatedAt).toLocaleDateString() }}
               </span>
@@ -607,15 +634,28 @@ async function submitManualMemory() {
 
           <!-- Footer Actions -->
           <div class="flex items-center justify-between pt-4 border-t border-zinc-200 dark:border-zinc-800">
-            <UButton
-              color="error"
-              variant="ghost"
-              icon="i-lucide-trash-2"
-              size="sm"
-              @click="deleteItem(currentItem.id)"
-            >
-              删除记忆
-            </UButton>
+            <div class="flex items-center gap-2">
+              <UButton
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash-2"
+                size="sm"
+                @click="deleteItem(currentItem.id)"
+              >
+                删除记忆
+              </UButton>
+              <UButton
+                v-if="currentItem.status === 'draft'"
+                color="primary"
+                variant="soft"
+                icon="i-lucide-shield-check"
+                size="sm"
+                :loading="confirmingId === currentItem.id"
+                @click="confirmDraft(currentItem.id)"
+              >
+                确认提升为正式记忆
+              </UButton>
+            </div>
             <UButton
               color="neutral"
               variant="outline"

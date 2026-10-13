@@ -28,11 +28,13 @@
     "README.md"
   ],
   "peerDependencies": {
-    "@session-hub/core": "workspace:*"
+    "@session-hub/core": "workspace:*",
+    "@session-hub/llm": "workspace:*"
   },
   "devDependencies": {
     "@session-hub/core": "workspace:*",
     "@types/node": "^22.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@session-hub/llm": "workspace:*"
   }
 }

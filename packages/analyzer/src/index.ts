@@ -11,8 +11,14 @@ export * from './strategies/reasoning-density-evaluator.js'
 export * from './strategies/execution-quality-evaluator.js'
 export * from './strategies/llm-judge-evaluator.js'
 export * from './compactor.js'
-export { streamLLMCompletion, type StreamChunkCallback } from './llm/stream-client.js'
-export type { LLMProviderSettings } from './llm/types.js'
+// LLM 客户端已抽为独立包 @session-hub/llm；此处 re-export 保持既有消费者兼容
+export { streamLLMCompletion, type StreamChunkCallback } from '@session-hub/llm'
+export { completeLLM, extractJsonFromLLMText } from '@session-hub/llm'
+export type { LLMProviderSettings } from '@session-hub/llm'
+export * from './distill/types.js'
+export * from './distill/engine.js'
+export * from './diagnose/types.js'
+export * from './diagnose/rubric.js'
 
 let defaultEngine: ValueScoringEngine | null = null
 

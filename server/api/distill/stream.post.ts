@@ -1,6 +1,7 @@
 import { adapterRegistry } from '../../utils/adapter-registry'
 import { getLLMProviderSettings } from '../../utils/llm-provider-config'
-import { distillSessionsContentStream, type DistillReport } from '../../utils/distillator'
+import { distillSessionsContentStream, type DistillReport } from '@session-hub/analyzer'
+import { fileSummaryStore } from '../../utils/distill-cache'
 import type { PlatformType, SessionMessage, UnifiedSession } from '../../utils/types'
 
 export default defineEventHandler(async (event) => {
@@ -38,6 +39,7 @@ export default defineEventHandler(async (event) => {
     await distillSessionsContentStream(
       fullData,
       provider,
+      fileSummaryStore,
       (status: { message: string, step?: number, totalSteps?: number, currentSession?: string }) => {
         sendEvent('status', status)
       },

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type { LLMProviderSettings } from '@session-hub/analyzer'
+import type { LLMProviderSettings } from '@session-hub/llm'
 
 // 类型契约归属 @session-hub/analyzer；此处 re-export 保持既有 import 兼容
 export type { LLMProviderSettings }

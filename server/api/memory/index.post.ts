@@ -12,15 +12,21 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const saved = await memoryService.saveMemory({
-      ...body,
-      title: body.title,
-      content: body.content
-    })
+    const result = await memoryService.saveMemoryWithDedup(
+      {
+        ...body,
+        title: body.title,
+        content: body.content
+      },
+      body.sourceMeta?.sessionId
+        ? { sessionId: body.sourceMeta.sessionId, platform: body.sourceMeta.platform || '' }
+        : undefined
+    )
 
     return {
       success: true,
-      item: saved
+      item: result.item,
+      dedup: result.dedup
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

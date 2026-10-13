@@ -9,11 +9,7 @@
 import { createHash } from 'node:crypto'
 import type { EvaluationContext, IEvaluatorStrategy, Signal, StrategyScoreResult } from '../types.js'
 import type { EvaluationEvidence, ChangedFile } from '../evidence/normalize.js'
-import type { LLMProviderSettings } from '../llm/types.js'
-
-interface ChatCompletionResponse {
-  choices?: Array<{ message?: { content?: string } }>
-}
+import { completeLLM, extractJsonFromLLMText, type LLMProviderSettings } from '@session-hub/llm'
 
 interface JudgeResult {
   score?: number
@@ -36,10 +32,6 @@ interface CachedJudge {
 /** 模块级缓存：跨引擎实例/跨请求的进程内去重；持久化随 P3 evidence_hash 列落地 */
 const judgeCache = new Map<string, CachedJudge>()
 
-// 已知不接受自定义 temperature 的模型（如 kimi-for-coding、o 系列），
-// 进程内记住后后续请求直接不传，避免每次都先撞一次 400 再重试
-const temperatureRejectedModels = new Set<string>()
-
 const TURN_USER_CAP = 200
 const TURN_ASSISTANT_CAP = 300
 const MAX_TURNS_FULL = 12
@@ -52,14 +44,6 @@ const CACHE_LIMIT = 100
 function cap(text: string, max: number): string {
   if (text.length <= max) return text
   return `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`
-}
-
-function stripFence(raw: string): string {
-  let s = raw.trim()
-  if (s.startsWith('```')) {
-    s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-  }
-  return s
 }
 
 export class LlmJudgeEvaluator implements IEvaluatorStrategy {
@@ -85,52 +69,17 @@ export class LlmJudgeEvaluator implements IEvaluatorStrategy {
     }
 
     const brief = this.buildBrief(ctx, ev)
-    const baseUrl = (this.provider.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
-    const modelKey = `${baseUrl}|${model}`
-
-    const buildBody = (withTemperature: boolean): Record<string, unknown> => ({
-      model,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: brief }
-      ],
-      ...(withTemperature ? { temperature: 0.1 } : {}),
-      response_format: { type: 'json_object' }
-    })
-
-    const apiKey = this.provider.apiKey
-    const doRequest = (body: Record<string, unknown>) => fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    })
 
     let parsed: JudgeResult
     try {
-      let res = await doRequest(buildBody(!temperatureRejectedModels.has(modelKey)))
-
-      // 部分模型（如 kimi-for-coding、o 系列）不允许自定义 temperature，
-      // 遇到此类 400 时移除 temperature 重试，并记住该模型后续直接不传
-      if (res.status === 400 && !temperatureRejectedModels.has(modelKey)) {
-        const errText = await res.text()
-        if (/temperature/i.test(errText)) {
-          temperatureRejectedModels.add(modelKey)
-          console.info(`[LLM Judge] Model ${model} does not accept custom temperature, omitting it from now on`)
-          res = await doRequest(buildBody(false))
-        } else {
-          throw new Error(`HTTP ${res.status} ${res.statusText}`)
-        }
-      }
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} ${res.statusText}`)
-      }
-      const data = await res.json() as ChatCompletionResponse
-      const raw = data.choices?.[0]?.message?.content || ''
-      parsed = JSON.parse(stripFence(raw)) as JudgeResult
+      // 统一 LLM 客户端：参数兼容降级（temperature/response_format）由 @session-hub/llm 管理
+      const raw = await completeLLM(this.provider, SYSTEM_PROMPT, brief, {
+        temperature: 0.1,
+        jsonMode: true
+      })
+      // SAFETY: JudgeResult 全部字段可选且带 [key: string]: unknown 索引签名，
+      // 任意 LLM JSON 对象结构上都兼容；字段有效性由下方 typeof 逐项校验兑现
+      parsed = extractJsonFromLLMText(raw) as unknown as JudgeResult
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       // 失败即缺席：不注入中性 50 分，避免错误拉低/抬高总分

@@ -1,0 +1,40 @@
+{
+  "name": "@session-hub/llm",
+  "version": "1.0.0",
+  "description": "Unified LLM client for AI Session Hub — streaming/non-streaming completion, endpoint compatibility memory (temperature / response_format downgrade), JSON extraction, timeout control. Zero host IO.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "session-hub",
+    "llm-client",
+    "openai-compatible",
+    "streaming"
+  ],
+  "author": "Session Hub Team",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.67",
+    "@ai-sdk/provider": "^4.0.26",
+    "ai": "^7.0.137",
+    "zod": "^4.6.6"
+  }
+}

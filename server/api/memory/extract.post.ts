@@ -1,6 +1,21 @@
-import { extractMemoryFromSession } from '../../utils/memory-extractor'
+import { extractMemoryFromSession, type ExtractedMemory } from '../../utils/memory-extractor'
 import { memoryService } from '../../utils/memory-service'
 import type { MemoryExtractInput, MemoryGraphItem } from '../../utils/memory-types'
+
+/** 证据锚定处置（P1+P2）：编造嫌疑 → 降置信并标 draft；补齐会话溯源 */
+function applyEvidenceVerdict(extracted: ExtractedMemory, origin?: { sessionId?: string, platform?: string }): Partial<MemoryGraphItem> {
+  const { evidenceVerified, ...rest } = extracted
+  const sourceMeta: MemoryGraphItem['sourceMeta'] = {
+    ...rest.sourceMeta,
+    evidenceVerified,
+    ...(origin?.sessionId ? { sessionId: origin.sessionId, sessionTitle: extracted.title } : {})
+  }
+  // 有引文但全部校验失败：编造嫌疑 → 低置信 + draft（不进召回，memory 页可人工确认提升）
+  if (evidenceVerified.total > 0 && evidenceVerified.passed === 0) {
+    return { ...rest, sourceMeta, confidence: Math.min(rest.confidence ?? 90, 45), status: 'draft' }
+  }
+  return { ...rest, sourceMeta }
+}
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -35,14 +50,23 @@ export default defineEventHandler(async (event) => {
       sendEvent('status', { message: '提取完成，正在组织图谱实体...' })
 
       let savedItem = null
+      let dedupInfo = null
       if (autoSave && extracted.title && extracted.content) {
         sendEvent('status', { message: '正在写入 Grafeo 图数据库...' })
-        savedItem = await memoryService.saveMemory(extracted as Partial<MemoryGraphItem> & { title: string, content: string })
+        // 证据锚定处置：有引文但全部校验失败 → 编造嫌疑，降置信
+        const draft = applyEvidenceVerdict(extracted, { sessionId: body.sessionId, platform: body.platform })
+        const result = await memoryService.saveMemoryWithDedup(
+          draft as Partial<MemoryGraphItem> & { title: string, content: string },
+          body.sessionId ? { sessionId: body.sessionId, platform: body.platform || '' } : undefined
+        )
+        savedItem = result.item
+        dedupInfo = result.dedup
       }
 
       sendEvent('done', {
         extracted,
-        savedItem
+        savedItem,
+        dedup: dedupInfo
       })
       res.end()
     } catch (err) {
@@ -56,14 +80,22 @@ export default defineEventHandler(async (event) => {
   try {
     const extracted = await extractMemoryFromSession(body)
     let savedItem = null
+    let dedupInfo = null
     if (autoSave && extracted.title && extracted.content) {
-      savedItem = await memoryService.saveMemory(extracted as Partial<MemoryGraphItem> & { title: string, content: string })
+      const draft = applyEvidenceVerdict(extracted, { sessionId: body.sessionId, platform: body.platform })
+      const result = await memoryService.saveMemoryWithDedup(
+        draft as Partial<MemoryGraphItem> & { title: string, content: string },
+        body.sessionId ? { sessionId: body.sessionId, platform: body.platform || '' } : undefined
+      )
+      savedItem = result.item
+      dedupInfo = result.dedup
     }
 
     return {
       success: true,
       extracted,
-      savedItem
+      savedItem,
+      dedup: dedupInfo
     }
   } catch (err) {
     throw createError({

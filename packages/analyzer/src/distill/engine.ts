@@ -1,8 +1,7 @@
-import type { PlatformType, SessionMessage, UnifiedSession } from './types'
-import { compactSessionForAI } from '@session-hub/analyzer'
-import { getCachedSessionSummary, saveCachedSessionSummary, type SingleSessionSummary } from './distill-cache'
-import type { LLMProviderSettings } from './llm-provider-config'
-import { streamLLMCompletion } from '@session-hub/analyzer'
+import type { PlatformType, SessionMessage, UnifiedSession } from '@session-hub/core'
+import { compactSessionForAI } from '../compactor.js'
+import type { SingleSessionSummary, SummaryStore, DistillInput } from './types.js'
+import { completeLLM, extractJsonFromLLMText, streamLLMCompletion, type LLMProviderSettings } from '@session-hub/llm'
 
 export interface ADRItem {
   id: string
@@ -98,25 +97,6 @@ Output MUST be a valid JSON object matching this schema:
   "todos": ["string"]
 }`
 
-/**
- * Call OpenAI-compatible LLM endpoint
- */
-interface ChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string
-    }
-  }>
-}
-
-interface FetchErrorShape {
-  data?: { error?: { message?: string } }
-  message?: string
-  status?: number
-  response?: { status?: number }
-  statusCode?: number
-}
-
 interface AdrLLMResult {
   id?: string
   title?: string
@@ -128,78 +108,26 @@ interface AdrLLMResult {
   sourceSessionId?: string
 }
 
+/**
+ * Call LLM for a JSON result（统一客户端：参数降级矩阵由 @session-hub/llm 管理）
+ */
 async function callLLM(provider: LLMProviderSettings, systemPrompt: string, userPrompt: string, temperature = 0.1): Promise<Record<string, unknown>> {
-  const baseUrl = (provider.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
-  const model = provider.model || 'gpt-4o-mini'
-
-  const reqBody: Record<string, unknown> = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    temperature
-  }
-
-  // 依次尝试不同参数组合，兼容对 response_format / temperature 有限制的模型端点
-  // （如 kimi-for-coding、o 系列模型仅允许 temperature 默认值）
-  const withoutTemperature = () => {
-    const { temperature: _t, ...rest } = reqBody
-    return rest
-  }
-  const attempts: Record<string, unknown>[] = [
-    { ...reqBody, response_format: { type: 'json_object' } },
-    reqBody,
-    { ...withoutTemperature(), response_format: { type: 'json_object' } },
-    withoutTemperature()
-  ]
-
-  let rawContent = ''
-  let lastErr: unknown
-  for (const body of attempts) {
-    try {
-      const res = await $fetch<ChatCompletionResponse>(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${provider.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body
-      })
-      rawContent = res.choices?.[0]?.message?.content || ''
-      break
-    } catch (err) {
-      lastErr = err
-      const errObj = err as FetchErrorShape
-      const errText = String(errObj?.data?.error?.message || errObj?.message || '')
-      // 仅在参数被端点拒绝（400）时尝试下一组合，其他错误直接抛出
-      const status = errObj?.status || errObj?.response?.status || errObj?.statusCode
-      if (Number(status) !== 400) throw err
-      console.warn(`[Distillator] LLM request rejected (400): ${errText.slice(0, 120)}，尝试下一参数组合...`)
-    }
-  }
-
-  if (!rawContent) {
-    if (lastErr) throw lastErr
-    throw new Error('Empty LLM response')
-  }
-
-  // Extract JSON
-  const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, rawContent]
-  return JSON.parse(jsonMatch[1] || rawContent)
+  const raw = await completeLLM(provider, systemPrompt, userPrompt, { temperature, jsonMode: true })
+  return extractJsonFromLLMText(raw)
 }
 
 /**
  * Map Phase: Extract micro-summary for a single session using LLM (or cache)
  */
 async function distillSingleSessionMap(
-  item: { session: UnifiedSession, messages: SessionMessage[] },
-  provider: LLMProviderSettings
+  item: DistillInput,
+  provider: LLMProviderSettings,
+  store: SummaryStore
 ): Promise<SingleSessionSummary> {
   const { session, messages } = item
 
-  // 1. Check disk cache
-  const cached = getCachedSessionSummary(session.cli, session.id, session.updatedAt)
+  // 1. Check store (host-injected persistence)
+  const cached = store.get(session.cli, session.id, session.updatedAt)
   if (cached) {
     return cached
   }
@@ -224,24 +152,9 @@ async function distillSingleSessionMap(
     tools: Array.isArray(parsed.tools) ? parsed.tools : []
   }
 
-  // 4. Save to cache
-  saveCachedSessionSummary(summary)
+  // 4. Save to store
+  store.put(summary)
   return summary
-}
-
-/** 从 LLM 输出文本中提取 JSON 对象（兼容 ```json 代码块包裹） */
-function extractJsonObjectFromText(text: string): Record<string, unknown> {
-  let cleaned = text.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-  }
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return JSON.parse(jsonMatch[0])
-    throw new Error('Failed to parse JSON from LLM output')
-  }
 }
 
 /**
@@ -249,14 +162,15 @@ function extractJsonObjectFromText(text: string): Record<string, unknown> {
  * 每个 token 到达时回调 onChunk，让前端能实时展示提炼进度。
  */
 async function distillSingleSessionMapStreaming(
-  item: { session: UnifiedSession, messages: SessionMessage[] },
+  item: DistillInput,
   provider: LLMProviderSettings,
+  store: SummaryStore,
   onChunk: (text: string) => void
 ): Promise<SingleSessionSummary> {
   const { session, messages } = item
 
-  // 1. Check disk cache
-  const cached = getCachedSessionSummary(session.cli, session.id, session.updatedAt)
+  // 1. Check store
+  const cached = store.get(session.cli, session.id, session.updatedAt)
   if (cached) {
     return cached
   }
@@ -267,7 +181,7 @@ async function distillSingleSessionMapStreaming(
   // 3. Call LLM (streaming)
   const userPrompt = `Please distill the following coding conversation:\n\n${compacted.transcriptText}`
   const fullText = await streamLLMCompletion(provider, MAP_SYSTEM_PROMPT, userPrompt, onChunk, 0.1)
-  const parsed = extractJsonObjectFromText(fullText)
+  const parsed = extractJsonFromLLMText(fullText)
 
   const summary: SingleSessionSummary = {
     sessionId: session.id,
@@ -282,8 +196,8 @@ async function distillSingleSessionMapStreaming(
     tools: Array.isArray(parsed.tools) ? parsed.tools : []
   }
 
-  // 4. Save to cache
-  saveCachedSessionSummary(summary)
+  // 4. Save to store
+  store.put(summary)
   return summary
 }
 
@@ -433,7 +347,7 @@ ${adrs.map(adr => `### ${adr.id}: ${adr.title}
 /**
  * Local Heuristic Fallback Distillation (when LLM is disabled or offline)
  */
-export function distillSessionsHeuristic(sessions: Array<{ session: UnifiedSession, messages: SessionMessage[] }>): DistillReport {
+export function distillSessionsHeuristic(sessions: DistillInput[]): DistillReport {
   const actionsDone: string[] = []
   const keyLearnings: string[] = []
   const technicalDecisions: string[] = []
@@ -574,8 +488,9 @@ ${uniqueAdrs.map(adr => `### ${adr.id}: ${adr.title}
  * Streaming Map-Reduce Distillation Pipeline
  */
 export async function distillSessionsContentStream(
-  sessions: Array<{ session: UnifiedSession, messages: SessionMessage[] }>,
+  sessions: DistillInput[],
   provider: LLMProviderSettings | undefined,
+  store: SummaryStore,
   onStatus: (status: { message: string, step?: number, totalSteps?: number, currentSession?: string }) => void,
   onChunk: (chunk: string) => void,
   onDone: (report: DistillReport) => void,
@@ -602,7 +517,7 @@ export async function distillSessionsContentStream(
       // 先同步检查缓存，命中立即反馈
       for (let i = 0; i < total; i++) {
         const sess = sessions[i]!.session
-        const cached = getCachedSessionSummary(sess.cli, sess.id, sess.updatedAt)
+        const cached = store.get(sess.cli, sess.id, sess.updatedAt)
         if (cached) {
           progress[i]!.state = 'cached'
           mapResults[i] = cached
@@ -630,7 +545,7 @@ export async function distillSessionsContentStream(
             currentSession: item.session.title
           })
           try {
-            const summary = await distillSingleSessionMapStreaming(item, provider, (text) => {
+            const summary = await distillSingleSessionMapStreaming(item, provider, store, (text: string) => {
               progress[i]!.chars += text.length
               onMapChunk?.(item.session.id, text)
             })
@@ -821,15 +736,16 @@ ${adrs.map(adr => `### ${adr.id}: ${adr.title}
  * or gracefully falls back to local heuristic extraction.
  */
 export async function distillSessionsContent(
-  sessions: Array<{ session: UnifiedSession, messages: SessionMessage[] }>,
-  provider?: LLMProviderSettings
+  sessions: DistillInput[],
+  provider?: LLMProviderSettings,
+  store: SummaryStore = memorySummaryStore()
 ): Promise<DistillReport> {
   // If provider is configured with apiKey
   if (provider && provider.enabled && provider.apiKey) {
     try {
       // 1. Map Phase: Extract micro-summary for each session in parallel
       const mapSummaries = await Promise.all(
-        sessions.map(item => distillSingleSessionMap(item, provider))
+        sessions.map(item => distillSingleSessionMap(item, provider, store))
       )
 
       // 2. Reduce Phase: Global synthesis with ADR generation
@@ -841,4 +757,17 @@ export async function distillSessionsContent(
 
   // Fallback to local heuristic
   return distillSessionsHeuristic(sessions)
+}
+
+/**
+ * 进程内内存 SummaryStore（无持久化需求的兑底实现：单次蒸馏、测试场景）。
+ * 生产环境应注入宿主的文件存储实现。
+ */
+export function memorySummaryStore(): SummaryStore {
+  const cache = new Map<string, SingleSessionSummary>()
+  const key = (platform: string, sessionId: string, updatedAt: number) => `${platform}::${sessionId}::${updatedAt}`
+  return {
+    get: (platform, sessionId, updatedAt) => cache.get(key(platform, sessionId, updatedAt)) ?? null,
+    put: summary => cache.set(key(summary.platform, summary.sessionId, summary.updatedAt), summary)
+  }
 }

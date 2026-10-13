@@ -21,7 +21,7 @@ import { ReasoningDensityEvaluator } from './strategies/reasoning-density-evalua
 import { ExecutionQualityEvaluator } from './strategies/execution-quality-evaluator.js'
 import { LlmJudgeEvaluator } from './strategies/llm-judge-evaluator.js'
 import { normalizeEvidence, type EvaluationEvidence } from './evidence/normalize.js'
-import type { LLMProviderSettings } from './llm/types.js'
+import type { LLMProviderSettings } from '@session-hub/llm'
 
 export interface ValueScoringEngineOptions {
   strategies?: IEvaluatorStrategy[]

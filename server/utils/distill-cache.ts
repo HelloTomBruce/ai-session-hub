@@ -1,26 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import type { SingleSessionSummary, SummaryStore } from '@session-hub/analyzer'
+
+// 类型契约已归属 @session-hub/analyzer；此处 re-export 保持既有 import 兼容
+export type { SingleSessionSummary }
 
 const CACHE_DIR = path.join(os.homedir(), '.session-hub', 'cache', 'distill')
-
-export interface SingleSessionSummary {
-  sessionId: string
-  platform: string
-  title: string
-  cwd: string
-  updatedAt: number
-  actions: string[]
-  decisions: Array<{
-    title: string
-    context: string
-    decision: string
-    consequence?: string
-  }>
-  learnings: string[]
-  todos: string[]
-  tools: string[]
-}
 
 function ensureCacheDir() {
   if (!fs.existsSync(CACHE_DIR)) {
@@ -56,4 +42,12 @@ export function saveCachedSessionSummary(summary: SingleSessionSummary): void {
   } catch (e) {
     console.error('[DistillCache] Error writing cache:', e)
   }
+}
+
+/**
+ * 宿主的文件持久化 SummaryStore 实现（@session-hub/analyzer 蒸馏管线注入用）。
+ */
+export const fileSummaryStore: SummaryStore = {
+  get: getCachedSessionSummary,
+  put: saveCachedSessionSummary
 }
