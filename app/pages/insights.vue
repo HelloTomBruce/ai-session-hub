@@ -133,8 +133,8 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
 
       <div class="flex items-center gap-2">
         <UButton
-          size="xs"
-          variant="outline"
+          size="sm"
+          variant="solid"
           color="neutral"
           icon="i-lucide-refresh-cw"
           :loading="isRefreshing"

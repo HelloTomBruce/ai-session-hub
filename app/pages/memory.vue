@@ -276,7 +276,8 @@ async function submitManualMemory() {
         </div>
 
         <UButton
-          color="primary"
+          color="neutral"
+          variant="solid"
           icon="i-lucide-plus"
           size="sm"
           @click="isCreateOpen = true"
@@ -744,7 +745,8 @@ async function submitManualMemory() {
               取消
             </UButton>
             <UButton
-              color="primary"
+              color="neutral"
+              variant="solid"
               size="sm"
               icon="i-lucide-save"
               @click="submitManualMemory"

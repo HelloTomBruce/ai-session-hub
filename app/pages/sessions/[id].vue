@@ -208,28 +208,26 @@ const backUrl = computed(() => {
           >
             刷新
           </UButton>
-          <button
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-all cursor-pointer select-none active:scale-95"
+          <UButton
+            color="neutral"
+            variant="solid"
+            icon="i-lucide-brain"
+            size="sm"
             title="提取通用架构决策、排坑经验并存入 Grafeo 记忆图谱"
             @click="isExtractMemoryModalOpen = true"
           >
-            <UIcon
-              name="i-lucide-brain"
-              class="w-3.5 h-3.5"
-            />
-            <span>提炼记忆</span>
-          </button>
-          <button
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer select-none active:scale-95"
+            提炼记忆
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="solid"
+            icon="i-lucide-sparkles"
+            size="sm"
             title="启动多维量化评估并沉淀高价值知识"
             @click="isHarvestModalOpen = true"
           >
-            <UIcon
-              name="i-lucide-sparkles"
-              class="w-3.5 h-3.5"
-            />
-            <span>沉淀资产</span>
-          </button>
+            沉淀资产
+          </UButton>
         </div>
       </div>
 
