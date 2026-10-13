@@ -227,6 +227,21 @@ export const PLATFORMS_META: Record<string, PlatformMeta> = {
       mcp: '~/.zcode/cli/config.json'
     }
   },
+  dsh: {
+    id: 'dsh',
+    name: 'DeepSeek Harness',
+    category: 'cli',
+    icon: 'i-simple-icons-deepseek',
+    color: 'text-blue-400',
+    badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    description: 'DeepSeek 官方编码 CLI（dsh），zstd 压缩事件流会话、Subagent 委派与沙箱策略',
+    hasSessions: true,
+    hasSkills: false,
+    hasMcp: false,
+    configPaths: {
+      sessions: '~/.dsh/sessions/'
+    }
+  },
   hub: {
     id: 'hub',
     name: 'Session Hub (内置)',

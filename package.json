@@ -13,7 +13,7 @@
     "typecheck": "pnpm run build:packages && nuxt typecheck",
     "record:demo": "tsx scripts/record-demo.ts",
     "favicon": "node scripts/generate-favicon.mjs",
-    "test": "node --import tsx --test 'test/evaluator/*.test.ts' 'test/llm/*.test.ts' 'test/memory/*.test.ts'"
+    "test": "node --import tsx --test 'test/evaluator/*.test.ts' 'test/llm/*.test.ts' 'test/memory/*.test.ts' 'test/plugins/*.test.ts'"
   },
   "dependencies": {
     "@grafeo-db/js": "^0.5.42",
@@ -27,6 +27,7 @@
     "@session-hub/plugin-agy": "workspace:*",
     "@session-hub/plugin-claude": "workspace:*",
     "@session-hub/plugin-codex": "workspace:*",
+    "@session-hub/plugin-dsh": "workspace:*",
     "@session-hub/plugin-opencode": "workspace:*",
     "@session-hub/plugin-pi": "workspace:*",
     "@session-hub/plugin-workbuddy": "workspace:*",

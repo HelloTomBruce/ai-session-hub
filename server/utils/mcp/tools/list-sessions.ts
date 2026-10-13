@@ -12,7 +12,7 @@ export const ListSessionsTool: McpToolDefinition = {
     properties: {
       platform: {
         type: 'string',
-        description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo | zcode',
+        description: '筛选平台：all | pi | opencode | agy | claude | codex | workbuddy | reasonix | kimi | trae | cursor | mimo | zcode | dsh',
         enum: ALL_PLATFORMS
       },
       cwd: {

@@ -94,6 +94,7 @@ session-hub/
 | **`@session-hub/plugin-agy`** | AGY CLI | JSONL | 深度解析 Brain 轨迹、Prompt 交互与工具流 |
 | **`@session-hub/plugin-workbuddy`**| WorkBuddy | SQLite | 企业级工作助手本地会话解析 |
 | **`@session-hub/plugin-zcode`**    | ZCode | SQLite | 智谱 ZCode 桌面端与 CLI 智能体任务与思考链会话解析 |
+| **`@session-hub/plugin-dsh`**      | DeepSeek Harness (dsh) | zstd JSONL | DeepSeek 官方编码 CLI 事件流会话、思维链与工具调用解析（多版本日志兼容） |
 
 ---
 

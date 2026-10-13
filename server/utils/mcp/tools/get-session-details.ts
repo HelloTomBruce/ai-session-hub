@@ -12,7 +12,7 @@ export const GetSessionDetailsTool: McpToolDefinition = {
     properties: {
       platform: {
         type: 'string',
-        description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo, zcode)'
+        description: '会话所在平台 (pi, opencode, agy, claude, codex, workbuddy, reasonix, kimi, trae, cursor, mimo, zcode, dsh)'
       },
       sessionId: {
         type: 'string',

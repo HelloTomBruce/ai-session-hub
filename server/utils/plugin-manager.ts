@@ -15,6 +15,7 @@ import { CodexPlugin } from '@session-hub/plugin-codex'
 import { AgyPlugin } from '@session-hub/plugin-agy'
 import { WorkBuddyPlugin } from '@session-hub/plugin-workbuddy'
 import { ZCodePlugin } from '@session-hub/plugin-zcode'
+import { DshPlugin } from '@session-hub/plugin-dsh'
 
 const HUB_DIR = path.join(os.homedir(), '.session-hub')
 const PLUGINS_DIR = path.join(HUB_DIR, 'plugins')
@@ -41,6 +42,7 @@ export class PluginManager {
     this.register(new AgyPlugin())
     this.register(new WorkBuddyPlugin())
     this.register(new ZCodePlugin())
+    this.register(new DshPlugin())
   }
 
   /**
@@ -95,9 +97,11 @@ export class PluginManager {
       const cfg = JSON.parse(raw) as Record<string, unknown>
       if (cfg.id && typeof cfg.id === 'string') {
         if (cfg.type === 'template-sqlite' || cfg.dbPath) {
+          // SAFETY: 声明式 JSON 的字段结构由用户配置文件决定，运行时按 type/dbPath 键判定后再交给模板插件自行校验
           const plugin = new TemplateSqlitePlugin(cfg as unknown as TemplateSqliteConfig)
           this.register(plugin)
         } else if (cfg.type === 'template-jsonl' || cfg.baseDir) {
+          // SAFETY: 同上，字段结构由用户配置文件决定，模板插件内部会自行容错
           const plugin = new TemplateJsonlPlugin(cfg as unknown as TemplateJsonlConfig)
           this.register(plugin)
         }

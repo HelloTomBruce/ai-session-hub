@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 /** 支持平台全集（工具 schema 的 enum 与分发描述共用） */
 export const ALL_PLATFORMS: string[] = [
   'all', 'pi', 'opencode', 'agy', 'claude', 'codex', 'workbuddy',
-  'reasonix', 'kimi', 'trae', 'cursor', 'mimo', 'zcode'
+  'reasonix', 'kimi', 'trae', 'cursor', 'mimo', 'zcode', 'dsh'
 ]
 
 export type McpToolResult = CallToolResult

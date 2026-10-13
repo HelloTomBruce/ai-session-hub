@@ -99,7 +99,8 @@ export default defineEventHandler(async (_event) => {
       trae: 'Trae',
       cursor: 'Cursor',
       mimo: 'Mimo CLI',
-      zcode: 'ZCode'
+      zcode: 'ZCode',
+      dsh: 'DeepSeek Harness'
     }
 
     const platforms: PlatformStatItem[] = Object.entries(platformCounts)

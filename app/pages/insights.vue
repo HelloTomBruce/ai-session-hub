@@ -101,7 +101,8 @@ const platformIcons: Record<string, string> = {
   trae: 'i-lucide-pen-tool',
   cursor: 'i-lucide-cursor-arrow',
   mimo: 'i-lucide-smartphone',
-  zcode: 'i-lucide-code-2'
+  zcode: 'i-lucide-code-2',
+  dsh: 'i-simple-icons-deepseek'
 }
 
 const colorClassMap: Record<string, { bar: string, text: string, bg: string }> = {
