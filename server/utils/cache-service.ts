@@ -356,96 +356,7 @@ class CacheService {
 
           const messages = plugin.getMessages(session.id, session)
 
-          const sessionTx = this.db!.transaction(() => {
-            // 插入/更新 sessions_cache
-            this.db!.prepare(`
-              INSERT INTO sessions_cache
-                (id, platform, category, title, cwd, model, cost, status, message_count,
-                 created_at, updated_at, raw_location, data_hash, extra)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                platform = excluded.platform,
-                category = excluded.category,
-                title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
-                cwd = excluded.cwd,
-                model = excluded.model,
-                cost = excluded.cost,
-                status = excluded.status,
-                message_count = excluded.message_count,
-                updated_at = excluded.updated_at,
-                raw_location = excluded.raw_location,
-                data_hash = excluded.data_hash,
-                extra = excluded.extra
-            `).run(
-              session.id, session.cli, session.category,
-              session.title, session.cwd,
-              session.model || null,
-              session.cost || null,
-              session.status || null,
-              session.messageCount || 0,
-              session.createdAt, session.updatedAt,
-              session.rawLocation, newHash,
-              session.extra ? JSON.stringify(session.extra) : '{}'
-            )
-
-            // 删除旧消息并重新插入
-            this.db!.prepare(
-              'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
-            ).run(session.id, session.cli)
-
-            // 删除旧 FTS 索引
-            this.db!.prepare(DELETE_FTS_SQL).run(session.id)
-
-            const insertMsg = this.db!.prepare(`
-              INSERT OR REPLACE INTO messages_cache
-                (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `)
-
-            const insertFts = this.db!.prepare(INSERT_FTS_SQL)
-
-            const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
-            const segmentedTags = this.segmentText(tagsStr)
-            const segmentedTitle = this.segmentText(session.title || '')
-
-            for (const [idx, msg] of messages.entries()) {
-              const rawMsgId = msg.id || String(idx)
-              const msgId = `${session.cli}_${session.id}_${rawMsgId}`
-              const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
-              const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
-              const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
-
-              insertMsg.run(
-                msgId, session.id, session.cli,
-                msg.role || 'user', contentStr,
-                thoughtStr,
-                toolCallsStr,
-                typeof msg.timestamp === 'number' ? msg.timestamp : null,
-                msg.model ? String(msg.model) : null
-              )
-
-              if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
-                const toolSummary = this.extractToolSummary(msg.toolCalls)
-                const fullContent = contentStr.slice(0, 50000)
-                const segmentedContent = this.segmentText(fullContent)
-                const segmentedToolSummary = this.segmentText(toolSummary)
-
-                insertFts.run(
-                  segmentedContent,
-                  segmentedTitle,
-                  segmentedToolSummary,
-                  session.cwd || '',
-                  segmentedTags,
-                  rawMsgId,
-                  session.id,
-                  session.cli,
-                  msg.role
-                )
-              }
-            }
-          })
-
-          sessionTx()
+          this.buildSessionUpsert(session, messages, newHash)()
 
           // Auto-tag session
           try {
@@ -553,97 +464,105 @@ class CacheService {
     const newHash = this.computeHash(session)
 
     try {
-      const syncTx = this.db.transaction(() => {
-        this.db!.prepare(`
-          INSERT INTO sessions_cache
-            (id, platform, category, title, cwd, model, cost, status, message_count,
-             created_at, updated_at, raw_location, data_hash, extra)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            platform = excluded.platform,
-            category = excluded.category,
-            title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
-            cwd = excluded.cwd,
-            model = excluded.model,
-            cost = excluded.cost,
-            status = excluded.status,
-            message_count = excluded.message_count,
-            updated_at = excluded.updated_at,
-            raw_location = excluded.raw_location,
-            data_hash = excluded.data_hash,
-            extra = excluded.extra
-        `).run(
-          session.id, session.cli, session.category,
-          session.title, session.cwd,
-          session.model || null,
-          session.cost || null,
-          session.status || null,
-          session.messageCount || 0,
-          session.createdAt, session.updatedAt,
-          session.rawLocation, newHash,
-          session.extra ? JSON.stringify(session.extra) : '{}'
-        )
-
-        this.db!.prepare(
-          'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
-        ).run(session.id, session.cli)
-
-        this.db!.prepare(DELETE_FTS_SQL).run(session.id)
-
-        const insertMsg = this.db!.prepare(`
-          INSERT OR REPLACE INTO messages_cache
-            (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-
-        const insertFts = this.db!.prepare(INSERT_FTS_SQL)
-
-        const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
-        const segmentedTags = this.segmentText(tagsStr)
-        const segmentedTitle = this.segmentText(session.title || '')
-
-        for (const [idx, msg] of messages.entries()) {
-          const rawMsgId = msg.id || String(idx)
-          const msgId = `${session.cli}_${session.id}_${rawMsgId}`
-          const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
-          const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
-          const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
-
-          insertMsg.run(
-            msgId, session.id, session.cli,
-            msg.role || 'user', contentStr,
-            thoughtStr,
-            toolCallsStr,
-            typeof msg.timestamp === 'number' ? msg.timestamp : null,
-            msg.model ? String(msg.model) : null
-          )
-
-          if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
-            const toolSummary = this.extractToolSummary(msg.toolCalls)
-            const fullContent = contentStr.slice(0, 50000)
-            const segmentedContent = this.segmentText(fullContent)
-            const segmentedToolSummary = this.segmentText(toolSummary)
-
-            insertFts.run(
-              segmentedContent,
-              segmentedTitle,
-              segmentedToolSummary,
-              session.cwd || '',
-              segmentedTags,
-              rawMsgId,
-              session.id,
-              session.cli,
-              msg.role
-            )
-          }
-        }
-      })
-      syncTx()
+      this.buildSessionUpsert(session, messages, newHash)()
     } catch (err) {
       console.error('[Cache] Error in syncSingleSession:', err)
     }
 
     return this.getCachedSessionDetail(platform, id)
+  }
+
+  /**
+   * 会话 upsert 共用事务体（sync 与 syncSingleSession 共用）：
+   * sessions_cache 行 upsert + 旧消息/FTS 清理 + 消息与分词 FTS 重建。
+   * 返回事务函数，由调用方决定执行时机；autoTag 由调用方在事务外执行。
+   */
+  private buildSessionUpsert(session: UnifiedSession, messages: SessionMessage[], newHash: string): () => void {
+    const db = this.db!
+    return db.transaction(() => {
+      db.prepare(`
+        INSERT INTO sessions_cache
+          (id, platform, category, title, cwd, model, cost, status, message_count,
+           created_at, updated_at, raw_location, data_hash, extra)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          platform = excluded.platform,
+          category = excluded.category,
+          title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions_cache.title END,
+          cwd = excluded.cwd,
+          model = excluded.model,
+          cost = excluded.cost,
+          status = excluded.status,
+          message_count = excluded.message_count,
+          updated_at = excluded.updated_at,
+          raw_location = excluded.raw_location,
+          data_hash = excluded.data_hash,
+          extra = excluded.extra
+      `).run(
+        session.id, session.cli, session.category,
+        session.title, session.cwd,
+        session.model || null,
+        session.cost || null,
+        session.status || null,
+        session.messageCount || 0,
+        session.createdAt, session.updatedAt,
+        session.rawLocation, newHash,
+        session.extra ? JSON.stringify(session.extra) : '{}'
+      )
+
+      // 删除旧消息与旧 FTS 索引后重建
+      db.prepare(
+        'DELETE FROM messages_cache WHERE session_id = ? AND platform = ?'
+      ).run(session.id, session.cli)
+      db.prepare(DELETE_FTS_SQL).run(session.id)
+
+      const insertMsg = db.prepare(`
+        INSERT OR REPLACE INTO messages_cache
+          (id, session_id, platform, role, content, thought, tool_calls_json, timestamp, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      const insertFts = db.prepare(INSERT_FTS_SQL)
+
+      const tagsStr = Array.isArray(session.extra?.tags) ? (session.extra.tags as string[]).join(' ') : ''
+      const segmentedTags = this.segmentText(tagsStr)
+      const segmentedTitle = this.segmentText(session.title || '')
+
+      for (const [idx, msg] of messages.entries()) {
+        const rawMsgId = msg.id || String(idx)
+        const msgId = `${session.cli}_${session.id}_${rawMsgId}`
+        const contentStr = typeof msg.content === 'string' ? msg.content : (msg.content ? JSON.stringify(msg.content) : '')
+        const thoughtStr = typeof msg.thought === 'string' ? msg.thought : (msg.thought ? JSON.stringify(msg.thought) : null)
+        const toolCallsStr = msg.toolCalls ? JSON.stringify(msg.toolCalls) : '[]'
+
+        insertMsg.run(
+          msgId, session.id, session.cli,
+          msg.role || 'user', contentStr,
+          thoughtStr,
+          toolCallsStr,
+          typeof msg.timestamp === 'number' ? msg.timestamp : null,
+          msg.model ? String(msg.model) : null
+        )
+
+        if ((msg.role === 'user' || msg.role === 'assistant') && (contentStr || msg.toolCalls?.length)) {
+          const toolSummary = this.extractToolSummary(msg.toolCalls)
+          const fullContent = contentStr.slice(0, 50000)
+          const segmentedContent = this.segmentText(fullContent)
+          const segmentedToolSummary = this.segmentText(toolSummary)
+
+          insertFts.run(
+            segmentedContent,
+            segmentedTitle,
+            segmentedToolSummary,
+            session.cwd || '',
+            segmentedTags,
+            rawMsgId,
+            session.id,
+            session.cli,
+            msg.role
+          )
+        }
+      }
+    })
   }
 
   /**
