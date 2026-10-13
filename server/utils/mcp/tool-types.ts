@@ -1,5 +1,4 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import type { PlatformType } from '../types'
 
 /** 支持平台全集（工具 schema 的 enum 与分发描述共用） */
 export const ALL_PLATFORMS: string[] = [
@@ -25,5 +24,3 @@ export interface McpToolDefinition {
   inputSchema: Record<string, unknown>
   handler: (ctx: McpToolContext) => Promise<McpToolResult>
 }
-
-export type { PlatformType }
