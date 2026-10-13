@@ -20,6 +20,20 @@ test('内容相似度：实质一致 >=0.8，演进内容更低', () => {
   assert.equal(contentSimilarity('', a), 0)
 })
 
+test('内容相似度：短内容回退 3-gram 判定，相同/不同可区分', () => {
+  const short = '升级前先备份'
+  assert.equal(contentSimilarity(short, '升级前先备份'), 1)
+  // 标点/空白变体应判定为实质一致（修复前短内容行过滤后恒为 0，必走 superseded）
+  assert.ok(contentSimilarity(short, '  升级前先备份。 ') >= 0.8, contentSimilarity(short, '  升级前先备份。 ').toFixed(2))
+  assert.ok(contentSimilarity(short, '先编译再提交') < 0.5, contentSimilarity(short, '先编译再提交').toFixed(2))
+  assert.equal(contentSimilarity('', short), 0)
+})
+
+test('内容相似度：混合长短内容按 shingle 判定，长内容仍走行级', () => {
+  const long = ['决策背景：连接未关闭导致重复', '决策内容：dispose 时统一 close', '后果：重连不再叠加'].join('\n')
+  assert.ok(contentSimilarity(long, '升级前先备份') < 0.5)
+})
+
 test('抽取上下文构造：含 thought/工具参数且超长截断', () => {
   const messages: SessionMessage[] = [
     { role: 'user', content: '排查 SSE 重复' },
