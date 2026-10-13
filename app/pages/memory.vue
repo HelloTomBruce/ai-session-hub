@@ -435,7 +435,10 @@ async function submitManualMemory() {
                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border border-amber-300/60 bg-amber-50 text-amber-600 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-400"
                   title="低置信或证据存疑，未进入召回池；确认后可提升为正式记忆"
                 >
-                  <UIcon name="i-lucide-shield-question" class="w-3 h-3" />
+                  <UIcon
+                    name="i-lucide-shield-question"
+                    class="w-3 h-3"
+                  />
                   draft 待确认
                 </span>
               </div>

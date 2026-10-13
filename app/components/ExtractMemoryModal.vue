@@ -371,7 +371,10 @@ async function saveToGraph() {
           >
             <div class="flex items-center justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
               <span class="flex items-center gap-1">
-                <UIcon name="i-lucide-quote-check" class="w-3.5 h-3.5" />
+                <UIcon
+                  name="i-lucide-quote-check"
+                  class="w-3.5 h-3.5"
+                />
                 证据锚定（会话原句，程序校验）
               </span>
               <span

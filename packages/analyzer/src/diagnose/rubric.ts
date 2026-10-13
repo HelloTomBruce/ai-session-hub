@@ -1,7 +1,6 @@
 import type { SessionMessage, SessionToolCall, UnifiedSession } from '@session-hub/core'
 import type { AIEvaluationResult } from './types.js'
 
-
 /**
  * 标准评估准则 (Evaluation Rubric & System Prompt)
  * 该准则作为 AI Judge 的严格打分标准，确保不同会话、不同模型的评估基准统一。
