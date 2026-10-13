@@ -6,9 +6,14 @@ export default defineEventHandler((event) => {
 
   // 优先使用缓存
   if (cacheService.isAvailable()) {
-    let list = cacheService.getCachedSessions(cli, search || undefined)
+    // 列表入口显式封顶，防止会话总量增长后响应体无界膨胀；
+    // total 由独立 COUNT 查询给出，不受截断影响。
+    const listLimit = 2000
+    let list = cacheService.getCachedSessions(cli, search || undefined, { limit: listLimit })
+    const totalCount = cacheService.countCachedSessions(cli, search || undefined)
 
-    // 按标签过滤
+    // 按标签过滤：标签是 extra 中的 JSON 数组，只能在应用层过滤。
+    // 已知限制：标签过滤作用于截断后的窗口，超 2000 条命中时尾部会话不参与过滤。
     if (tagFilter) {
       list = list.filter((item) => {
         const tags = (item.extra?.tags as string[] | undefined) || []
@@ -29,9 +34,11 @@ export default defineEventHandler((event) => {
 
     return {
       success: true,
-      total: list.length,
+      // 标签过滤无法用 SQL 精确计数，total 退回到窗口内过滤后的数量
+      total: tagFilter ? list.length : totalCount,
       data: list,
-      source: 'cache'
+      source: 'cache',
+      truncated: tagFilter ? false : list.length < totalCount
     }
   }
 

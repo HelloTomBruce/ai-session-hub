@@ -421,55 +421,91 @@ class CacheService {
   }
 
   /**
-   * 从缓存中获取会话列表（仅返回当前已启用的插件会话）
+   * 构造会话列表查询的 WHERE 条件（启用插件范围 + 平台 + 关键字）。
+   * 返回 null 表示无匹配范围（无启用插件或平台未启用），调用方应直接返回空结果。
+   */
+  private buildSessionListConditions(
+    platformFilter?: string,
+    searchQuery?: string
+  ): { whereSql: string, params: unknown[] } | null {
+    const activePlugins = pluginManager.getActivePlugins()
+    const activePluginIds = activePlugins.map(p => p.manifest.id)
+    if (activePluginIds.length === 0) return null
+
+    const conditions: string[] = []
+    const params: unknown[] = []
+
+    if (platformFilter && platformFilter !== 'all') {
+      if (!activePluginIds.includes(platformFilter)) {
+        return null
+      }
+      conditions.push('platform = ?')
+      params.push(platformFilter)
+    } else {
+      const placeholders = activePluginIds.map(() => '?').join(',')
+      conditions.push(`platform IN (${placeholders})`)
+      params.push(...activePluginIds)
+    }
+
+    if (searchQuery) {
+      // 已知限制：前导通配 %LIKE% 无法走索引，随会话总量线性扫描；
+      // 列表入口因此必须配合 limit 使用。
+      conditions.push('(title LIKE ? OR cwd LIKE ? OR id LIKE ? OR model LIKE ?)')
+      const like = `%${searchQuery}%`
+      params.push(like, like, like, like)
+    }
+
+    return { whereSql: ' WHERE ' + conditions.join(' AND '), params }
+  }
+
+  /**
+   * 从缓存中获取会话列表（仅返回当前已启用的插件会话）。
+   * options.limit 缺省或 <=0 时不加 LIMIT（供洞察统计等内部全量聚合）；
+   * HTTP 列表入口必须显式传入 limit，防止响应体随会话总量无界膨胀，上限 5000。
    */
   getCachedSessions(platformFilter?: string, searchQuery?: string, options: { limit?: number } = {}): UnifiedSession[] {
     this.init()
     if (!this.db) return []
 
     try {
-      const activePlugins = pluginManager.getActivePlugins()
-      const activePluginIds = activePlugins.map(p => p.manifest.id)
-      if (activePluginIds.length === 0) return []
+      const built = this.buildSessionListConditions(platformFilter, searchQuery)
+      if (!built) return []
 
-      let sql = 'SELECT * FROM sessions_cache'
-      const params: unknown[] = []
-      const conditions: string[] = []
+      let sql = `SELECT * FROM sessions_cache${built.whereSql} ORDER BY updated_at DESC`
+      const params = [...built.params]
 
-      if (platformFilter && platformFilter !== 'all') {
-        if (!activePluginIds.includes(platformFilter)) {
-          return []
-        }
-        conditions.push('platform = ?')
-        params.push(platformFilter)
-      } else {
-        const placeholders = activePluginIds.map(() => '?').join(',')
-        conditions.push(`platform IN (${placeholders})`)
-        params.push(...activePluginIds)
+      if (options.limit && options.limit > 0) {
+        sql += ' LIMIT ?'
+        params.push(Math.min(Math.trunc(options.limit), 5000))
       }
-
-      if (searchQuery) {
-        conditions.push('(title LIKE ? OR cwd LIKE ? OR id LIKE ? OR model LIKE ?)')
-        const like = `%${searchQuery}%`
-        params.push(like, like, like, like)
-      }
-
-      if (conditions.length > 0) {
-        sql += ' WHERE ' + conditions.join(' AND ')
-      }
-
-      sql += ' ORDER BY updated_at DESC'
-
-      // 防止全量会话一次性载入内存/响应：默认 2000 上限，调用方可显式覆盖
-      const limit = Math.min(Math.max(1, Math.trunc(options.limit || 2000)), 5000)
-      sql += ' LIMIT ?'
-      params.push(limit)
 
       const rows = this.db.prepare(sql).all(...params) as SessionCacheRow[]
       return rows.map(r => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
     } catch (err) {
       console.error('[Cache] Error reading cached sessions:', err)
       return []
+    }
+  }
+
+  /**
+   * 统计符合过滤条件的会话总数（与 getCachedSessions 同条件、不受 LIMIT 影响），
+   * 供列表入口在数据被截断返回时仍能给出精确 total。
+   */
+  countCachedSessions(platformFilter?: string, searchQuery?: string): number {
+    this.init()
+    if (!this.db) return 0
+
+    try {
+      const built = this.buildSessionListConditions(platformFilter, searchQuery)
+      if (!built) return 0
+
+      const row = this.db
+        .prepare(`SELECT COUNT(*) as c FROM sessions_cache${built.whereSql}`)
+        .get(...built.params) as { c: number } | undefined
+      return row?.c ?? 0
+    } catch (err) {
+      console.error('[Cache] Error counting cached sessions:', err)
+      return 0
     }
   }
 
@@ -666,9 +702,14 @@ class CacheService {
         params.push(`%${options.tag}%`)
       }
 
+      // 已知限制：cwd/tag 过滤均为前导通配 %LIKE%，无法利用索引，
+      // 只能作为 FTS 命中结果的后置过滤，代价随命中消息数线性增长。
+
       const whereClause = conditions.join(' AND ')
 
-      // 1. 统计总匹配消息数及各平台分布
+      // 1. 统计总匹配消息数及各平台分布。
+      // 已知限制：COUNT + GROUP BY 需扫描全部命中行（FTS5 无近似计数），
+      // 命中集合极大时本查询随匹配消息总量线性变慢。
       const countSql = `
         SELECT f.platform, COUNT(*) as c
         FROM fts_messages f
