@@ -44,7 +44,8 @@ export const RecallMemoriesTool: McpToolDefinition = {
       cwd,
       tech,
       type,
-      limit
+      limit,
+      source: 'mcp'
     })
 
     mcpLogger.addLog({

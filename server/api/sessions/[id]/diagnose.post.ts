@@ -3,6 +3,7 @@ import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, runDeterministicRubricE
 import { completeLLM, extractJsonFromLLMText } from '@session-hub/llm'
 import { getLLMProviderSettings } from '../../../utils/llm-provider-config'
 import { fileReportStore } from '../../../utils/diagnosis-service'
+import { indexDiagnosis } from '../../../utils/diagnosis-index'
 import type { PlatformType } from '../../../utils/types'
 
 export default defineEventHandler(async (event) => {
@@ -42,6 +43,7 @@ export default defineEventHandler(async (event) => {
 
       // Persist to local disk so it is remembered
       fileReportStore.save(sessionId, parsed)
+      indexDiagnosis({ sessionId, platform, cwd: session.cwd, report: parsed, source: 'user_configured_llm' })
 
       return {
         success: true,
@@ -62,6 +64,7 @@ export default defineEventHandler(async (event) => {
   const fallbackResult = runDeterministicRubricEvaluation(session, messages)
 
   fileReportStore.save(sessionId, fallbackResult)
+  indexDiagnosis({ sessionId, platform, cwd: session.cwd, report: fallbackResult, source: 'rubric_engine' })
 
   return {
     success: true,

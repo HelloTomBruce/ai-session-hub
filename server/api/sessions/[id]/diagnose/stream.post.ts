@@ -3,6 +3,7 @@ import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, runDeterministicRubricE
 import { streamLLMCompletion } from '@session-hub/llm'
 import { getLLMProviderSettings } from '../../../../utils/llm-provider-config'
 import { fileReportStore } from '../../../../utils/diagnosis-service'
+import { indexDiagnosis } from '../../../../utils/diagnosis-index'
 import type { PlatformType } from '../../../../utils/types'
 
 export default defineEventHandler(async (event) => {
@@ -57,6 +58,7 @@ export default defineEventHandler(async (event) => {
 
       // Persist via injected report store
       fileReportStore.save(sessionId, parsed)
+      indexDiagnosis({ sessionId, platform, cwd: session.cwd, report: parsed, source: 'user_configured_llm' })
 
       sendEvent('done', {
         source: 'user_configured_llm',
@@ -77,6 +79,7 @@ export default defineEventHandler(async (event) => {
   // Fallback to local rubric engine
   const fallbackResult = runDeterministicRubricEvaluation(session, messages)
   fileReportStore.save(sessionId, fallbackResult)
+  indexDiagnosis({ sessionId, platform, cwd: session.cwd, report: fallbackResult, source: 'rubric_engine' })
 
   sendEvent('done', {
     source: 'rubric_engine',

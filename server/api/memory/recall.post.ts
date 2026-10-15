@@ -14,7 +14,8 @@ export default defineEventHandler(async (event) => {
     cwd: body.cwd,
     tech: body.tech,
     type: body.type,
-    limit: body.limit || 10
+    limit: body.limit || 10,
+    source: 'rest'
   })
 
   return {

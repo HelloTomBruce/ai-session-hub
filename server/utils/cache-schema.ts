@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 8
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -113,6 +113,27 @@ CREATE TABLE IF NOT EXISTS session_evaluations (
   evaluated_at INTEGER NOT NULL,
   PRIMARY KEY (session_id, platform)
 );
+
+-- 会话诊断索引 (Diagnosis Index)：把诊断报告（含确定性 rubric）落库，
+-- 作为召回效果度量的「结果侧」数据集（可 JOIN cwd / 时间）。
+CREATE TABLE IF NOT EXISTS session_diagnoses (
+  session_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  cwd TEXT DEFAULT '',
+  score INTEGER,
+  grade TEXT DEFAULT '',
+  decision_soundness INTEGER,
+  directness INTEGER,
+  turn_velocity INTEGER,
+  action_density INTEGER,
+  friction_events_json TEXT DEFAULT '[]',   -- deductions（摩擦事件明细）
+  source TEXT DEFAULT '',                   -- user_configured_llm | rubric_engine | report | backfill
+  diagnosed_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, platform)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_diagnoses_at ON session_diagnoses(diagnosed_at);
+CREATE INDEX IF NOT EXISTS idx_session_diagnoses_cwd ON session_diagnoses(cwd);
 `.trim()
 
 // 插入/更新 FTS 索引

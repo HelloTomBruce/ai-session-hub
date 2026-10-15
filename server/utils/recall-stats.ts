@@ -23,6 +23,27 @@ export interface MemoryStatsRow {
   last_used_at: number | null
 }
 
+/** 召回事件（一次 recall 调用落一行），用于召回效果度量的曝光侧 */
+export interface RecallEventInput {
+  cwd?: string
+  type?: string
+  query?: string
+  memoryIds: string[]
+  count?: number
+  source?: string
+}
+
+export interface RecallEventRow {
+  id: number
+  at: number
+  cwd: string
+  type: string
+  query: string
+  memory_ids_json: string
+  count: number
+  source: string
+}
+
 class RecallStatsService {
   private db: Database.Database | null = null
 
@@ -42,7 +63,21 @@ class RecallStatsService {
         not_useful INTEGER DEFAULT 0,
         last_recall_at INTEGER,
         last_used_at INTEGER
-      )
+      );
+
+      -- 召回事件明细（曝光侧埋点）：每次 recall 调用一行，带 cwd 上下文用于效果度量归因
+      CREATE TABLE IF NOT EXISTS recall_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at INTEGER NOT NULL,
+        cwd TEXT DEFAULT '',
+        type TEXT DEFAULT '',
+        query TEXT DEFAULT '',
+        memory_ids_json TEXT DEFAULT '[]',
+        count INTEGER DEFAULT 0,
+        source TEXT DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_recall_events_at ON recall_events(at);
+      CREATE INDEX IF NOT EXISTS idx_recall_events_cwd ON recall_events(cwd);
     `)
     return this.db
   }
@@ -101,6 +136,53 @@ class RecallStatsService {
       }
     } catch (err) {
       console.error('[RecallStats] logFeedback failed:', err)
+    }
+  }
+
+  /**
+   * 召回事件明细：记录一次 recall 调用的上下文（cwd/type/query/命中 id）。
+   * 与 logRecall 的按 memory_id 聚合互补——聚合用于排序加权，明细用于效果度量归因。
+   */
+  logRecallEvent(input: RecallEventInput): void {
+    try {
+      const db = this.getDb()
+      const ids = Array.isArray(input.memoryIds) ? input.memoryIds : []
+      db.prepare(`
+        INSERT INTO recall_events (at, cwd, type, query, memory_ids_json, count, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        Date.now(),
+        input.cwd || '',
+        input.type || '',
+        input.query || '',
+        JSON.stringify(ids),
+        typeof input.count === 'number' ? input.count : ids.length,
+        input.source || ''
+      )
+    } catch (err) {
+      console.error('[RecallStats] logRecallEvent failed:', err)
+    }
+  }
+
+  /** 读取指定时间之后的召回事件（召回效果度量分析用） */
+  listEventsSince(since: number, limit = 1000): RecallEventRow[] {
+    try {
+      const db = this.getDb()
+      return db.prepare(
+        'SELECT * FROM recall_events WHERE at >= ? ORDER BY at DESC LIMIT ?'
+      ).all(since, Math.max(1, Math.trunc(limit))) as RecallEventRow[]
+    } catch {
+      return []
+    }
+  }
+
+  /** 删除指定来源的召回事件（清理试验/合成事件） */
+  deleteEventsBySource(source: string): number {
+    try {
+      const db = this.getDb()
+      return db.prepare('DELETE FROM recall_events WHERE source = ?').run(source).changes
+    } catch {
+      return 0
     }
   }
 

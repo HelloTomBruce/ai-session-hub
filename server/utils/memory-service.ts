@@ -832,6 +832,8 @@ class MemoryService {
     tech?: string[]
     type?: string
     limit?: number
+    /** 调用来源标识（mcp / rest），用于召回事件归因 */
+    source?: string
   }): Promise<MemoryRecallItem[]> {
     const { items } = await this.listMemories({
       type: params.type,
@@ -878,6 +880,14 @@ class MemoryService {
     const limited = active.slice(0, params.limit || 10)
     // P3 闭环：记录召回命中（供后续质量分与热度统计）
     recallStats.logRecall(limited.map(item => item.id))
+    // 召回效果度量（曝光侧）：记录本次调用的 cwd/来源等上下文，供摩擦率归因分析
+    recallStats.logRecallEvent({
+      cwd: params.cwd,
+      type: params.type,
+      query: params.query,
+      memoryIds: limited.map(item => item.id),
+      source: params.source
+    })
 
     return limited.map(item => this.toRecallItem(item))
   }

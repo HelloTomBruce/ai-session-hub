@@ -183,6 +183,10 @@ class CacheService {
         this.migrateSessionEvaluationsV4()
       }
 
+      if (currentVersion < 8) {
+        this.dropPrescriptionsV8()
+      }
+
       this.db.exec(CREATE_SCHEMA_SQL)
       this.db.prepare(
         'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'
@@ -214,6 +218,19 @@ class CacheService {
           console.error(`[Cache] Failed to add column ${name}:`, err)
         }
       }
+    }
+  }
+
+  /**
+   * v8：移除已下线的 prescriptions 台账表。
+   * 处方能力已整体移除，处方不再单独存储（诊断建议仍保留在诊断报告中）。
+   */
+  private dropPrescriptionsV8(): void {
+    if (!this.db) return
+    try {
+      this.db.exec('DROP TABLE IF EXISTS prescriptions')
+    } catch (err) {
+      console.error('[Cache] Failed to drop prescriptions table:', err)
     }
   }
 
