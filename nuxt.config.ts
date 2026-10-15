@@ -39,5 +39,23 @@ export default defineNuxtConfig({
       google: false,
       googleicons: false
     }
+  },
+
+  icon: {
+    clientBundle: {
+      scan: true,
+      icons: [
+        'lucide:wrench',
+        'lucide:user',
+        'lucide:bot',
+        'lucide:terminal',
+        'lucide:message-square-quote',
+        'lucide:file-code',
+        'lucide:git-branch',
+        'lucide:sparkles',
+        'lucide:rotate-cw',
+        'lucide:arrow-up-right'
+      ]
+    }
   }
 })

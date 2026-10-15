@@ -41,7 +41,7 @@ pnpm run lint        # 代码规范校验
 在任何功能开发、Bug 修复、算法调优或架构演进过程中，**代码与 DocMind 中的产品文档必须通过 MCP 保持双向同步**。
 
 ### 3.1 DocMind 基础设施与上下文
-- **MCP 服务**：`DocMind`（SSE: `http://127.0.0.1:6001/sse`）
+- **MCP 服务**：`DocMind`（Streamable HTTP: `http://127.0.0.1:6001/messages`，亦可使用 SSE: `http://127.0.0.1:6001/sse`）
 - **项目定位**：完全通过 MCP 接口维护，**无需关心本地物理路径**。操作前可调用：
   ```json
   activate_project({ "name": "Session-hub" })
