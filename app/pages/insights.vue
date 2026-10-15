@@ -335,7 +335,7 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
               <div
                 v-for="item in insights.platforms.slice(0, 6)"
                 :key="item.platform"
-                class="flex items-center justify-between p-2 rounded-lg bg-zinc-50 dark:bg-zinc-850/60 border border-zinc-100 dark:border-zinc-800/60"
+                class="flex items-center justify-between p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-800/60"
               >
                 <div class="flex items-center gap-2">
                   <UIcon
@@ -408,7 +408,7 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
           <div
             v-for="item in insights.hotspotTags"
             :key="item.tag"
-            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-850/60 hover:border-amber-500/40 transition-all text-xs"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:border-amber-500/40 transition-all text-xs"
           >
             <span class="font-mono font-medium text-zinc-800 dark:text-zinc-200">#{{ item.tag }}</span>
             <span class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
@@ -466,7 +466,7 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
           <div
             v-for="s in insights.highValueSessions"
             :key="s.id"
-            class="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-zinc-50/50 dark:hover:bg-zinc-850/30 transition-all rounded-lg px-2 -mx-2"
+            class="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-all rounded-lg px-2 -mx-2"
           >
             <div class="space-y-1">
               <div class="flex items-center gap-2">

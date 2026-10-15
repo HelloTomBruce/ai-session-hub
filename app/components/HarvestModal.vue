@@ -211,7 +211,7 @@ const categoryBadge = (category: string) => {
                   ? 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300'
                   : stepState[st.num] === 'skipped' || stepState[st.num] === 'unavailable'
                     ? 'border-zinc-100 dark:border-zinc-800/60 text-zinc-400'
-                    : 'border-zinc-100 dark:border-zinc-850 opacity-40 text-zinc-400'
+                    : 'border-zinc-100 dark:border-zinc-800 opacity-40 text-zinc-400'
             ]"
           >
             <div

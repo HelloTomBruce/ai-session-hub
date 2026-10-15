@@ -317,7 +317,7 @@ export async function useSessionDiagnosis(
       gradeLabel = '低效循环 (Lost in Context)'
     }
 
-    // Actionable Insights / Prescriptions
+    // Actionable Insights / Recommendations
     const recommendations: string[] = []
     if (Number(searchToEditRatio) > 6) {
       recommendations.push('检索与探索占比偏高：建议为该项目配置代码知识图谱 (如 codebase-memory-mcp) 或技能库，减少文件盲搜。')

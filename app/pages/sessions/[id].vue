@@ -275,7 +275,7 @@ const backUrl = computed(() => {
 
         <!-- Efficiency Rating Badge (Clickable for Diagnosis Report) -->
         <button
-          class="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-750 px-2.5 py-1 rounded-md border border-zinc-200/80 dark:border-zinc-700/60 font-mono transition-all cursor-pointer group shadow-2xs"
+          class="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-2.5 py-1 rounded-md border border-zinc-200/80 dark:border-zinc-700/60 font-mono transition-all cursor-pointer group shadow-2xs"
           title="点击查看会话效能诊断报告与扣分归因"
           @click="isEfficiencyModalOpen = true"
         >
@@ -382,7 +382,7 @@ const backUrl = computed(() => {
           <button
             v-for="t in toolStats.tools"
             :key="t.name"
-            class="px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-750 border border-zinc-200 dark:border-zinc-700/60 text-[11px] font-mono flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200 cursor-pointer select-none transition-all shadow-2xs group"
+            class="px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 text-[11px] font-mono flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200 cursor-pointer select-none transition-all shadow-2xs group"
             :title="`点击查看 ${t.name} 的全部 ${t.count} 次调用明细`"
             @click="openToolDetails(t.name)"
           >
@@ -686,7 +686,7 @@ const backUrl = computed(() => {
                   <tr
                     v-for="call in selectedToolCalls"
                     :key="call.index"
-                    class="hover:bg-zinc-50/70 dark:hover:bg-zinc-850/50 transition-colors align-top"
+                    class="hover:bg-zinc-50/70 dark:hover:bg-zinc-800/50 transition-colors align-top"
                   >
                     <!-- Index -->
                     <td class="py-3 px-3 text-center font-mono font-bold text-zinc-400">
@@ -1002,7 +1002,7 @@ const backUrl = computed(() => {
                       class="pt-1"
                     >
                       <span class="text-[10px] font-mono text-zinc-400 block mb-1">触发的工具序列:</span>
-                      <div class="p-2 rounded bg-zinc-100 dark:bg-zinc-850 font-mono text-[11px] text-zinc-700 dark:text-zinc-300 break-all border border-zinc-200/60 dark:border-zinc-800">
+                      <div class="p-2 rounded bg-zinc-100 dark:bg-zinc-800 font-mono text-[11px] text-zinc-700 dark:text-zinc-300 break-all border border-zinc-200/60 dark:border-zinc-800">
                         {{ evt.toolSnippet }}
                       </div>
                     </div>
@@ -1012,22 +1012,27 @@ const backUrl = computed(() => {
             </div>
 
             <!-- 3. Actionable Recommendations -->
-            <div class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 space-y-2.5">
-              <h4 class="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                <UIcon
-                  name="i-lucide-sparkles"
-                  class="w-4 h-4 text-emerald-500"
-                />
-                效能优化处方建议 (Actionable Insights)
-              </h4>
-              <ul class="space-y-1.5 text-xs text-zinc-700 dark:text-zinc-300">
+            <div class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <h4 class="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                  <UIcon
+                    name="i-lucide-sparkles"
+                    class="w-4 h-4 text-emerald-500"
+                  />
+                  效能优化建议 (Actionable Insights)
+                </h4>
+              </div>
+
+              <ul class="space-y-2 text-xs text-zinc-700 dark:text-zinc-300">
                 <li
                   v-for="(rec, rIdx) in efficiencyAnalysis.recommendations"
                   :key="rIdx"
-                  class="flex items-start gap-2"
+                  class="flex items-center justify-between gap-3 p-2.5 rounded-md bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-800/80 group transition-colors"
                 >
-                  <span class="text-emerald-500 font-bold shrink-0">💡</span>
-                  <span>{{ rec }}</span>
+                  <div class="flex items-start gap-2 min-w-0">
+                    <span class="text-emerald-500 font-bold shrink-0 mt-0.5">💡</span>
+                    <span class="leading-relaxed break-words">{{ rec }}</span>
+                  </div>
                 </li>
               </ul>
             </div>
