@@ -409,6 +409,26 @@ export class DshPlugin implements SessionPlugin {
     }
   }
 
+  /**
+   * 删除会话：整个会话目录（含 session.jsonl.zstd / session.vN.jsonl.zstd 多版本文件）一并移除，
+   * 否则残留旧版本文件仍会被 getSessions 扫描出来，造成“删除后列表还在”。
+   */
+  deleteSession(id: string): boolean {
+    const dir = this.locateSessionDir(id)
+    if (!dir) return true
+    // 防呆：只允许删除 sessionsDir 下的会话目录，避免越界删除
+    const root = path.resolve(this.sessionsDir)
+    const target = path.resolve(dir)
+    if (target === root || !target.startsWith(root + path.sep)) return false
+    try {
+      fs.rmSync(target, { recursive: true, force: true })
+      return true
+    } catch (e) {
+      console.error(`[DshPlugin] Failed deleting session ${id}:`, e)
+      return false
+    }
+  }
+
   /** 定位会话目录：目录名与 id 一致（兼容 `session-<uuid>` 前缀差异） */
   private locateSessionDir(id: string): string | null {
     const candidates = new Set([id])

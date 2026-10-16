@@ -191,3 +191,38 @@ test('目录不存在时返回空列表', () => {
   assert.deepEqual(plugin.getSessions(), [])
   assert.deepEqual(plugin.getMessages('whatever'), [])
 })
+
+test('deleteSession 删除整个会话目录（含多版本日志）', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-proj--/${V4_SESSION_ID}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v4.jsonl.zstd`]: compress(toLines(v4Events)),
+    [`${sessionDir}/session.jsonl.zstd`]: compress(toLines([{ type: 'session', version: 0, id: V4_SESSION_ID, createdAt: 1 }])),
+    [`${sessionDir}/session.lock`]: Buffer.from(''),
+    '--tmp-proj--/other-session/session.v2.jsonl.zstd': compress(toLines(v2Events.map(e => ({ ...e, id: 'other' }))))
+  })
+  const plugin = new DshPlugin(dir)
+  assert.equal(plugin.getSessions().length, 2)
+
+  assert.equal(plugin.deleteSession(V4_SESSION_ID), true)
+  assert.equal(fs.existsSync(path.join(dir, sessionDir)), false)
+
+  // 删除后重新扫描列表不再出现，其他会话不受影响
+  const remaining = plugin.getSessions()
+  assert.equal(remaining.length, 1)
+  assert.equal(remaining[0].id, 'other')
+
+  // 重复删除幂等
+  assert.equal(plugin.deleteSession(V4_SESSION_ID), true)
+})
+
+test('deleteSession 支持裸 UUID 定位带 session- 前缀的目录', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-proj--/${V4_SESSION_ID}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v4.jsonl.zstd`]: compress(toLines(v4Events))
+  })
+  const plugin = new DshPlugin(dir)
+
+  assert.equal(plugin.deleteSession('aaa11111-2222-3333-4444-555555555555'), true)
+  assert.equal(fs.existsSync(path.join(dir, sessionDir)), false)
+  assert.deepEqual(plugin.getSessions(), [])
+})
