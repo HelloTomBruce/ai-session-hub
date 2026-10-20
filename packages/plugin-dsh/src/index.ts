@@ -1,13 +1,16 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import zlib from 'node:zlib'
+import { execSync } from 'node:child_process'
 import { decompress as fzstdDecompress } from 'fzstd'
 import type {
   SessionPlugin,
   SessionPluginManifest,
   UnifiedSession,
   SessionMessage,
-  SessionToolCall
+  SessionToolCall,
+  UpdateSessionPayload
 } from '@session-hub/core'
 
 /**
@@ -93,6 +96,27 @@ const SESSION_FILE_RE = /^session(?:\.v(\d+))?\.jsonl\.zstd$/
 function decompressZstd(buffer: Buffer): string {
   const bytes = fzstdDecompress(new Uint8Array(buffer))
   return Buffer.from(bytes).toString('utf-8')
+}
+
+/**
+ * 压缩 dsh 会话日志为 zstd。
+ * 优先使用 Node 原生 zlib.zstdCompressSync（Node 21.7+），
+ * 如不可用则回退至系统 zstd 命令行工具。
+ */
+function compressZstd(buffer: Buffer): Buffer {
+  const api = zlib as unknown as { zstdCompressSync?: (buf: Buffer) => Buffer }
+  if (typeof api.zstdCompressSync === 'function') {
+    return api.zstdCompressSync(buffer)
+  }
+  try {
+    return execSync('zstd -c', {
+      input: buffer,
+      stdio: ['pipe', 'pipe', 'ignore'],
+      maxBuffer: 100 * 1024 * 1024
+    })
+  } catch (e) {
+    throw new Error(`Failed to compress with zstd: ${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 /** 拼接 content 块中的文本 */
@@ -406,6 +430,92 @@ export class DshPlugin implements SessionPlugin {
         header_version: header.version,
         turns: summary.turns
       }
+    }
+  }
+
+  /**
+   * 重命名/更新会话标题：
+   * 在对应的 session[.vN].jsonl.zstd 文件中更新或插入 session/title 事件，并重新 zstd 压缩保存。
+   */
+  updateSession(id: string, payload: UpdateSessionPayload): boolean {
+    const newTitle = payload.title?.trim()
+    if (!newTitle) return false
+    const dir = this.locateSessionDir(id)
+    if (!dir) return false
+    const found = this.findSessionFile(dir)
+    if (!found) return false
+
+    try {
+      const compressed = fs.readFileSync(found.file)
+      const text = decompressZstd(compressed)
+      const lines = text.split('\n')
+      let titleFound = false
+
+      const updatedLines = lines.map((line) => {
+        const trimmed = line.trim()
+        if (!trimmed) return line
+        try {
+          const parsed = JSON.parse(trimmed) as DshEvent
+          if (parsed.type === 'session/title') {
+            titleFound = true
+            if (!parsed.data) parsed.data = {}
+            parsed.data.title = newTitle
+            parsed.time = Date.now()
+            if (!parsed.data.source) parsed.data.source = {}
+            parsed.data.source.kind = 'custom'
+            return JSON.stringify(parsed)
+          }
+        } catch {
+          // ignore non-json line
+        }
+        return line
+      })
+
+      if (!titleFound) {
+        let maxSeq = 0
+        for (const line of lines) {
+          try {
+            const p = JSON.parse(line) as DshEvent
+            if (typeof p.seq === 'number' && p.seq > maxSeq) {
+              maxSeq = p.seq
+            }
+          } catch {
+            // ignore
+          }
+        }
+        const newTitleEvent: DshEvent = {
+          type: 'session/title',
+          seq: maxSeq + 1,
+          time: Date.now(),
+          data: {
+            title: newTitle,
+            source: { kind: 'custom' }
+          }
+        }
+        // 插在首行 session 头之后，若无则追加到末尾
+        const insertIdx = updatedLines.findIndex((l) => {
+          try {
+            return (JSON.parse(l) as DshEvent).type === 'session'
+          } catch {
+            return false
+          }
+        })
+        if (insertIdx !== -1) {
+          updatedLines.splice(insertIdx + 1, 0, JSON.stringify(newTitleEvent))
+        } else {
+          updatedLines.push(JSON.stringify(newTitleEvent))
+        }
+      }
+
+      const updatedContent = updatedLines.filter(line => line.trim().length > 0).join('\n') + '\n'
+      const recompressed = compressZstd(Buffer.from(updatedContent, 'utf-8'))
+      const tmpFile = `${found.file}.tmp.${Date.now()}`
+      fs.writeFileSync(tmpFile, recompressed)
+      fs.renameSync(tmpFile, found.file)
+      return true
+    } catch (e) {
+      console.error(`[DshPlugin] Failed updating session ${id}:`, e)
+      return false
     }
   }
 

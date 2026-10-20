@@ -226,3 +226,57 @@ test('deleteSession 支持裸 UUID 定位带 session- 前缀的目录', { skip: 
   assert.equal(fs.existsSync(path.join(dir, sessionDir)), false)
   assert.deepEqual(plugin.getSessions(), [])
 })
+
+test('updateSession 更新已有 session/title 的会话标题', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-proj--/${V4_SESSION_ID}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v4.jsonl.zstd`]: compress(toLines(v4Events))
+  })
+  const plugin = new DshPlugin(dir)
+
+  assert.equal(plugin.updateSession(V4_SESSION_ID, { title: '全新的会话标题' }), true)
+
+  const sessions = plugin.getSessions()
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].title, '全新的会话标题')
+})
+
+test('updateSession 当无 session/title 时插入新 title 事件', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-legacy--/${v2SessionId}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v2.jsonl.zstd`]: compress(toLines(v2Events))
+  })
+  const plugin = new DshPlugin(dir)
+
+  // 初始时由于没有 session/title，回退首条用户消息
+  assert.equal(plugin.getSessions()[0].title, '旧版会话提问')
+
+  assert.equal(plugin.updateSession(v2SessionId, { title: '自定义标题' }), true)
+
+  const sessions = plugin.getSessions()
+  assert.equal(sessions.length, 1)
+  assert.equal(sessions[0].title, '自定义标题')
+})
+
+test('updateSession 支持裸 UUID 定位带 session- 前缀的目录', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-proj--/${V4_SESSION_ID}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v4.jsonl.zstd`]: compress(toLines(v4Events))
+  })
+  const plugin = new DshPlugin(dir)
+
+  assert.equal(plugin.updateSession('aaa11111-2222-3333-4444-555555555555', { title: '裸UUID重命名成功' }), true)
+  assert.equal(plugin.getSessions()[0].title, '裸UUID重命名成功')
+})
+
+test('updateSession 空标题或不存在会话返回 false', { skip: !hasZstd }, () => {
+  const sessionDir = `--tmp-proj--/${V4_SESSION_ID}`
+  const dir = makeSessionsDir({
+    [`${sessionDir}/session.v4.jsonl.zstd`]: compress(toLines(v4Events))
+  })
+  const plugin = new DshPlugin(dir)
+
+  assert.equal(plugin.updateSession(V4_SESSION_ID, { title: '' }), false)
+  assert.equal(plugin.updateSession(V4_SESSION_ID, { title: '   ' }), false)
+  assert.equal(plugin.updateSession('non-existent-id', { title: '标题' }), false)
+})
