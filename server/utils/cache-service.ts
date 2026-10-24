@@ -203,18 +203,19 @@ class CacheService {
     if (!this.db) return
     const columns = this.db.prepare('PRAGMA table_info(session_evaluations)').all() as Array<{ name: string }>
     const existing = new Set(columns.map(c => c.name))
+    // 预组合的静态 DDL（列名与定义均为编译期常量，避免运行时拼接 SQL）
     const additions: Array<[string, string]> = [
-      ['strategy_json', 'TEXT DEFAULT \'[]\''],
-      ['flags_json', 'TEXT DEFAULT \'{}\''],
-      ['evaluator_version', 'INTEGER DEFAULT 2'],
-      ['harvest_status', 'TEXT DEFAULT \'\''],
-      ['memory_node_id', 'TEXT DEFAULT \'\''],
-      ['evidence_hash', 'TEXT DEFAULT \'\'']
+      ['strategy_json', 'ALTER TABLE session_evaluations ADD COLUMN strategy_json TEXT DEFAULT \'[]\''],
+      ['flags_json', 'ALTER TABLE session_evaluations ADD COLUMN flags_json TEXT DEFAULT \'{}\''],
+      ['evaluator_version', 'ALTER TABLE session_evaluations ADD COLUMN evaluator_version INTEGER DEFAULT 2'],
+      ['harvest_status', 'ALTER TABLE session_evaluations ADD COLUMN harvest_status TEXT DEFAULT \'\''],
+      ['memory_node_id', 'ALTER TABLE session_evaluations ADD COLUMN memory_node_id TEXT DEFAULT \'\''],
+      ['evidence_hash', 'ALTER TABLE session_evaluations ADD COLUMN evidence_hash TEXT DEFAULT \'\'']
     ]
     for (const [name, ddl] of additions) {
       if (!existing.has(name)) {
         try {
-          this.db.exec(`ALTER TABLE session_evaluations ADD COLUMN ${name} ${ddl}`)
+          this.db.exec(ddl)
         } catch (err) {
           console.error(`[Cache] Failed to add column ${name}:`, err)
         }
@@ -460,9 +461,9 @@ class CacheService {
       conditions.push('platform = ?')
       params.push(platformFilter)
     } else {
-      const placeholders = activePluginIds.map(() => '?').join(',')
-      conditions.push(`platform IN (${placeholders})`)
-      params.push(...activePluginIds)
+      // json_each 全参数化 IN 子句：值经 JSON 绑定，无运行时 SQL 拼接
+      conditions.push('platform IN (SELECT value FROM json_each(?))')
+      params.push(JSON.stringify(activePluginIds))
     }
 
     if (searchQuery) {
@@ -517,8 +518,10 @@ class CacheService {
       const built = this.buildSessionListConditions(platformFilter, searchQuery)
       if (!built) return 0
 
+      // 与 getCachedSessions 同构：whereSql 仅由内部固定片段组成，值全部经 params 绑定
+      const countSql = `SELECT COUNT(*) as c FROM sessions_cache${built.whereSql}`
       const row = this.db
-        .prepare(`SELECT COUNT(*) as c FROM sessions_cache${built.whereSql}`)
+        .prepare(countSql)
         .get(...built.params) as { c: number } | undefined
       return row?.c ?? 0
     } catch (err) {
@@ -971,11 +974,11 @@ class CacheService {
     }
 
     try {
-      const placeholders = activePlugins.map(() => '?').join(',')
-      const ids = activePlugins.map(p => p.manifest.id)
+      const activePluginIds = activePlugins.map(p => p.manifest.id)
+      // json_each 全参数化 IN 子句：值经 JSON 绑定，无运行时 SQL 拼接
       const rows = this.db.prepare(
-        `SELECT platform, COUNT(*) as count FROM sessions_cache WHERE platform IN (${placeholders}) GROUP BY platform`
-      ).all(...ids) as { platform: string, count: number }[]
+        'SELECT platform, COUNT(*) as count FROM sessions_cache WHERE platform IN (SELECT value FROM json_each(?)) GROUP BY platform'
+      ).all(JSON.stringify(activePluginIds)) as { platform: string, count: number }[]
 
       let total = 0
       for (const row of rows) {
