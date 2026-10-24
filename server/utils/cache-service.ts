@@ -11,6 +11,7 @@ import {
   DELETE_FTS_SQL
 } from './cache-schema'
 import { tagService } from './tag-service'
+import { escapeFtsQuery } from './fts-query'
 import type { SessionToolCall, UnifiedSession, SessionMessage, PlatformType } from './types'
 
 const DB_DIR = path.join(os.homedir(), '.session-hub')
@@ -692,7 +693,7 @@ class CacheService {
     const empty: SearchResponse = { results: [], total: 0, query, page, pageSize: limit }
 
     try {
-      const ftsQuery = this.escapeFtsQuery(query)
+      const ftsQuery = escapeFtsQuery(query, this.segmenter)
       if (!ftsQuery) return empty
 
       // 动态拼接过滤条件
@@ -864,34 +865,6 @@ class CacheService {
     } catch (err) {
       console.error('[Cache] FTS5 search error:', err)
       return empty
-    }
-  }
-
-  /**
-   * 将用户输入转义为 FTS5 分词匹配语法
-   */
-  private escapeFtsQuery(query: string): string {
-    const raw = query.trim()
-    if (!raw) return ''
-
-    try {
-      const segments = Array.from(this.segmenter.segment(raw))
-      const tokens = segments
-        .map(s => s.segment.trim())
-        .filter(s => s.length > 0 && !/^[\s,.:;!?'"()[\]{}]+$/.test(s))
-
-      if (tokens.length === 0) return ''
-
-      return tokens.map((t) => {
-        // 纯英文/数字/下划线/中划线 -> 前缀模糊匹配
-        if (/^[a-zA-Z0-9_\-.]+$/.test(t)) {
-          return `${t}*`
-        }
-        // 中文字符或混合字符 -> 短语精确/词匹配
-        return `"${t.replace(/"/g, '""')}"`
-      }).join(' ')
-    } catch {
-      return `"${raw.replace(/"/g, '""')}"`
     }
   }
 
