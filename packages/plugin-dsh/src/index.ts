@@ -115,7 +115,7 @@ function compressZstd(buffer: Buffer): Buffer {
       maxBuffer: 100 * 1024 * 1024
     })
   } catch (e) {
-    throw new Error(`Failed to compress with zstd: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Failed to compress with zstd: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
 }
 
