@@ -93,6 +93,7 @@ const tagColors: Record<string, string> = {
 }
 const selectedIds = ref<Set<string>>(new Set())
 const isBatchDeleting = ref(false)
+const isBatchDeleteModalOpen = ref(false)
 const isBatchTagging = ref(false)
 const batchTagInput = ref('')
 
@@ -120,32 +121,65 @@ const selectedSessions = computed(() => {
   return sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`))
 })
 
-const toast = useToast()
-const { confirm } = useConfirm()
+const isAllSelected = computed(() => {
+  if (sessions.value.length === 0) return false
+  return sessions.value.every(s => selectedIds.value.has(`${s.cli}::${s.id}`))
+})
 
-const handleBatchDelete = async () => {
-  if (!await confirm({
-    title: `确认删除 ${selectedSessions.value.length} 个会话？`,
-    description: '此操作不可撤销。',
-    danger: true,
-    confirmLabel: '删除'
-  })) return
+const isIndeterminate = computed(() => {
+  const count = sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`)).length
+  return count > 0 && count < sessions.value.length
+})
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    clearSelection()
+  } else {
+    selectAllOnPage()
+  }
+}
+
+const toast = useToast()
+
+const openBatchDeleteConfirm = () => {
+  if (selectedSessions.value.length === 0) return
+  isBatchDeleteModalOpen.value = true
+}
+
+const executeBatchDelete = async () => {
+  if (selectedSessions.value.length === 0) return
   isBatchDeleting.value = true
   try {
     const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
-    const res = await $fetch('/api/sessions/batch-delete', { method: 'POST', body: { items } })
+    const res = await $fetch<{
+      success: boolean
+      data: { successCount: number, failCount: number, errors: string[] }
+    }>('/api/sessions/batch-delete', { method: 'POST', body: { items } })
     if (res.success) {
+      isBatchDeleteModalOpen.value = false
       selectedIds.value = new Set()
       await handleRefresh()
       if (res.data.failCount > 0) {
-        toast.add({ title: `已删除 ${res.data.successCount} 个，${res.data.failCount} 个失败`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+        toast.add({
+          title: `已批量删除 ${res.data.successCount} 个会话，${res.data.failCount} 个失败`,
+          color: 'warning',
+          icon: 'i-lucide-alert-triangle'
+        })
       } else {
-        toast.add({ title: `已删除 ${res.data.successCount} 个会话`, color: 'success', icon: 'i-lucide-check-circle-2' })
+        toast.add({
+          title: `已成功批量删除 ${res.data.successCount} 个会话`,
+          color: 'success',
+          icon: 'i-lucide-check-circle-2'
+        })
       }
     }
   } catch (err) {
     const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
-    toast.add({ title: '批量删除失败: ' + (fetchErr?.data?.message || fetchErr?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
+    toast.add({
+      title: '批量删除失败: ' + (fetchErr?.data?.message || fetchErr?.message || '未知错误'),
+      color: 'error',
+      icon: 'i-lucide-alert-triangle'
+    })
   } finally {
     isBatchDeleting.value = false
   }
@@ -399,138 +433,151 @@ const executeDelete = async () => {
       </div>
 
       <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-        <template v-if="selectedIds.size > 0">
-          <div
-            v-if="selectedIds.size > 0"
-            class="flex items-center gap-2 text-xs"
-          >
-            <span class="font-medium">{{ selectedIds.size }} 个已选</span>
-            <span class="opacity-50">|</span>
-            <button
-              class="hover:underline"
-              @click="clearSelection"
-            >
-              取消选择
-            </button>
-            <span class="opacity-50">|</span>
-            <UButton
-              size="xs"
-              color="error"
-              variant="outline"
-              icon="i-lucide-trash-2"
-              :loading="isBatchDeleting"
-              @click="handleBatchDelete"
-            >
-              删除
-            </UButton>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-download"
-              @click="handleBatchExport('json')"
-            >
-              导出 JSON
-            </UButton>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-file-text"
-              @click="handleBatchExport('markdown')"
-            >
-              导出 Markdown
-            </UButton>
-            <div class="flex items-center gap-1 ml-1">
-              <UInput
-                v-model="batchTagInput"
-                size="xs"
-                placeholder="标签名..."
-                class="w-24"
-                @keyup.enter="handleBatchAddTag"
-              />
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="outline"
-                :loading="isBatchTagging"
-                icon="i-lucide-tag"
-                @click="handleBatchAddTag"
-              >
-                加标签
-              </UButton>
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <UButton
-            icon="i-lucide-database"
-            color="neutral"
-            size="sm"
-            variant="outline"
-            :loading="isSyncing"
-            :disabled="isSyncing"
-            @click="handleCacheSync"
-          >
-            同步
-          </UButton>
-          <span
-            v-if="lastSyncTime"
-            class="text-[10px] text-zinc-400 font-mono whitespace-nowrap hidden md:inline"
-          >
-            {{ lastSyncTime }}
-          </span>
-          <UButton
-            icon="i-lucide-rotate-cw"
-            color="neutral"
-            variant="outline"
-            size="sm"
-            :loading="isRefreshing"
-            @click="handleRefresh"
-          >
-            刷新
-          </UButton>
-        </template>
+        <UButton
+          icon="i-lucide-database"
+          color="neutral"
+          size="sm"
+          variant="outline"
+          :loading="isSyncing"
+          :disabled="isSyncing"
+          @click="handleCacheSync"
+        >
+          同步
+        </UButton>
+        <span
+          v-if="lastSyncTime"
+          class="text-[10px] text-zinc-400 font-mono whitespace-nowrap hidden md:inline"
+        >
+          {{ lastSyncTime }}
+        </span>
+        <UButton
+          icon="i-lucide-rotate-cw"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          :loading="isRefreshing"
+          @click="handleRefresh"
+        >
+          刷新
+        </UButton>
       </div>
     </div>
 
-    <!-- Select All Bar -->
+    <!-- Batch Action Toolbar -->
     <div
-      v-if="!pending && sessions.length > 0 && selectedIds.size === 0"
-      class="flex items-center gap-2 text-[11px] text-zinc-400"
+      v-if="!pending && sessions.length > 0"
+      class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/90 dark:border-zinc-800 text-xs shadow-xs"
     >
-      <button
-        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-        @click="selectAllOnPage"
-      >
-        <UIcon
-          name="i-lucide-check-square"
-          class="w-3.5 h-3.5 inline mr-1"
-        />
-        全选本页
-      </button>
-    </div>
-    <div
-      v-if="!pending && sessions.length > 0 && selectedIds.size > 0"
-      class="flex items-center gap-2 text-[11px] text-zinc-400"
-    >
-      <button
-        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-        @click="clearSelection"
-      >
-        <UIcon
-          name="i-lucide-square"
-          class="w-3.5 h-3.5 inline mr-1"
-        />
-        取消选择
-      </button>
-      <span class="text-zinc-300 dark:text-zinc-600">|</span>
-      <button
-        class="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-        @click="selectAllOnPage"
-      >
-        全选本页 ({{ sessions.length }})
-      </button>
+      <!-- 左侧：全选与选中计数 -->
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="flex items-center gap-2 text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:white transition-colors cursor-pointer select-none"
+          @click="toggleSelectAll"
+        >
+          <div
+            class="w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0"
+            :class="isAllSelected
+              ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100 text-white dark:text-zinc-900 shadow-xs'
+              : isIndeterminate
+                ? 'bg-zinc-300 dark:bg-zinc-700 border-zinc-400 dark:border-zinc-500'
+                : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500 bg-white dark:bg-zinc-800'"
+          >
+            <UIcon
+              v-if="isAllSelected"
+              name="i-lucide-check"
+              class="w-3 h-3 stroke-[3]"
+            />
+            <div
+              v-else-if="isIndeterminate"
+              class="w-2 h-0.5 bg-zinc-700 dark:bg-zinc-200 rounded-full"
+            />
+          </div>
+          <span class="font-medium text-xs">
+            全选本页 <span class="text-zinc-400 font-normal">({{ sessions.length }})</span>
+          </span>
+        </button>
+
+        <span
+          v-if="selectedIds.size > 0"
+          class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 tracking-tight"
+        >
+          已选 {{ selectedIds.size }} 项
+        </span>
+        <button
+          v-if="selectedIds.size > 0"
+          class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline text-xs"
+          @click="clearSelection"
+        >
+          取消选择
+        </button>
+      </div>
+
+      <!-- 右侧：批量操作区 -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <template v-if="selectedIds.size > 0">
+          <UButton
+            size="xs"
+            color="error"
+            variant="solid"
+            icon="i-lucide-trash-2"
+            :loading="isBatchDeleting"
+            class="font-medium shadow-xs"
+            @click="openBatchDeleteConfirm"
+          >
+            批量删除 ({{ selectedIds.size }})
+          </UButton>
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-download"
+            class="font-medium bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 shadow-2xs"
+            @click="handleBatchExport('json')"
+          >
+            导出 JSON
+          </UButton>
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-file-text"
+            class="font-medium bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 shadow-2xs"
+            @click="handleBatchExport('markdown')"
+          >
+            导出 Markdown
+          </UButton>
+          <div class="flex items-center gap-1 ml-0.5">
+            <UInput
+              v-model="batchTagInput"
+              size="xs"
+              placeholder="标签名..."
+              class="w-24"
+              @keyup.enter="handleBatchAddTag"
+            />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              :loading="isBatchTagging"
+              icon="i-lucide-tag"
+              class="font-medium bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 shadow-2xs"
+              @click="handleBatchAddTag"
+            >
+              打标签
+            </UButton>
+          </div>
+        </template>
+        <template v-else>
+          <span class="text-[11px] text-zinc-400 flex items-center gap-1.5">
+            <UIcon
+              name="i-lucide-mouse-pointer-click"
+              class="w-3.5 h-3.5 opacity-60"
+            />
+            勾选卡片复选框或点击“全选本页”，即可执行批量删除与管理
+          </span>
+        </template>
+      </div>
     </div>
 
     <!-- Sessions List -->
@@ -592,7 +639,12 @@ const executeDelete = async () => {
         <div
           v-for="item in sessions"
           :key="`${item.cli}-${item.id}`"
-          class="group bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-sm transition-all flex flex-col justify-between overflow-hidden"
+          :class="[
+            'group bg-white dark:bg-zinc-900 rounded-lg border transition-all flex flex-col justify-between overflow-hidden shadow-sm',
+            selectedIds.has(`${item.cli}::${item.id}`)
+              ? 'border-zinc-900 dark:border-zinc-100 ring-2 ring-zinc-900/15 dark:ring-zinc-100/20 bg-zinc-50/50 dark:bg-zinc-800/30'
+              : 'border-zinc-200 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700'
+          ]"
         >
           <div
             class="p-4 flex-1 cursor-pointer"
@@ -602,16 +654,17 @@ const executeDelete = async () => {
             <div class="flex items-center justify-between mb-2.5 gap-2">
               <div class="flex items-center gap-1.5">
                 <div
-                  class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
+                  class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0 hover:scale-110"
                   :class="selectedIds.has(`${item.cli}::${item.id}`)
-                    ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100'
-                    : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500'"
+                    ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100 text-white dark:text-zinc-900 shadow-xs'
+                    : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500 bg-white/70 dark:bg-zinc-800/70'"
+                  title="勾选此会话以进行批量操作"
                   @click.stop="toggleSelect(item)"
                 >
                   <UIcon
                     v-if="selectedIds.has(`${item.cli}::${item.id}`)"
                     name="i-lucide-check"
-                    class="w-3 h-3 text-white dark:text-zinc-900"
+                    class="w-3 h-3 stroke-[3]"
                   />
                 </div>
                 <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
@@ -837,5 +890,138 @@ const executeDelete = async () => {
         </div>
       </template>
     </UModal>
+    <!-- Batch Delete Confirmation Modal -->
+    <UModal
+      v-model:open="isBatchDeleteModalOpen"
+      :ui="{ content: 'max-w-md' }"
+    >
+      <template #content>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center gap-2.5 text-red-600">
+            <UIcon
+              name="i-lucide-alert-triangle"
+              class="w-5 h-5 shrink-0"
+            />
+            <h3 class="text-base font-bold text-zinc-900 dark:text-white">
+              确认批量删除 {{ selectedSessions.length }} 个会话？
+            </h3>
+          </div>
+
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+            此操作将彻底删除所选会话在本地磁盘上的源文件、SQLite 缓存索引与诊断记录，<span class="font-semibold text-red-600 dark:text-red-400">操作不可撤销</span>。
+          </p>
+
+          <!-- 待删除会话预览列表 -->
+          <div class="max-h-48 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/40 p-2 space-y-1.5">
+            <div
+              v-for="s in selectedSessions.slice(0, 5)"
+              :key="`${s.cli}::${s.id}`"
+              class="flex items-center justify-between text-xs py-1 px-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+            >
+              <div class="flex items-center gap-1.5 truncate mr-2">
+                <UIcon
+                  :name="getPluginMeta(s.cli).icon"
+                  class="w-3.5 h-3.5 shrink-0 text-zinc-400"
+                />
+                <span class="truncate font-medium text-zinc-700 dark:text-zinc-300">{{ s.title }}</span>
+              </div>
+              <span class="font-mono text-[10px] text-zinc-400 shrink-0 uppercase">{{ s.cli }}</span>
+            </div>
+            <div
+              v-if="selectedSessions.length > 5"
+              class="text-[11px] text-center text-zinc-400 pt-1 border-t border-zinc-200 dark:border-zinc-800"
+            >
+              ... 以及其余 {{ selectedSessions.length - 5 }} 个会话
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-1">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              :disabled="isBatchDeleting"
+              @click="isBatchDeleteModalOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              color="error"
+              size="sm"
+              icon="i-lucide-trash-2"
+              :loading="isBatchDeleting"
+              @click="executeBatchDelete"
+            >
+              确认批量删除 ({{ selectedSessions.length }})
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Floating Batch Action Bar (Sticky at bottom) -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="transform translate-y-12 opacity-0"
+      enter-to-class="transform translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100"
+      leave-to-class="transform translate-y-12 opacity-0"
+    >
+      <div
+        v-if="selectedIds.size > 0"
+        class="dark fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-zinc-900/95 dark:bg-zinc-800/95 text-white backdrop-blur shadow-2xl border border-zinc-700/60 max-w-[92vw]"
+      >
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span class="text-xs font-semibold">已选 {{ selectedIds.size }} 个会话</span>
+        </div>
+
+        <div class="h-4 w-px bg-zinc-700 shrink-0" />
+
+        <div class="flex items-center gap-2 overflow-x-auto">
+          <UButton
+            size="xs"
+            color="error"
+            variant="solid"
+            icon="i-lucide-trash-2"
+            class="font-medium shrink-0 shadow-xs"
+            :loading="isBatchDeleting"
+            @click="openBatchDeleteConfirm"
+          >
+            批量删除 ({{ selectedIds.size }})
+          </UButton>
+
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-download"
+            class="shrink-0 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-100 hover:text-white border border-zinc-700/80 font-medium"
+            @click="handleBatchExport('json')"
+          >
+            导出 JSON
+          </UButton>
+
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-file-text"
+            class="shrink-0 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-100 hover:text-white border border-zinc-700/80 font-medium"
+            @click="handleBatchExport('markdown')"
+          >
+            导出 MD
+          </UButton>
+
+          <button
+            class="text-xs text-zinc-400 hover:text-zinc-200 underline shrink-0 ml-1 cursor-pointer"
+            @click="clearSelection"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>

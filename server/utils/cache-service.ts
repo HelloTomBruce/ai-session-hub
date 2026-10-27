@@ -1006,6 +1006,11 @@ class CacheService {
         this.db!.prepare('DELETE FROM fts_messages WHERE session_id = ?').run(sessionId)
         this.db!.prepare('DELETE FROM messages_cache WHERE session_id = ? AND platform = ?').run(sessionId, platform)
         this.db!.prepare('DELETE FROM sessions_cache WHERE id = ? AND platform = ?').run(sessionId, platform)
+        try {
+          this.db!.prepare('DELETE FROM session_diagnoses WHERE session_id = ? AND platform = ?').run(sessionId, platform)
+        } catch {
+          // 容错：表可能尚未初始化
+        }
       })
       tx()
       return true
