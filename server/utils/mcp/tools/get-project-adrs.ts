@@ -6,6 +6,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const GetProjectAdrsTool: McpToolDefinition = {
   name: 'get_project_adrs',
+  wrapsUntrusted: true,
   description: '获取指定工作区目录或全局所有的架构决策记录 (ADR)',
   inputSchema: {
     type: 'object',

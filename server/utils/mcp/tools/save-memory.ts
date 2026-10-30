@@ -2,6 +2,7 @@ import { mcpLogger } from '../../mcp-logger'
 import { memoryService } from '../../memory-service'
 import type { ProblemEntity, ProjectEntity, TechConceptEntity } from '../../memory-types'
 
+import { findSecretIn, secretRefusal } from '../secret-guard'
 import type { McpToolDefinition } from '../tool-types'
 
 export const SaveMemoryTool: McpToolDefinition = {
@@ -86,6 +87,23 @@ export const SaveMemoryTool: McpToolDefinition = {
     const techConcepts = (args.techConcepts as TechConceptEntity[]) || []
     const problems = (args.problems as ProblemEntity[]) || []
     const supersededIds = (args.supersededIds as string[]) || []
+
+    // 密钥守卫：记忆入库后会被召回回传给其他 Agent，疑似凭据一律拒绝
+    const finding = findSecretIn([title, summary, content])
+    if (finding) {
+      mcpLogger.addLog({
+        type: 'tool',
+        name,
+        params: args,
+        status: 'error',
+        durationMs: Date.now() - startTime,
+        error: `Blocked by secret guard: ${finding.kind}`
+      })
+      return {
+        content: [{ type: 'text', text: secretRefusal(finding) }],
+        isError: true
+      }
+    }
 
     // P1 统一去重管线：与评估沉淀/手动提炼/capture_session_insight 同一入口
     const { item: saved, dedup } = await memoryService.saveMemoryWithDedup({

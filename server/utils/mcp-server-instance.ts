@@ -8,19 +8,24 @@ import {
 import { adapterRegistry } from './adapter-registry'
 import { mcpLogger } from './mcp-logger'
 import { knowledgeService } from './knowledge-service'
+import { fenceToolResult } from './mcp/data-fence'
+import { MCP_AUTONOMY_PROTOCOL } from './mcp/instructions'
 import { mcpTools } from './mcp/tools'
 
 export function createMcpServer() {
   const server = new Server(
     {
       name: 'ai-session-hub-mcp',
-      version: '1.1.0'
+      version: '1.2.0'
     },
     {
       capabilities: {
         tools: {},
         resources: {}
-      }
+      },
+      // Agent 自主使用协议：随 initialize 下发，宿主将其注入系统提示词，
+      // 使 Agent 在任务开始/报错/沉淀等时机自主使用记忆工具
+      instructions: MCP_AUTONOMY_PROTOCOL
     }
   )
 
@@ -43,7 +48,9 @@ export function createMcpServer() {
       if (!tool) {
         throw new Error(`未知的 MCP 工具: ${name}`)
       }
-      return await tool.handler({ args, name, startTime })
+      const result = await tool.handler({ args, name, startTime })
+      // 召回/检索类工具输出含会话原文等不可信内容，出口统一围栏
+      return fenceToolResult(tool, result)
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err)
       mcpLogger.addLog({

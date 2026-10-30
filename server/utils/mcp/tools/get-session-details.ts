@@ -6,6 +6,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const GetSessionDetailsTool: McpToolDefinition = {
   name: 'get_session_details',
+  wrapsUntrusted: true,
   description: '获取指定会话的完整对话历史记录、思考链路（Thinking）与工具调用数据',
   inputSchema: {
     type: 'object',

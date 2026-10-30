@@ -5,6 +5,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const RecallMemoriesTool: McpToolDefinition = {
   name: 'recall_memories',
+  wrapsUntrusted: true,
   description: '从基于 Grafeo 图数据库的本地记忆库中，按工作区路径、涉及的技术栈、关键词或记忆分类召回相关经验、避坑指南 (Gotchas) 与架构决策 (ADRs)。返回摘要级信息（id/title/summary/置信度/实体标签，不含正文与代码片段）；需要完整内容时用 get_memory 按 id 拉取。',
   inputSchema: {
     type: 'object',

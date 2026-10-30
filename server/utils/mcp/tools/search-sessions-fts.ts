@@ -6,6 +6,7 @@ import { ALL_PLATFORMS } from '../tool-types'
 
 export const SearchSessionsFtsTool: McpToolDefinition = {
   name: 'search_sessions_fts',
+  wrapsUntrusted: true,
   description: '对本地所有 12+ 个 AI 编码工具的历史会话正文、工具调用、代码修改文件与思考链进行全库全文检索（FTS5 + 中英文智能分词），快速找回历史上下文与报错解决记录',
   inputSchema: {
     type: 'object',

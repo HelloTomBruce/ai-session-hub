@@ -5,6 +5,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const SearchMemoryGraphTool: McpToolDefinition = {
   name: 'search_memory_graph',
+  wrapsUntrusted: true,
   description: '获取 Grafeo 知识图谱的拓扑实体关系网络（包含 Memory、Project、TechConcept、Problem 节点及关联边）',
   inputSchema: {
     type: 'object',

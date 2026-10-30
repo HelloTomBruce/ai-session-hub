@@ -5,6 +5,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const SearchKnowledgeVaultTool: McpToolDefinition = {
   name: 'search_knowledge_vault',
+  wrapsUntrusted: true,
   description: '检索 Session Hub 知识金库 (Knowledge Vault) 中的架构决策(ADR)、避坑经验(Gotcha)、设计模式(Pattern)与里程碑(Milestone)',
   inputSchema: {
     type: 'object',

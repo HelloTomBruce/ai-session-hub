@@ -22,5 +22,10 @@ export interface McpToolDefinition {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  /**
+   * 声明工具输出包含会话原文/LLM 生成的不可信内容：分发层会将其文本输出
+   * 包进随机 tag 围栏（data-fence.ts），防存储文本中的提示词注入。
+   */
+  wrapsUntrusted?: boolean
   handler: (ctx: McpToolContext) => Promise<McpToolResult>
 }

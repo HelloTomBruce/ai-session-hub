@@ -204,9 +204,17 @@ Session Hub 原生支持 MCP (Model Context Protocol) 服务端协议，提供�
 
 配置后，AI 即可在对话中直接调用 Session Hub 检索跨工具的会话上下文、排错经验与 ADR 架构决策！
 
+### Agent 自主使用协议（initialize.instructions）
+
+握手时服务端会随 `initialize.instructions` 下发一份精简行为协议（`server/utils/mcp/instructions.ts`），支持该字段的客户端会将其注入系统提示词，让 Agent **无需用户提醒**便在正确时机自主使用记忆工具：实质性任务开始前 `recall_memories`、报错时先查 Gotcha 再全文检索、完成后 `save_memory` 沉淀、消费后 `rate_memory` 反馈。
+
+配套两层安全机制（`server/utils/mcp/`）：
+- **数据围栏（data-fence.ts）**：召回/检索类工具（`wrapsUntrusted` 标记的 7 个）的文本输出被随机 tag 的 `BEGIN/END STORED MEMORY` 围栏包裹，围栏内为历史数据而非指令——存储文本中的提示词注入无法逃逸冒充服务器话语
+- **密钥守卫（secret-guard.ts）**：`save_memory` / `capture_session_insight` 写入前检测 OpenAI/GitHub/GitLab/AWS/Slack 私钥与 JWT 形态，命中即拒绝入库（防止凭据被召回回传给其他 Agent），不提供绕过
+
 ### 配套 Agent Skill（推荐）
 
-MCP 工具描述只告诉 Agent「每个工具是什么」，而 [`skills/session-hub/SKILL.md`](skills/session-hub/SKILL.md) 教会 Agent「什么时候用、按什么流程用」：记忆召回的两级模式（recall 摘要 → 按需 get 详情）、沉淀规范、会话检索流程与常见错误。
+MCP 工具描述告诉 Agent「每个工具是什么」，握手下发的自主使用协议约定「什么时候用」，而 [`skills/session-hub/SKILL.md`](skills/session-hub/SKILL.md) 是「详细操作手册」：记忆召回的两级模式（recall 摘要 → 按需 get 详情）、沉淀字段规范、会话检索流程与常见错误。
 
 安装（以支持 Agent Skills 的客户端为例）：
 ```bash

@@ -5,6 +5,7 @@ import type { McpToolDefinition } from '../tool-types'
 
 export const GetMemoryTool: McpToolDefinition = {
   name: 'get_memory',
+  wrapsUntrusted: true,
   description: '按 id 获取记忆的完整内容：完整正文 (content)、代码片段 (snippets)、全部实体关联 (projects/techConcepts/problems) 及演进链 (SUPERSEDES)。通常先通过 recall_memories 召回拿到 id，再用此工具拉取详情。',
   inputSchema: {
     type: 'object',

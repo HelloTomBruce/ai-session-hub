@@ -3,6 +3,7 @@ import { mcpLogger } from '../../mcp-logger'
 import { knowledgeHarvest } from '../../knowledge-harvest'
 import type { PlatformType } from '../../types'
 
+import { findSecretIn, secretRefusal } from '../secret-guard'
 import type { McpToolDefinition } from '../tool-types'
 
 export const CaptureSessionInsightTool: McpToolDefinition = {
@@ -59,6 +60,23 @@ export const CaptureSessionInsightTool: McpToolDefinition = {
     const tags = (args.tags as string[]) || []
     const sessionId = (args.sessionId as string) || undefined
     const platform = (args.platform as PlatformType) || 'pi'
+
+    // 密钥守卫：资产内容来自会话，疑似凭据一律拒绝入库
+    const finding = findSecretIn([title, summary, solution])
+    if (finding) {
+      mcpLogger.addLog({
+        type: 'tool',
+        name,
+        params: args,
+        status: 'error',
+        durationMs: Date.now() - startTime,
+        error: `Blocked by secret guard: ${finding.kind}`
+      })
+      return {
+        content: [{ type: 'text', text: secretRefusal(finding) }],
+        isError: true
+      }
+    }
 
     // 关联会话信息（标题/工作区）；找不到时静默降级为无会话手工资产
     let sessionTitle: string | undefined
