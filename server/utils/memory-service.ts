@@ -16,6 +16,27 @@ import type {
 /** 同键写入互斥（内存级）：防止并发 saveMemoryWithDedup 双双 miss 产生重复节点 */
 const memoryWriteChains = new Map<string, Promise<unknown>>()
 
+/**
+ * 召回查询分词：空白切分 + Intl.Segmenter 细分中文词（与 FTS 索引侧同思路）。
+ * 修复前 query 按整串 substring 匹配，自然语言多词查询（"Grafeo 锁"）几乎必然落空。
+ */
+const querySegmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' })
+
+export function tokenizeRecallQuery(query: string): string[] {
+  const tokens = new Set<string>()
+  for (const chunk of query.toLowerCase().split(/\s+/)) {
+    if (!chunk) continue
+    // 原始分块原样保留：词典未收录的连写词（如「挂起进程」被切成 挂|起|进程）仍可整串命中
+    if (chunk.length >= 2) tokens.add(chunk)
+    for (const seg of querySegmenter.segment(chunk)) {
+      const word = seg.segment.trim().toLowerCase()
+      if (word.length >= 2) tokens.add(word)
+    }
+  }
+  // 单字查询（如"锁"）分词后为空，回退原始整串，保留旧语义
+  return tokens.size > 0 ? Array.from(tokens) : [query.trim().toLowerCase()].filter(Boolean)
+}
+
 export async function withMemoryWriteLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = memoryWriteChains.get(key) ?? Promise.resolve()
   const next = prev.catch(() => {}).then(fn)
@@ -545,18 +566,23 @@ class MemoryService {
         items.push(item)
       }
 
-      // 客户端/内存层关键词模糊过滤（应对混合检索）
+      // 客户端/内存层关键词模糊过滤（应对混合检索）：分词后 OR 匹配，
+      // 任一词元命中任一字段即保留（多词自然语言查询不再要求整串连续出现）
       if (options.search) {
-        const q = options.search.toLowerCase()
-        items = items.filter(
-          item =>
-            item.title.toLowerCase().includes(q)
-            || item.summary.toLowerCase().includes(q)
-            || item.content.toLowerCase().includes(q)
-            || item.tags.some(t => t.toLowerCase().includes(q))
-            || item.techConcepts.some(t => t.name.toLowerCase().includes(q))
-            || item.problems.some(p => p.title.toLowerCase().includes(q))
-        )
+        const tokens = tokenizeRecallQuery(options.search)
+        if (tokens.length > 0) {
+          items = items.filter((item) => {
+            const haystacks = [
+              item.title,
+              item.summary,
+              item.content,
+              item.tags.join(' '),
+              item.techConcepts.map(t => t.name).join(' '),
+              item.problems.map(p => p.title).join(' ')
+            ].map(f => f.toLowerCase())
+            return tokens.some(tok => haystacks.some(h => h.includes(tok)))
+          })
+        }
       }
 
       const total = items.length
