@@ -163,16 +163,38 @@ export class AgyPlugin implements SessionPlugin {
       try {
         db = this.getDb(false)
         db.prepare(`DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(id)
+        try {
+          db.prepare(`DELETE FROM conversations_fts WHERE conversation_id = ?`).run(id)
+        } catch {
+          // ignore fts virtual table delete failure
+        }
       } catch {
         // ignore
       } finally {
         if (db) db.close()
       }
     }
-    const convDb = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversations', `${id}.db`)
-    if (fs.existsSync(convDb)) fs.unlinkSync(convDb)
+
+    const convDir = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'conversations')
+    for (const ext of ['.db', '.db-wal', '.db-shm']) {
+      const convDbFile = path.join(convDir, `${id}${ext}`)
+      if (fs.existsSync(convDbFile)) {
+        try {
+          fs.unlinkSync(convDbFile)
+        } catch {
+          // ignore lock/permission failure
+        }
+      }
+    }
+
     const brainDir = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain', id)
-    if (fs.existsSync(brainDir)) fs.rmSync(brainDir, { recursive: true, force: true })
+    if (fs.existsSync(brainDir)) {
+      try {
+        fs.rmSync(brainDir, { recursive: true, force: true })
+      } catch {
+        // ignore removal failure
+      }
+    }
     return true
   }
 

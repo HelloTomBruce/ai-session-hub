@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 8
+export const SCHEMA_VERSION = 9
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -12,6 +12,16 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- 已删除会话墓碑表 (Tombstone)：记录用户主动删除的会话，防止 CLI 底层（如 AGY 对账、云端同步等）在后续同步中复活
+CREATE TABLE IF NOT EXISTS deleted_sessions (
+  id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  deleted_at INTEGER NOT NULL,
+  PRIMARY KEY (id, platform)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deleted_sessions_platform ON deleted_sessions(platform);
 
 -- 会话缓存
 CREATE TABLE IF NOT EXISTS sessions_cache (

@@ -44,6 +44,12 @@ export default defineEventHandler((event) => {
 
   // 回退到直接读取 Adapter
   let list = getAllSessions(cli)
+  if (cacheService.isAvailable()) {
+    const deletedSet = cacheService.getDeletedSessionIds(cli)
+    if (deletedSet.size > 0) {
+      list = list.filter(item => !deletedSet.has(`${item.cli}:${item.id}`))
+    }
+  }
 
   // 回退模式下如果指定了标签过滤，不支持直接返回空
   if (tagFilter) {

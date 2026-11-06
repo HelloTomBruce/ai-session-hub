@@ -376,6 +376,7 @@ class CacheService {
     let errors = 0
 
     const plugins = pluginManager.getActivePlugins()
+    const deletedSessionIds = this.getDeletedSessionIds()
 
     for (const plugin of plugins) {
       if (!plugin.isAvailable()) continue
@@ -385,6 +386,11 @@ class CacheService {
         totalSessions += sessions.length
 
         for (const session of sessions) {
+          // 跳过已被标记删除的会话，防止底层 CLI 对账或云同步自动复活
+          if (deletedSessionIds.has(`${session.cli}:${session.id}`)) {
+            continue
+          }
+
           const newHash = this.computeHash(session)
           const row = this.db!.prepare(
             'SELECT data_hash FROM sessions_cache WHERE id = ? AND platform = ?'
@@ -538,6 +544,9 @@ class CacheService {
     messages: SessionMessage[]
   } {
     this.init()
+    if (this.isSessionDeleted(id, platform)) {
+      return { session: null, messages: [] }
+    }
     const detail = pluginManager.getMessages(platform, id)
     if (!detail.session || !this.db) {
       return detail
@@ -1011,11 +1020,66 @@ class CacheService {
         } catch {
           // 容错：表可能尚未初始化
         }
+        try {
+          this.db!.prepare(
+            'INSERT OR REPLACE INTO deleted_sessions (id, platform, deleted_at) VALUES (?, ?, ?)'
+          ).run(sessionId, platform, Date.now())
+        } catch {
+          // 容错：表可能尚未初始化
+        }
       })
       tx()
       return true
     } catch (err) {
       console.error('[Cache] Error deleting from cache:', err)
+      return false
+    }
+  }
+
+  /**
+   * 检查会话是否已被标记为删除（墓碑状态）
+   */
+  isSessionDeleted(sessionId: string, platform: string): boolean {
+    this.init()
+    if (!this.db) return false
+    try {
+      const row = this.db.prepare('SELECT 1 FROM deleted_sessions WHERE id = ? AND platform = ?').get(sessionId, platform)
+      return Boolean(row)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 获取所有已被用户删除的会话集合，格式为 Set<'platform:id'>
+   */
+  getDeletedSessionIds(platform?: string): Set<string> {
+    this.init()
+    const set = new Set<string>()
+    if (!this.db) return set
+    try {
+      const rows = platform
+        ? (this.db.prepare('SELECT id, platform FROM deleted_sessions WHERE platform = ?').all(platform) as Array<{ id: string, platform: string }>)
+        : (this.db.prepare('SELECT id, platform FROM deleted_sessions').all() as Array<{ id: string, platform: string }>)
+      for (const row of rows) {
+        set.add(`${row.platform}:${row.id}`)
+      }
+    } catch {
+      // 容错
+    }
+    return set
+  }
+
+  /**
+   * 恢复被标记为删除的会话（撤销墓碑）
+   */
+  restoreDeletedSession(sessionId: string, platform: string): boolean {
+    this.init()
+    if (!this.db) return false
+    try {
+      this.db.prepare('DELETE FROM deleted_sessions WHERE id = ? AND platform = ?').run(sessionId, platform)
+      return true
+    } catch {
       return false
     }
   }
