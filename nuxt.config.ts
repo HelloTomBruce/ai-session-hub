@@ -37,7 +37,9 @@ export default defineNuxtConfig({
   fonts: {
     providers: {
       google: false,
-      googleicons: false
+      googleicons: false,
+      // jsdelivr CDN 网络不可达，改用本地 @fontsource-variable/public-sans（见 main.css）
+      fontsource: false
     }
   },
 

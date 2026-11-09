@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+/* 本地 variable 字体，替代 @nuxt/fonts 的 fontsource CDN（jsdelivr 不可达） */
+@import "@fontsource-variable/public-sans";
 
 @theme static {
-  --font-sans: 'Public Sans', sans-serif;
+  --font-sans: 'Public Sans Variable', sans-serif;
 }
