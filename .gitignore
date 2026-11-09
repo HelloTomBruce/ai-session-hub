@@ -32,3 +32,6 @@ graphify-out
 
 # Demo video recordings
 recordings
+
+# Browser debugging artifacts (dsh screenshots)
+.dsh-browser
