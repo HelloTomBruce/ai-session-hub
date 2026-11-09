@@ -5,7 +5,7 @@ const { isOpen, options, resolveConfirm } = useConfirm()
 <template>
   <UModal
     :open="isOpen"
-    :ui="{ content: 'max-w-sm' }"
+    :ui="{ content: 'max-w-sm z-[80]', overlay: 'z-[80]' }"
     @update:open="(v) => !v && resolveConfirm(false)"
   >
     <template #content>
