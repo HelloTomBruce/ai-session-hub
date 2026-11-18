@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { cacheService } from './cache-service'
 import { memoryService } from './memory-service'
 import { extractMemoryFromSession, buildMessagesContent } from './memory-extractor'
@@ -64,34 +66,52 @@ class AutoHarvestService {
   }
 
   /**
-   * 检查会话是否值得交给 LLM 提炼（低价值预过滤，节约 Token 与时间）
+   * 检查会话是否值得交给 LLM 提炼（摩擦与避坑事件驱动过滤，杜绝日常琐碎业务增改污染知识库）
    */
   isCandidateForHarvest(session: UnifiedSession, messages: SessionMessage[]): { pass: boolean, reason?: string } {
     if (!messages || messages.length < 3) {
       return { pass: false, reason: '会话消息过短 (少于 3 条)' }
     }
 
-    let hasSubstantialAction = false
-    let hasTools = false
-    let codeBlockCount = 0
+    const title = (session.title || '').toLowerCase()
+
+    // 1. 标题高价值技术关键词嗅探
+    const highValueTitlePattern = /(排查|踩坑|报错|异常|修复|解决|重构|配置|升级|架构|工作流|集成|接入|规范|gotcha|bug|fix|error|issue)/i
+    const isHighValueTitle = highValueTitlePattern.test(title)
+
+    // 2. 检查是否有核心基建/配置文件改动
+    const configFilePattern = /(package\.json|tsconfig.*\.json|nuxt\.config|vite\.config|webpack\.config|dockerfile|docker-compose|\.env|cargo\.toml|go\.mod|makefile|\.config\.(ts|js|mjs))/i
+    let touchesConfigFile = false
+
+    // 3. 检查是否有报错排查动作（Error-Fix Loop）
+    const errorPattern = /(error|failed|exception|exit code [1-9]|typeerror|referenceerror|syntaxerror|enoent|eacces|找不到模块|编译失败|运行报错)/i
+    let hasErrorSignal = false
+    let hasToolAction = false
 
     for (const msg of messages) {
       if (msg.toolCalls && msg.toolCalls.length > 0) {
-        hasTools = true
-        hasSubstantialAction = true
-        break
-      }
-      if (msg.content && msg.content.includes('```')) {
-        codeBlockCount++
-        if (codeBlockCount >= 2) {
-          hasSubstantialAction = true
-          break
+        hasToolAction = true
+        for (const tc of msg.toolCalls) {
+          const argsStr = typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments || tc.args || tc.input || '')
+          if (configFilePattern.test(argsStr)) {
+            touchesConfigFile = true
+          }
         }
+      }
+
+      const text = `${msg.content || ''} ${msg.thought || ''}`
+      if (errorPattern.test(text)) {
+        hasErrorSignal = true
       }
     }
 
-    if (!hasSubstantialAction) {
-      return { pass: false, reason: '未检测到工具调用或实质代码改动，属低密度对话' }
+    if (!hasToolAction) {
+      return { pass: false, reason: '未检测到实质工具执行或代码改动，属纯对话' }
+    }
+
+    // 核心准入条件：满足 (报错排错闭环) OR (修改核心基建配置) OR (高价值技术排障标题)
+    if (!hasErrorSignal && !touchesConfigFile && !isHighValueTitle) {
+      return { pass: false, reason: '未检测到排错踩坑或关键基建配置改动，属日常业务增改，无需沉淀' }
     }
 
     return { pass: true }
@@ -272,6 +292,10 @@ class AutoHarvestService {
       )
 
       const savedItem = saveResult.item
+
+      // 双写机制：自动将高价值经验追加到当前项目的 .agents/gotchas.md，开发者 git diff 立即可见
+      this.dualWriteToLocalProject(session.cwd, savedItem)
+
       const record: HarvestRecord = {
         sessionId,
         platform,
@@ -441,6 +465,49 @@ class AutoHarvestService {
         confidence: r.confidence,
         updatedAt: r.updated_at
       }))
+    }
+  }
+
+  /**
+   * 双写机制：将提炼出的高价值经验追加到所属项目的 .agents/gotchas.md，开发者 git diff 立即可见
+   */
+  private dualWriteToLocalProject(cwd: string | undefined, item: MemoryGraphItem) {
+    if (!cwd || typeof cwd !== 'string') return
+    try {
+      if (!fs.existsSync(cwd)) return
+
+      const agentsDir = path.join(cwd, '.agents')
+      if (!fs.existsSync(agentsDir)) {
+        fs.mkdirSync(agentsDir, { recursive: true })
+      }
+
+      const gotchaFile = path.join(agentsDir, 'gotchas.md')
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const existing = fs.existsSync(gotchaFile) ? fs.readFileSync(gotchaFile, 'utf-8') : '# 项目避坑与关键经验指南 (AI Session Hub 自动沉淀)\n'
+
+      // 防止同一标题重复追加
+      if (existing.includes(item.title)) return
+
+      const lines: string[] = [
+        `\n### 💡 [${dateStr}] ${item.title}`,
+        `- **分类**: ${item.type || 'Gotcha'}`,
+        `- **摘要**: ${item.summary || item.title}`
+      ]
+
+      if (item.problems && item.problems.length > 0) {
+        lines.push(`- **报错现象**: ${item.problems.map(p => p.symptom || p.title).join('; ')}`)
+      }
+
+      if (item.snippets && item.snippets.length > 0 && item.snippets[0]) {
+        const s = item.snippets[0]
+        lines.push(`- **关键解法/配置**:`)
+        lines.push(`\`\`\`${s.language || 'ts'}\n${(s.code || '').trim()}\n\`\`\``)
+      }
+
+      fs.writeFileSync(gotchaFile, existing.trimEnd() + '\n' + lines.join('\n') + '\n', 'utf-8')
+    } catch (err) {
+      // 本地写盘失败不阻断主流程
+      console.warn('[AutoHarvest] Dual-write to local .agents/gotchas.md skipped:', err)
     }
   }
 
