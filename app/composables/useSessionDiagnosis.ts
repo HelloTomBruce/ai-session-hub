@@ -33,7 +33,7 @@ interface AIDiagnosisResult {
  * 会话效能诊断：本地磁盘缓存报告加载、SSE 流式诊断、
  * 诊断结果优先 / 否则确定性规则引擎兜底的效能分析。
  */
-export async function useSessionDiagnosis(
+export function useSessionDiagnosis(
   sessionId: ComputedRef<string>,
   platform: ComputedRef<string>,
   messagesRef: MaybeRefOrGetter<SessionMessage[]>
@@ -44,14 +44,14 @@ export async function useSessionDiagnosis(
   const isDiagnosing = ref(false)
   const aiDiagnosisResult = ref<AIDiagnosisResult | null>(null)
 
-  // Auto-load saved diagnosis report from local disk cache
-  const { data: cachedDiagnosisRes } = await useFetch<{ success: boolean, hasSavedReport: boolean, data: AIDiagnosisResult }>(
+  // 磁盘缓存诊断报告非阻塞加载：不 await，避免拖慢详情页首屏导航
+  useFetch<{ success: boolean, hasSavedReport: boolean, data: AIDiagnosisResult }>(
     () => `/api/sessions/${sessionId.value}/diagnose?cli=${platform.value}`
-  )
-
-  if (cachedDiagnosisRes.value?.data) {
-    aiDiagnosisResult.value = cachedDiagnosisRes.value.data
-  }
+  ).then(({ data: cachedDiagnosisRes }) => {
+    if (cachedDiagnosisRes.value?.data) {
+      aiDiagnosisResult.value = cachedDiagnosisRes.value.data
+    }
+  })
 
   const diagnoseStatus = ref('')
   const diagnoseStreamText = ref('')

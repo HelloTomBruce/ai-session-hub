@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { SessionMessage, UnifiedSession } from '../../../server/utils/types'
+import type { Ref } from 'vue'
+import type { SessionMessage, SessionToolCall, UnifiedSession } from '../../../server/utils/types'
 
 interface SessionDetailData {
   session: UnifiedSession
@@ -16,8 +17,11 @@ const isRefreshing = ref(false)
 
 const { getPluginMeta } = usePlugins()
 
-const { data: sessionRes, pending, refresh } = await useFetch<{ success: boolean, data: SessionDetailData }>(
-  () => `/api/sessions/${sessionId.value}?cli=${platform.value}`
+// lazy 加载：导航立即完成，页面壳与 loading 先渲染，数据到达后再填充，
+// 避免大数据量会话阻塞路由切换（配合 /sessions/** 的 ssr:false）
+const { data: sessionRes, pending, refresh } = useFetch<{ success: boolean, data: SessionDetailData }>(
+  () => `/api/sessions/${sessionId.value}?cli=${platform.value}`,
+  { lazy: true }
 )
 
 const session = computed(() => sessionRes.value?.data?.session)
@@ -47,10 +51,119 @@ const {
   diagnoseStreamText,
   runAIDiagnosis,
   efficiencyAnalysis
-} = await useSessionDiagnosis(sessionId, platform, messages)
+} = useSessionDiagnosis(sessionId, platform, messages)
 
 // 思维链时间线
 const thinkingTimeline = useThinkingTimeline(messages)
+const thoughtCount = computed(() => thinkingTimeline.value.filter(t => t.type === 'thought').length)
+
+// —— 大数据量渲染优化：分块挂载 + 触底自动加载 + 长文本折叠 ——
+// 全量一次渲染 2000+ 条消息会冻结主线程，改为每批 RENDER_CHUNK 条，
+// 视口内的哨兵元素触发继续补齐，长文本超限折叠、点击手动展开。
+const RENDER_CHUNK = 150
+const CONTENT_LIMIT = 6000
+const THOUGHT_LIMIT = 3000
+const TIMELINE_LIMIT = 3000
+const TOOL_ARGS_LIMIT = 400
+
+const visibleChatCount = ref(RENDER_CHUNK)
+const visibleTimelineCount = ref(RENDER_CHUNK)
+
+// 保留原始下标 idx（消息 DOM id / 高亮 key 依赖全量数组的下标）
+const visibleMessages = computed(() =>
+  messages.value.slice(0, visibleChatCount.value).map((msg, idx) => ({ msg, idx }))
+)
+const visibleTimeline = computed(() =>
+  thinkingTimeline.value.slice(0, visibleTimelineCount.value).map((step, idx) => ({ step, idx }))
+)
+const chatRemaining = computed(() => messages.value.length - visibleChatCount.value)
+const timelineRemaining = computed(() => thinkingTimeline.value.length - visibleTimelineCount.value)
+
+const loadMoreChat = () => {
+  if (chatRemaining.value > 0) {
+    visibleChatCount.value = Math.min(visibleChatCount.value + RENDER_CHUNK, messages.value.length)
+  }
+}
+const loadMoreTimeline = () => {
+  if (timelineRemaining.value > 0) {
+    visibleTimelineCount.value = Math.min(visibleTimelineCount.value + RENDER_CHUNK, thinkingTimeline.value.length)
+  }
+}
+const loadAllChat = () => {
+  visibleChatCount.value = messages.value.length
+}
+const loadAllTimeline = () => {
+  visibleTimelineCount.value = thinkingTimeline.value.length
+}
+
+const chatSentinelRef = ref<HTMLElement | null>(null)
+const timelineSentinelRef = ref<HTMLElement | null>(null)
+
+// 哨兵进入视口后持续补齐直到铺满屏幕（IntersectionObserver 对持续相交不会重复回调）
+const fillUntilVisible = async (sentinelRef: Ref<HTMLElement | null>, loadMore: () => void) => {
+  await nextTick()
+  const el = sentinelRef.value
+  if (!el) return
+  if (el.getBoundingClientRect().top < window.innerHeight + 800) {
+    loadMore()
+    await fillUntilVisible(sentinelRef, loadMore)
+  }
+}
+
+let chatObserver: IntersectionObserver | null = null
+let timelineObserver: IntersectionObserver | null = null
+
+onMounted(() => {
+  chatObserver = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) fillUntilVisible(chatSentinelRef, loadMoreChat)
+  }, { rootMargin: '800px' })
+  timelineObserver = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) fillUntilVisible(timelineSentinelRef, loadMoreTimeline)
+  }, { rootMargin: '800px' })
+  // 轮次导航 scroll-spy
+  window.addEventListener('scroll', onTurnScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  chatObserver?.disconnect()
+  timelineObserver?.disconnect()
+  window.removeEventListener('scroll', onTurnScroll)
+  if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf)
+})
+
+watch(chatSentinelRef, (el, oldEl) => {
+  if (oldEl) chatObserver?.unobserve(oldEl)
+  if (el) chatObserver?.observe(el)
+})
+watch(timelineSentinelRef, (el, oldEl) => {
+  if (oldEl) timelineObserver?.unobserve(oldEl)
+  if (el) timelineObserver?.observe(el)
+})
+
+// 长文本折叠：按 key 记录手动展开状态
+const expandedKeys = ref(new Set<string>())
+const toggleExpand = (key: string) => {
+  const next = new Set(expandedKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  expandedKeys.value = next
+}
+const overLimit = (text: string | undefined, limit: number) => Boolean(text && text.length > limit)
+const displayText = (text: string | undefined, key: string, limit: number) => {
+  if (!text) return ''
+  if (text.length <= limit || expandedKeys.value.has(key)) return text
+  return text.slice(0, limit)
+}
+const chatKey = (prefix: string, msg: SessionMessage, idx: number) => `${prefix}:${msg.id || String(idx)}`
+const toolArgsText = (tool: SessionToolCall) => {
+  const raw = typeof tool.arguments === 'string'
+    ? tool.arguments
+    : JSON.stringify(tool.arguments || tool.args || tool.input || {})
+  if (raw.length > TOOL_ARGS_LIMIT) {
+    return `${raw.slice(0, TOOL_ARGS_LIMIT)} …（已截断，完整 JSON 见工具明细弹窗）`
+  }
+  return raw
+}
 
 const targetMsgId = computed(() => {
   const q = (route.query.msgId as string) || ''
@@ -64,18 +177,43 @@ const targetMsgId = computed(() => {
 })
 const activeHighlightedMsgId = ref('')
 
+// 消息 id → 原始下标映射：分块渲染下定位跳转需先把目标纳入渲染窗口
+const msgIndexById = computed(() => {
+  const map = new Map<string, number>()
+  messages.value.forEach((msg, idx) => {
+    if (msg.id) map.set(msg.id, idx)
+    map.set(String(idx), idx)
+  })
+  return map
+})
+
 const scrollToTargetMessage = () => {
   if (!targetMsgId.value) return
+  const rawQueryId = (route.query.msgId as string) || ''
+  const targetIdx = msgIndexById.value.get(targetMsgId.value)
+    ?? (rawQueryId ? msgIndexById.value.get(rawQueryId) : undefined)
+  jumpToChatMessage(
+    targetIdx,
+    [targetMsgId.value, rawQueryId].filter(Boolean),
+    targetMsgId.value
+  )
+}
+
+// 跳转到指定消息：目标在分块窗口外时先扩窗，再平滑滚动并短暂高亮
+const jumpToChatMessage = (msgIdx: number | undefined, idCandidates: string[], highlightId: string) => {
+  if (msgIdx !== undefined && msgIdx >= visibleChatCount.value) {
+    visibleChatCount.value = Math.min(msgIdx + 60, messages.value.length)
+  }
   nextTick(() => {
     setTimeout(() => {
-      let el = document.getElementById('msg-' + targetMsgId.value)
-      // Fallback: if query was composite key, check direct id as well
-      if (!el && route.query.msgId) {
-        el = document.getElementById('msg-' + route.query.msgId)
+      let el: HTMLElement | null = null
+      for (const id of idCandidates) {
+        el = document.getElementById('msg-' + id)
+        if (el) break
       }
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        activeHighlightedMsgId.value = targetMsgId.value
+        activeHighlightedMsgId.value = highlightId
         setTimeout(() => {
           activeHighlightedMsgId.value = ''
         }, 3500)
@@ -84,12 +222,140 @@ const scrollToTargetMessage = () => {
   })
 }
 
+// —— 会话轮次快捷导航 ——
+// 轮次 = 一条非空「真实用户输入」消息及其后续回复；记录消息下标与思维时间线
+// intent 步下标，支持对话视图 / 时间线视图双模式跳转。
+interface TurnInfo {
+  msgIdx: number
+  msgId: string
+  preview: string
+  full: string
+  timestamp?: number
+  timelineIdx: number | null
+}
+
+// 平台 CLI 会把环境上下文作为用户消息注入会话文件（如 # Environment、模型声明、
+// 技能清单、<system-reminder> 提醒块），需剥离后才能提取真实用户输入。
+const stripInjectedContent = (raw: string): string => {
+  const text = raw
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
+    .replace(/<task-notification>[\s\S]*?<\/task-notification>/gi, '')
+    .replace(/<total_tokens>[^<]*<\/total_tokens>/gi, '')
+    .replace(/<env>[\s\S]*?<\/env>/gi, '')
+    .trim()
+  // 整条消息均为平台注入时直接置空
+  const injectedPrefixPatterns: RegExp[] = [
+    /^# Environment\b/,
+    /^You are powered by\b/,
+    /^Available agent types\b/,
+    /^The following skills are available\b/,
+    /^Caveat:/,
+    /^# System Prompt\b/,
+    /^# Session-Event(s)?\b/,
+    /^As you answer the user's questions\b/,
+    /^Today's date is\b/,
+    /^The user hasn't heard from you\b/,
+    /^The TodoWrite tool has(n't)? been used\b/
+  ]
+  if (injectedPrefixPatterns.some(p => p.test(text))) return ''
+  return text
+}
+
+const turns = computed<TurnInfo[]>(() => {
+  const intentIndexes: number[] = []
+  thinkingTimeline.value.forEach((s, i) => {
+    if (s.type === 'intent') intentIndexes.push(i)
+  })
+  const list: TurnInfo[] = []
+  let userSeen = 0
+  messages.value.forEach((m, idx) => {
+    if (m.role !== 'user') return
+    // 时间线为每条 user 消息(含注入/空内容)都生成 intent 步，先推进游标再过滤
+    const tlIdx = userSeen < intentIndexes.length ? (intentIndexes[userSeen] ?? null) : null
+    userSeen++
+    const text = stripInjectedContent(m.content || '')
+    if (!text) return
+    const compact = text.replace(/\s+/g, ' ')
+    list.push({
+      msgIdx: idx,
+      msgId: m.id || String(idx),
+      preview: compact.slice(0, 40) + (compact.length > 40 ? '…' : ''),
+      full: text,
+      timestamp: m.timestamp,
+      timelineIdx: tlIdx
+    })
+  })
+  return list
+})
+
+const activeTurnIdx = ref(0)
+const turnStripRef = ref<HTMLElement | null>(null)
+let turnScrollRaf = 0
+
+const updateActiveTurn = () => {
+  if (!turns.value.length) return
+  let current = 0
+  for (let i = 0; i < turns.value.length; i++) {
+    const turn = turns.value[i]
+    if (!turn) break
+    const el = document.getElementById('msg-' + turn.msgId)
+    // 未渲染的轮次位于分块窗口之外（更靠下），后续轮次必然同样未渲染
+    if (!el) break
+    if (el.getBoundingClientRect().top <= window.innerHeight * 0.5) current = i
+    else break
+  }
+  if (current !== activeTurnIdx.value) {
+    activeTurnIdx.value = current
+    nextTick(() => {
+      // 仅横向滚动导航条让 chip 可见；scrollIntoView 会连窗口一起滚，把页面拉回顶部
+      const strip = turnStripRef.value
+      const chipEl = document.getElementById('turn-chip-' + current)
+      if (!strip || !chipEl) return
+      const target = chipEl.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + chipEl.clientWidth / 2
+      strip.scrollTo({ left: Math.max(0, target), behavior: 'smooth' })
+    })
+  }
+}
+
+let suppressSpyUntil = 0
+
+const onTurnScroll = () => {
+  // 点击跳转的平滑滚动期间不重算，避免中间态覆盖用户选择的轮次
+  if (performance.now() < suppressSpyUntil) return
+  if (turnScrollRaf) return
+  turnScrollRaf = requestAnimationFrame(() => {
+    turnScrollRaf = 0
+    updateActiveTurn()
+  })
+}
+
+const jumpToTurn = (ti: number) => {
+  const turn = turns.value[ti]
+  if (!turn) return
+  suppressSpyUntil = performance.now() + 1200
+  activeTurnIdx.value = ti
+  if (detailMode.value === 'chat') {
+    jumpToChatMessage(turn.msgIdx, [turn.msgId], turn.msgId)
+  } else if (turn.timelineIdx !== null) {
+    if (turn.timelineIdx >= visibleTimelineCount.value) {
+      visibleTimelineCount.value = Math.min(turn.timelineIdx + 60, thinkingTimeline.value.length)
+    }
+    nextTick(() => {
+      setTimeout(() => {
+        document.getElementById('tl-step-' + turn.timelineIdx)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 250)
+    })
+  }
+}
+
 onMounted(() => {
   scrollToTargetMessage()
 })
 
 watch(() => messages.value, () => {
   scrollToTargetMessage()
+  nextTick(updateActiveTurn)
 })
 
 const handleRefresh = async () => {
@@ -400,7 +666,8 @@ const backUrl = computed(() => {
     </div>
 
     <!-- Main Content Container -->
-    <div class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+    <!-- overflow-clip 而非 hidden：hidden 会创建滚动容器导致内部 sticky 失效 -->
+    <div class="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-clip flex flex-col min-h-[600px]">
       <!-- View Mode Header Switcher -->
       <div class="px-5 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
         <div class="flex items-center gap-1.5 bg-zinc-200/70 dark:bg-zinc-800 p-1 rounded-lg">
@@ -432,13 +699,59 @@ const backUrl = computed(() => {
               name="i-lucide-brain"
               class="w-4 h-4 text-amber-500"
             />
-            思维决策路径时间轴 ({{ thinkingTimeline.filter(t => t.type === 'thought').length }} 决策点)
+            思维决策路径时间轴 ({{ thoughtCount }} 决策点)
           </button>
         </div>
 
         <span class="text-xs text-zinc-400 font-mono">
           模式: {{ detailMode === 'chat' ? 'Full Transcript' : 'Thinking Timeline' }}
         </span>
+      </div>
+
+      <!-- 会话轮次快捷导航：吸顶展示，点击跳转该轮用户消息，滚动时自动跟随高亮 -->
+      <div
+        v-if="turns.length"
+        class="sticky top-14 z-30 px-5 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2.5"
+      >
+        <span class="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1 shrink-0">
+          <UIcon
+            name="i-lucide-list-ordered"
+            class="w-3.5 h-3.5"
+          />
+          对话轮次 ({{ turns.length }})
+        </span>
+        <div
+          ref="turnStripRef"
+          class="flex items-center gap-1.5 overflow-x-auto py-0.5 min-w-0"
+        >
+          <button
+            v-for="(t, ti) in turns"
+            :id="'turn-chip-' + ti"
+            :key="t.msgId + '-' + ti"
+            :class="[
+              'px-2 py-1 rounded-md border text-[11px] whitespace-nowrap shrink-0 cursor-pointer transition-all flex items-center gap-1.5 max-w-[280px]',
+              activeTurnIdx === ti
+                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-xs'
+                : 'bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700/60 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+            ]"
+            :title="t.full"
+            @click="jumpToTurn(ti)"
+          >
+            <span class="font-mono font-bold shrink-0">#{{ ti + 1 }}</span>
+            <span class="truncate font-sans max-w-[220px]">{{ t.preview }}</span>
+          </button>
+          <button
+            class="px-2 py-1 rounded-md border border-zinc-200 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-800/60 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 shrink-0 cursor-pointer transition-all flex items-center gap-1"
+            title="跳转到最后一轮"
+            @click="jumpToTurn(turns.length - 1)"
+          >
+            <UIcon
+              name="i-lucide-corner-right-down"
+              class="w-3 h-3"
+            />
+            最新
+          </button>
+        </div>
       </div>
 
       <!-- Loading State -->
@@ -475,9 +788,9 @@ const backUrl = computed(() => {
         class="p-6 space-y-4 bg-zinc-50/30 dark:bg-zinc-950/30"
       >
         <div
-          v-for="(msg, idx) in messages"
+          v-for="{ msg, idx } in visibleMessages"
           :id="'msg-' + (msg.id || idx)"
-          :key="idx"
+          :key="msg.id || idx"
           :class="[
             'p-4 rounded-xl text-xs space-y-2 border transition-all duration-300',
             msg.role === 'user'
@@ -518,13 +831,27 @@ const backUrl = computed(() => {
                 class="w-3.5 h-3.5"
               /> 思考路径与推导依据 (Thinking Process)
             </div>
-            {{ msg.thought }}
+            {{ displayText(msg.thought, chatKey('t', msg, idx), THOUGHT_LIMIT) }}
+            <button
+              v-if="overLimit(msg.thought, THOUGHT_LIMIT)"
+              class="mt-1.5 px-2 py-0.5 rounded bg-amber-500/10 dark:bg-amber-500/20 text-[10px] font-mono text-amber-600 dark:text-amber-400 border border-amber-500/30 cursor-pointer hover:bg-amber-500/20 transition-colors"
+              @click="toggleExpand(chatKey('t', msg, idx))"
+            >
+              {{ expandedKeys.has(chatKey('t', msg, idx)) ? '▲ 收起思考过程' : `▼ 展开思考过程（共 ${(msg.thought || '').length} 字符）` }}
+            </button>
           </div>
 
           <!-- Content text -->
           <div class="whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 font-sans text-xs break-words">
-            {{ msg.content }}
+            {{ displayText(msg.content, chatKey('c', msg, idx), CONTENT_LIMIT) }}
           </div>
+          <button
+            v-if="overLimit(msg.content, CONTENT_LIMIT)"
+            class="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-mono text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors w-fit"
+            @click="toggleExpand(chatKey('c', msg, idx))"
+          >
+            {{ expandedKeys.has(chatKey('c', msg, idx)) ? '▲ 收起正文' : `▼ 展开正文（共 ${(msg.content || '').length} 字符）` }}
+          </button>
 
           <!-- Tool Calls -->
           <div
@@ -544,10 +871,29 @@ const backUrl = computed(() => {
                 class="bg-zinc-100 dark:bg-zinc-800/80 px-3 py-1.5 rounded-md text-[11px] font-mono text-zinc-600 dark:text-zinc-400 break-all"
               >
                 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ tool.name || tool.type || 'Tool' }}</span>:
-                {{ typeof tool.arguments === 'string' ? tool.arguments : JSON.stringify(tool.arguments || tool.args || tool.input || {}) }}
+                {{ toolArgsText(tool) }}
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- 分块加载哨兵：滚入视口自动追加下一批消息 -->
+        <div
+          v-if="chatRemaining > 0"
+          ref="chatSentinelRef"
+          class="py-5 text-center text-xs text-zinc-400 flex items-center justify-center gap-2 flex-wrap"
+        >
+          <UIcon
+            name="i-lucide-loader-2"
+            class="w-3.5 h-3.5 animate-spin"
+          />
+          <span class="font-mono">已显示 {{ visibleChatCount }} / {{ messages.length }} 条，继续滚动自动加载</span>
+          <button
+            class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-mono cursor-pointer transition-colors"
+            @click="loadAllChat"
+          >
+            一次全部加载
+          </button>
         </div>
       </div>
 
@@ -558,7 +904,8 @@ const backUrl = computed(() => {
       >
         <div class="relative border-l-2 border-zinc-200 dark:border-zinc-800 ml-4 space-y-8">
           <div
-            v-for="(step, sIdx) in thinkingTimeline"
+            v-for="{ step, idx: sIdx } in visibleTimeline"
+            :id="'tl-step-' + sIdx"
             :key="sIdx"
             class="relative pl-7 group"
           >
@@ -618,9 +965,35 @@ const backUrl = computed(() => {
                 v-if="step.detail"
                 class="text-xs leading-relaxed whitespace-pre-wrap text-zinc-700 dark:text-zinc-300 font-sans break-words"
               >
-                {{ step.detail }}
+                {{ displayText(step.detail, 'tl:' + sIdx, TIMELINE_LIMIT) }}
               </div>
+              <button
+                v-if="overLimit(step.detail, TIMELINE_LIMIT)"
+                class="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-mono text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors w-fit"
+                @click="toggleExpand('tl:' + sIdx)"
+              >
+                {{ expandedKeys.has('tl:' + sIdx) ? '▲ 收起' : `▼ 展开全部（共 ${(step.detail || '').length} 字符）` }}
+              </button>
             </div>
+          </div>
+
+          <!-- 分块加载哨兵 -->
+          <div
+            v-if="timelineRemaining > 0"
+            ref="timelineSentinelRef"
+            class="py-5 text-center text-xs text-zinc-400 flex items-center justify-center gap-2 flex-wrap"
+          >
+            <UIcon
+              name="i-lucide-loader-2"
+              class="w-3.5 h-3.5 animate-spin"
+            />
+            <span class="font-mono">已显示 {{ visibleTimelineCount }} / {{ thinkingTimeline.length }} 步，继续滚动自动加载</span>
+            <button
+              class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-mono cursor-pointer transition-colors"
+              @click="loadAllTimeline"
+            >
+              一次全部加载
+            </button>
           </div>
         </div>
       </div>

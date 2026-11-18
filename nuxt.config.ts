@@ -12,7 +12,10 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   routeRules: {
-    '/': { ssr: false }
+    // 列表与详情均为大数据量动态页：关闭 SSR 避免服务端全量渲染长会话
+    // （实测 2279 条消息 SSR 渲染 8MB+ HTML、TTFB 7s+），改为客户端渲染 + 分块挂载
+    '/': { ssr: false },
+    '/sessions/**': { ssr: false }
   },
 
   devServer: {

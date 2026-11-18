@@ -263,6 +263,54 @@ const sessions = computed(() => sessionData.value?.data || [])
 const counts = computed(() => statsData.value?.data?.counts || {})
 const totalCount = computed(() => statsData.value?.data?.total || 0)
 
+// —— 大数据量渲染优化：卡片分块挂载 + 触底自动加载 ——
+// 会话数千条时一次性渲染网格会长时间冻结主线程，改为每批渲染、滚到底部自动追加
+const LIST_CHUNK = 60
+const visibleListCount = ref(LIST_CHUNK)
+const visibleSessions = computed(() => sessions.value.slice(0, visibleListCount.value))
+const listRemaining = computed(() => sessions.value.length - visibleListCount.value)
+
+const loadMoreList = () => {
+  if (listRemaining.value > 0) {
+    visibleListCount.value = Math.min(visibleListCount.value + LIST_CHUNK, sessions.value.length)
+  }
+}
+
+const listSentinelRef = ref<HTMLElement | null>(null)
+
+// 哨兵进入视口后持续补齐直到铺满屏幕（IntersectionObserver 对持续相交不会重复回调）
+const fillListUntilVisible = async () => {
+  await nextTick()
+  const el = listSentinelRef.value
+  if (!el) return
+  if (el.getBoundingClientRect().top < window.innerHeight + 600) {
+    loadMoreList()
+    await fillListUntilVisible()
+  }
+}
+
+let listObserver: IntersectionObserver | null = null
+
+onMounted(() => {
+  listObserver = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) fillListUntilVisible()
+  }, { rootMargin: '600px' })
+})
+
+onBeforeUnmount(() => {
+  listObserver?.disconnect()
+})
+
+watch(listSentinelRef, (el, oldEl) => {
+  if (oldEl) listObserver?.unobserve(oldEl)
+  if (el) listObserver?.observe(el)
+})
+
+// 切换平台 / 搜索 / 标签过滤后重置渲染窗口
+watch([currentTab, searchQuery, activeTagFilter], () => {
+  visibleListCount.value = LIST_CHUNK
+})
+
 // Refresh all
 const handleRefresh = async () => {
   isRefreshing.value = true
@@ -637,7 +685,7 @@ const executeDelete = async () => {
     <template v-else>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         <div
-          v-for="item in sessions"
+          v-for="item in visibleSessions"
           :key="`${item.cli}-${item.id}`"
           :class="[
             'group bg-white dark:bg-zinc-900 rounded-lg border transition-all flex flex-col justify-between overflow-hidden shadow-sm',
@@ -803,6 +851,19 @@ const executeDelete = async () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 分块加载哨兵：滚入视口自动追加下一批卡片 -->
+      <div
+        v-if="listRemaining > 0"
+        ref="listSentinelRef"
+        class="py-6 text-center text-xs text-zinc-400 flex items-center justify-center gap-2"
+      >
+        <UIcon
+          name="i-lucide-loader-2"
+          class="w-3.5 h-3.5 animate-spin"
+        />
+        <span class="font-mono">已显示 {{ visibleListCount }} / {{ sessions.length }} 个会话，继续滚动自动加载</span>
       </div>
     </template>
 
