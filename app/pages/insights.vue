@@ -448,15 +448,21 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
               </p>
             </div>
           </div>
-          <NuxtLink
-            to="/distill"
-            class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+          <span
+            class="text-xs text-zinc-400 dark:text-zinc-500 flex items-center gap-1 cursor-help"
+            title="批量提炼已迁移至 MCP 工具：在 AI 助手中调用 distill_knowledge（支持 sessionIds / platform / cwd / limit 参数）即可生成跨会话复盘报告"
           >
-            前往批量提炼 <UIcon
-              name="i-lucide-arrow-right"
+            批量提炼：
+            <UIcon
+              name="i-lucide-blocks"
+              class="w-3 h-3 text-cyan-500"
+            />
+            <span class="font-mono">MCP distill_knowledge</span>
+            <UIcon
+              name="i-lucide-info"
               class="w-3 h-3"
             />
-          </NuxtLink>
+          </span>
         </div>
 
         <div

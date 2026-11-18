@@ -34,6 +34,38 @@ const { data: graphDataRes, refresh: refreshGraph } = await useFetch('/api/memor
 // 获取知识图谱元数据（动态类型与项目列表）
 const { data: metaData, refresh: refreshMeta } = await useFetch('/api/memory/meta')
 
+// 获取自动收割流水线状态
+const { data: harvestData, refresh: refreshHarvest } = await useFetch('/api/memory/auto-harvest')
+const isHarvesting = ref(false)
+const isHarvestModalOpen = ref(false)
+
+async function startAutoHarvest(count = 5) {
+  isHarvesting.value = true
+  try {
+    const res = await $fetch<{ success: boolean, harvested: number, skipped: number, failed: number }>('/api/memory/auto-harvest', {
+      method: 'POST',
+      body: { limit: count }
+    })
+    toast.add({
+      title: `自动收割完成: 新增沉淀 ${res.harvested} 条, 过滤 ${res.skipped} 条`,
+      color: res.harvested > 0 ? 'success' : 'neutral',
+      icon: res.harvested > 0 ? 'i-lucide-check-circle-2' : 'i-lucide-info'
+    })
+    refreshHarvest()
+    refreshList()
+    refreshGraph()
+    refreshMeta()
+  } catch (err) {
+    toast.add({
+      title: '自动收割失败',
+      description: err instanceof Error ? err.message : String(err),
+      color: 'error'
+    })
+  } finally {
+    isHarvesting.value = false
+  }
+}
+
 const memories = computed<MemoryGraphItem[]>(() => memoryData.value?.items || [])
 const totalCount = computed(() => metaData.value?.data?.total ?? memoryData.value?.total ?? 0)
 const graphData = computed<GraphVisualizationData>(() => graphDataRes.value?.data || { nodes: [], edges: [] })
@@ -278,11 +310,56 @@ async function submitManualMemory() {
         <UButton
           color="neutral"
           variant="solid"
+          icon="i-lucide-sparkles"
+          size="sm"
+          :loading="isHarvesting"
+          class="cursor-pointer"
+          @click="startAutoHarvest(5)"
+        >
+          自动收割
+        </UButton>
+
+        <UButton
+          color="neutral"
+          variant="outline"
           icon="i-lucide-plus"
           size="sm"
+          class="cursor-pointer"
           @click="isCreateOpen = true"
         >
           手动新增
+        </UButton>
+      </div>
+    </div>
+
+    <!-- Auto-Harvest Status Ribbon -->
+    <div
+      v-if="harvestData"
+      class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl text-xs shadow-xs"
+    >
+      <div class="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
+        <div class="w-5 h-5 rounded-md bg-violet-500/10 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+          <UIcon
+            name="i-lucide-sparkles"
+            class="w-3.5 h-3.5"
+          />
+        </div>
+        <span class="font-medium text-zinc-900 dark:text-zinc-100">自动收割中枢：</span>
+        <span class="text-zinc-500 dark:text-zinc-400">
+          已从会话提炼 <b class="font-mono text-zinc-900 dark:text-zinc-100">{{ harvestData.harvestedCount }}</b> 条经验，过滤低质 <b class="font-mono text-zinc-600 dark:text-zinc-300">{{ harvestData.skippedCount }}</b> 条，待处理候选 <b class="font-mono text-zinc-600 dark:text-zinc-300">{{ harvestData.pendingCount }}</b> 条
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="xs"
+          icon="i-lucide-play"
+          :loading="isHarvesting"
+          class="cursor-pointer"
+          @click="startAutoHarvest(5)"
+        >
+          收割下一批 (5条)
         </UButton>
       </div>
     </div>

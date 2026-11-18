@@ -332,8 +332,13 @@ export class PluginManager {
 
   /**
    * 获取所有插件的状态列表
+   *
+   * @param cachedCounts 平台 → 会话数 的预取计数（通常来自 SQLite 缓存的
+   * COUNT 查询，毫秒级）。不传时回退到 plugin.getSessions() 实时扫描——
+   * 大语料（多平台 GB 级会话文件）下扫描一次需数秒且同步阻塞事件循环，
+   * HTTP 入口必须传入缓存计数。
    */
-  getPluginStatusList(): PluginStatusInfo[] {
+  getPluginStatusList(cachedCounts?: Record<string, number>): PluginStatusInfo[] {
     const list: PluginStatusInfo[] = []
 
     for (const plugin of this.plugins.values()) {
@@ -343,10 +348,15 @@ export class PluginManager {
 
       let sessionCount = 0
       if (isAvailable && isEnabled) {
-        try {
-          sessionCount = plugin.getSessions().length
-        } catch {
-          sessionCount = 0
+        const cached = cachedCounts?.[id]
+        if (cached !== undefined) {
+          sessionCount = cached
+        } else {
+          try {
+            sessionCount = plugin.getSessions().length
+          } catch {
+            sessionCount = 0
+          }
         }
       }
 

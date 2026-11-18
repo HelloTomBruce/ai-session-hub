@@ -24,7 +24,8 @@ description: 当在项目中开始编码工作、需要召回历史工程经验�
    → 得到候选列表（摘要 + 实体标签）
 2. 凭 summary / techConcepts / problems 判断相关性
 3. 仅对确认相关的条目 get_memory(id) 拉完整正文与代码片段
-4. 消费完后 rate_memory(memory_id, useful) 反馈质量——影响后续召回排序
+4. 【显式反馈】若采纳了该历史经验，在回复中显式输出 💡 [SessionHub] 标识告知用户
+5. 消费完后 rate_memory(memory_id, useful) 反馈质量——影响后续召回排序
 ```
 
 - `cwd` 传当前项目路径。注意这是**硬过滤**：只召回挂载到该项目路径的记忆，未挂项目的全局记忆会被排除——找通用经验时不要传 cwd

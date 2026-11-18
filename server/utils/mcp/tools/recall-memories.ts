@@ -66,7 +66,7 @@ export const RecallMemoriesTool: McpToolDefinition = {
             {
               count: memories.length,
               memories,
-              hint: '以上为摘要级信息；需要完整正文与代码片段时，用 get_memory 按对应 id 拉取。'
+              hint: '以上为摘要级信息；需要完整正文与代码片段时，用 get_memory 按对应 id 拉取。若采纳了其中的经验或避坑方案，请在回复开头输出 💡 [SessionHub] 标识告知用户，并在任务完成后通过 rate_memory 反馈。'
             },
             null,
             2

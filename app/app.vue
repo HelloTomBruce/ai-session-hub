@@ -103,18 +103,6 @@ useHead({
                 >知识库</UButton>
               </NuxtLink>
               <NuxtLink
-                to="/distill"
-                class="flex-shrink-0"
-              >
-                <UButton
-                  variant="ghost"
-                  color="neutral"
-                  size="sm"
-                  icon="i-lucide-book-open"
-                  class="whitespace-nowrap px-2.5"
-                >提炼</UButton>
-              </NuxtLink>
-              <NuxtLink
                 to="/insights"
                 class="flex-shrink-0"
               >
