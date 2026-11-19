@@ -48,7 +48,7 @@
 - **完整思维链展示**：提取 Agent 的深层推导依据（Thinking Process）与工具调用执行记录。
 - **AI 量化评估**：从直接推进度（Directness）、决策合理性（Soundness）、周转效率（Turn Velocity）及动作密度等多维度量化打分（S / A / B / C 评级）。
 - **扣分归因与处方建议**：精准检测思路修正/返工、搜索过于密集、多轮拉扯等摩擦事件，并给出改进建议。
-- **流式报告生成与缓存**：支持自定义配置 LLM Provider（OpenAI / DeepSeek / Claude / 自建端点），诊断结果本地持久化。
+- **流式报告生成与缓存**：支持自定义配置 LLM Provider，覆盖四类调用规范 —— **OpenAI Chat Completions / OpenAI Responses**、**Anthropic Messages（Claude）**、**Google Gemini（generateContent）**、**OpenAI 兼容端点**（DeepSeek / Kimi / 智谱 / Ollama / vLLM / 自建网关）；设置页提供协议默认端点与示例模型，并支持**一键连通性自检**（先测再存，失败原因直接回显），诊断结果本地持久化。
 
 ### 4. 📚 知识提炼与 ADR 架构资产归档 (Distill & Harvest)
 - **Map-Reduce 跨会话提炼**：多选历史会话后流式生成综合复盘报告（完成工作、关键技术决策、排坑避坑要点、未竟待办）。

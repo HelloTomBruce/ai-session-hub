@@ -94,6 +94,20 @@ export function requireInt(value: unknown, rule: IntRule): number {
   return n
 }
 
+/** 浮点数（接受字符串数字），用于 temperature 这类连续值 */
+export function requireNumber(value: unknown, rule: { field: string, min?: number, max?: number, fallback?: number }): number {
+  const raw = typeof value === 'string' ? value.trim() : value
+  if (raw === undefined || raw === null || raw === '') {
+    if (rule.fallback !== undefined) return rule.fallback
+    fail(`${rule.field} 必须是数字`)
+  }
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) fail(`${rule.field} 必须是数字`)
+  if (rule.min !== undefined && n < rule.min) fail(`${rule.field} 不能小于 ${rule.min}`)
+  if (rule.max !== undefined && n > rule.max) fail(`${rule.field} 不能大于 ${rule.max}`)
+  return n
+}
+
 /** 布尔（接受 true/false/'true'/'false'/1/0） */
 export function optionalBool(value: unknown, field: string): boolean | undefined {
   if (value === undefined || value === null || value === '') return undefined

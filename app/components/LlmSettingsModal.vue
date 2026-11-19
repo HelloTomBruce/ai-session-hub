@@ -36,10 +36,30 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const saveSuccess = ref(false)
 
+/** 协议清单由 GET /api/settings/llm 下发，前端不复制协议表（也避免把 LLM SDK 打进浏览器包） */
+interface ProviderOption {
+  value: string
+  label: string
+  spec: string
+  defaultBaseUrl: string
+  defaultModel: string
+  modelExamples: string[]
+}
+
+const providers = ref<ProviderOption[]>([])
+
+const providerOptions = computed(() => providers.value.map(p => ({ label: p.label, value: p.value })))
+const currentSpec = computed(() => providers.value.find(p => p.value === form.value.providerType))
+
+/** 连通性自检结果 */
+const isTesting = ref(false)
+const testResult = ref<{ ok: boolean, latencyMs?: number, sample?: string, error?: string, label?: string } | null>(null)
+
 const loadSettings = async () => {
   isLoading.value = true
   try {
-    const res = await $fetch<{ success: boolean, data: LLMSettingsForm }>('/api/settings/llm')
+    const res = await $fetch<{ success: boolean, data: LLMSettingsForm, providers?: ProviderOption[] }>('/api/settings/llm')
+    if (res?.providers?.length) providers.value = res.providers
     if (res?.data) {
       form.value = {
         ...res.data,
@@ -59,18 +79,41 @@ watch(() => props.open, (open) => {
   }
 })
 
-const providerPresets: Record<string, { baseUrl: string, model: string }> = {
-  'openai-compatible': { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  'deepseek': { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  'gemini': { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
-  'ollama': { baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5-coder:7b' }
+/**
+ * 切换协议：把端点与模型填成该协议的默认值。
+ * 协议决定 wire format（OpenAI Chat / Responses / Anthropic Messages / Gemini），
+ * 端点必须与之匹配，所以默认联动，用户仍可手改（自建代理、Azure 前置网关等）。
+ */
+const applyProvider = (type: string) => {
+  form.value.providerType = type
+  const spec = providers.value.find(p => p.value === type)
+  if (spec) {
+    form.value.baseUrl = spec.defaultBaseUrl
+    form.value.model = spec.defaultModel
+  }
+  testResult.value = null
 }
 
-const applyPreset = (presetKey: string) => {
-  if (providerPresets[presetKey]) {
-    form.value.baseUrl = providerPresets[presetKey].baseUrl
-    form.value.model = providerPresets[presetKey].model
-    form.value.providerType = presetKey
+/** 连通性自检：先测再存，失败原因直接回显 */
+const testConnection = async () => {
+  isTesting.value = true
+  testResult.value = null
+  try {
+    const res = await $fetch<{ ok: boolean, latencyMs?: number, sample?: string, error?: string, label?: string }>('/api/settings/llm/test', {
+      method: 'POST',
+      body: {
+        providerType: form.value.providerType,
+        baseUrl: form.value.baseUrl,
+        model: form.value.model,
+        temperature: Number(form.value.temperature) || 0,
+        ...(form.value.apiKey.trim() ? { apiKey: form.value.apiKey.trim() } : {})
+      }
+    })
+    testResult.value = res
+  } catch (err) {
+    testResult.value = { ok: false, error: (err as { data?: { message?: string } } | null)?.data?.message || '测试请求失败' }
+  } finally {
+    isTesting.value = false
   }
 }
 
@@ -164,24 +207,44 @@ const saveSettings = async () => {
             <USwitch v-model="form.enabled" />
           </div>
 
-          <!-- Quick Presets -->
+          <!-- 调用协议（决定 wire format） -->
           <div class="space-y-1">
-            <label class="font-medium text-zinc-700 dark:text-zinc-300 text-[11px]">快捷预设平台</label>
-            <div class="flex flex-wrap gap-1.5">
+            <label class="font-medium text-zinc-700 dark:text-zinc-300 text-[11px]">调用协议 / 平台</label>
+            <USelect
+              :model-value="form.providerType"
+              :items="providerOptions"
+              size="sm"
+              class="w-full text-xs"
+              @update:model-value="applyProvider"
+            />
+            <div class="flex flex-wrap gap-1.5 pt-0.5">
               <button
-                v-for="(meta, pKey) in providerPresets"
-                :key="pKey"
+                v-for="p in providers.filter(p => p.spec === 'openai-compatible' || p.value === 'openai' || p.value === 'anthropic' || p.value === 'gemini')"
+                :key="p.value"
                 type="button"
-                class="px-2 py-1 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono text-[10px] transition-colors border border-zinc-200/60 dark:border-zinc-700"
-                @click="applyPreset(pKey)"
+                :class="[
+                  'px-2 py-1 rounded font-mono text-[10px] transition-colors border',
+                  form.providerType === p.value
+                    ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200/60 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                ]"
+                @click="applyProvider(p.value)"
               >
-                {{ pKey }}
+                {{ p.value }}
               </button>
             </div>
+            <p
+              v-if="currentSpec"
+              class="text-[10px] text-zinc-400 leading-relaxed"
+            >
+              wire format: <span class="font-mono">{{ currentSpec.spec }}</span>
+              · 默认端点 <span class="font-mono">{{ currentSpec.defaultBaseUrl }}</span>
+              · 示例模型 <span class="font-mono">{{ currentSpec.modelExamples.join(' / ') }}</span>
+            </p>
           </div>
 
           <!-- Base URL -->
-          <UFormField label="Base URL (兼容 OpenAI 规范)">
+          <UFormField :label="`Base URL（${currentSpec?.spec || 'openai-compatible'}）`">
             <UInput
               v-model="form.baseUrl"
               placeholder="https://api.openai.com/v1"
@@ -214,7 +277,7 @@ const saveSettings = async () => {
             <UFormField label="Model 模型名称">
               <UInput
                 v-model="form.model"
-                placeholder="gpt-4o-mini / deepseek-chat"
+                :placeholder="currentSpec?.modelExamples?.join(' / ') || 'gpt-4o-mini'"
                 size="sm"
                 class="w-full font-mono text-xs"
               />
@@ -234,6 +297,45 @@ const saveSettings = async () => {
           </div>
         </div>
 
+        <!-- 连通性自检结果 -->
+        <div
+          v-if="testResult"
+          :class="[
+            'rounded-lg border px-3 py-2 text-[11px] leading-relaxed',
+            testResult.ok
+              ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'
+          ]"
+        >
+          <template v-if="testResult.ok">
+            <div class="font-medium flex items-center gap-1.5">
+              <UIcon
+                name="i-lucide-check-circle"
+                class="w-3.5 h-3.5"
+              />
+              连接成功 · {{ testResult.latencyMs }}ms · {{ testResult.label }}
+            </div>
+            <div
+              v-if="testResult.sample"
+              class="font-mono text-[10px] mt-1 opacity-80"
+            >
+              模型回复: {{ testResult.sample }}
+            </div>
+          </template>
+          <template v-else>
+            <div class="font-medium flex items-center gap-1.5">
+              <UIcon
+                name="i-lucide-x-circle"
+                class="w-3.5 h-3.5"
+              />
+              连接失败
+            </div>
+            <div class="font-mono text-[10px] mt-1 break-all opacity-80">
+              {{ testResult.error }}
+            </div>
+          </template>
+        </div>
+
         <!-- Footer Actions -->
         <div class="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800">
           <span
@@ -251,6 +353,16 @@ const saveSettings = async () => {
           >配置保存在本地 ~/.session-hub</span>
 
           <div class="flex items-center gap-2">
+            <UButton
+              variant="subtle"
+              color="neutral"
+              size="sm"
+              icon="i-lucide-plug-zap"
+              :loading="isTesting"
+              @click="testConnection"
+            >
+              测试连接
+            </UButton>
             <UButton
               variant="ghost"
               color="neutral"
