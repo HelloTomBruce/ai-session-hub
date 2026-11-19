@@ -8,3 +8,7 @@ allowBuilds:
   '@parcel/watcher': true
   unrs-resolver: true
   vue-demi: true
+
+minimumReleaseAgeExclude:
+  - '@ai-sdk/gateway@4.0.150'
+  - ai@7.0.177
