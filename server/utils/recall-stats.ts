@@ -1,3 +1,4 @@
+import { logger } from './logger'
 /**
  * P3 召回质量闭环：记忆命中/使用/反馈统计（SQLite，独立于 Grafeo）。
  *
@@ -8,10 +9,8 @@
  *
  * 排序融合在 memory-service.recallMemories 中消费（getMemoryQualityScore）。
  */
-import Database from 'better-sqlite3'
-import fs from 'node:fs'
-import path from 'node:path'
-import os from 'node:os'
+import type Database from 'better-sqlite3'
+import { openHubDb } from './db'
 
 export interface MemoryStatsRow {
   memory_id: string
@@ -49,11 +48,10 @@ class RecallStatsService {
 
   private getDb(): Database.Database {
     if (this.db) return this.db
-    const dir = path.join(os.homedir(), '.session-hub')
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-    const dbPath = path.join(dir, 'recall-stats.db')
-    this.db = new Database(dbPath)
-    this.db.pragma('journal_mode = WAL')
+    // 独立文件的第二个库（统计与主库解耦，避免大表写入互相拖慢）；路径同样走 db.ts
+    const db = openHubDb('recall-stats.db')
+    if (!db) throw new Error('unable to open recall-stats.db')
+    this.db = db
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS memory_stats (
         memory_id TEXT PRIMARY KEY,
@@ -99,7 +97,7 @@ class RecallStatsService {
       })
       tx(memoryIds)
     } catch (err) {
-      console.error('[RecallStats] logRecall failed:', err)
+      logger.error('[RecallStats] logRecall failed:', err)
     }
   }
 
@@ -113,7 +111,7 @@ class RecallStatsService {
         ON CONFLICT(memory_id) DO UPDATE SET use_count = use_count + 1, last_used_at = ?
       `).run(memoryId, now, now)
     } catch (err) {
-      console.error('[RecallStats] logUse failed:', err)
+      logger.error('[RecallStats] logUse failed:', err)
     }
   }
 
@@ -135,7 +133,7 @@ class RecallStatsService {
         `).run(memoryId, now, now)
       }
     } catch (err) {
-      console.error('[RecallStats] logFeedback failed:', err)
+      logger.error('[RecallStats] logFeedback failed:', err)
     }
   }
 
@@ -160,7 +158,17 @@ class RecallStatsService {
         input.source || ''
       )
     } catch (err) {
-      console.error('[RecallStats] logRecallEvent failed:', err)
+      logger.error('[RecallStats] logRecallEvent failed:', err)
+    }
+  }
+
+  /** 召回事件总数（洞察页度量里用，避免为了计数拉全表） */
+  countEvents(): number {
+    try {
+      const db = this.getDb()
+      return (db.prepare('SELECT COUNT(*) as c FROM recall_events').get() as { c: number }).c
+    } catch {
+      return 0
     }
   }
 

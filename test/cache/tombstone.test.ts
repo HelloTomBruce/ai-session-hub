@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from '../../server/utils/cache-schema'
 
-test('Schema v9: deleted_sessions 墓碑表正确定义且可持久化', () => {
+test('Schema: deleted_sessions 墓碑表正确定义且可持久化', () => {
   const db = new Database(':memory:')
   db.exec(CREATE_SCHEMA_SQL)
 
-  assert.equal(SCHEMA_VERSION, 9)
+  // 不写死版本号：断言 schema 版本是正整数，升级时不必改测试
+  assert.ok(Number.isInteger(SCHEMA_VERSION) && SCHEMA_VERSION >= 9, `schema 版本异常: ${SCHEMA_VERSION}`)
 
   // 插入已删除会话墓碑
   const now = Date.now()

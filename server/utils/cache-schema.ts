@@ -4,7 +4,7 @@
 // 统一 SQLite 缓存中，支持 FTS5 全文搜索。
 // ============================================
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 
 export const CREATE_SCHEMA_SQL = `
 -- 元信息
@@ -144,6 +144,15 @@ CREATE TABLE IF NOT EXISTS session_diagnoses (
 
 CREATE INDEX IF NOT EXISTS idx_session_diagnoses_at ON session_diagnoses(diagnosed_at);
 CREATE INDEX IF NOT EXISTS idx_session_diagnoses_cwd ON session_diagnoses(cwd);
+
+-- 标签定义表：auto（规则自动打标）/ manual（用户手建）/ ai（AI 生成）
+-- 由本 schema 统一拥有；tag-service 只负责种子数据与读写。
+CREATE TABLE IF NOT EXISTS tag_defs (
+  name TEXT PRIMARY KEY,
+  color TEXT NOT NULL DEFAULT '#6366f1',
+  category TEXT NOT NULL DEFAULT 'manual',
+  created_at INTEGER NOT NULL
+);
 `.trim()
 
 // 插入/更新 FTS 索引

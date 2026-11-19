@@ -1,21 +1,13 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import path from 'node:path'
-import os from 'node:os'
-import Database from 'better-sqlite3'
+import type Database from 'better-sqlite3'
 import { pluginManager } from './plugin-manager'
-import {
-  SCHEMA_VERSION,
-  CREATE_SCHEMA_SQL,
-  INSERT_FTS_SQL,
-  DELETE_FTS_SQL
-} from './cache-schema'
+import { INSERT_FTS_SQL, DELETE_FTS_SQL } from './cache-schema'
+import { getHubDb, hubFile } from './db'
+import { searchMessages, type SearchOptions, type SearchResponse } from './cache-search'
 import { tagService } from './tag-service'
-import { escapeFtsQuery } from './fts-query'
 import type { SessionToolCall, UnifiedSession, SessionMessage, PlatformType } from './types'
-
-const DB_DIR = path.join(os.homedir(), '.session-hub')
-const DB_PATH = path.join(DB_DIR, 'session-hub.db')
 
 interface SessionCacheRow {
   id: string
@@ -44,57 +36,6 @@ interface MessageCacheRow {
   model?: string | null
 }
 
-export interface SearchResultItem {
-  rowid: number
-  message_id: string
-  session_id: string
-  platform: string
-  role: string
-  title: string
-  cwd: string
-  tags: string[]
-  updated_at: number
-  snippet: string
-  tool_summary?: string
-  rank: number
-}
-
-export interface SessionGroupedSearchResult {
-  session_id: string
-  platform: string
-  title: string
-  cwd: string
-  tags: string[]
-  updated_at: number
-  matchedCount: number
-  bestRank: number
-  snippets: Array<{
-    message_id: string
-    role: string
-    snippet: string
-  }>
-}
-
-export interface SearchOptions {
-  platform?: string
-  role?: string
-  cwd?: string
-  tag?: string
-  limit?: number
-  offset?: number
-  groupBy?: 'session' | 'message'
-}
-
-export interface SearchResponse {
-  results: SearchResultItem[]
-  groupedSessions?: SessionGroupedSearchResult[]
-  total: number
-  query: string
-  page: number
-  pageSize: number
-  platforms?: Record<string, number>
-}
-
 export interface CacheStats {
   sessions: number
   messages: number
@@ -110,34 +51,12 @@ class CacheService {
   private segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' })
 
   /**
-   * 初始化数据库连接并确保 Schema
+   * 挂上共享连接（连接建立与 Schema 迁移统一由 db.ts 负责）
    */
   init(): void {
-    if (this.initialized) return
-
-    try {
-      if (!fs.existsSync(DB_DIR)) {
-        fs.mkdirSync(DB_DIR, { recursive: true })
-      }
-
-      const dbExists = fs.existsSync(DB_PATH)
-      this.db = new Database(DB_PATH)
-
-      // WAL 模式提升并发性能
-      this.db.pragma('journal_mode = WAL')
-      this.db.pragma('foreign_keys = ON')
-
-      if (!dbExists) {
-        this.runSchema()
-      } else {
-        this.migrateSchema()
-      }
-
-      this.initialized = true
-    } catch (err) {
-      console.error('[Cache] Failed to initialize cache DB:', err)
-      this.db = null
-    }
+    if (this.initialized && this.db) return
+    this.db = getHubDb()
+    this.initialized = this.db !== null
   }
 
   /**
@@ -149,98 +68,13 @@ class CacheService {
   }
 
   /**
-   * 创建初始 Schema
-   */
-  private runSchema(): void {
-    if (!this.db) return
-    this.db.exec(CREATE_SCHEMA_SQL)
-    this.db.prepare(
-      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'
-    ).run('schema_version', String(SCHEMA_VERSION))
-    console.log('[Cache] Database initialized with schema v' + SCHEMA_VERSION)
-  }
-
-  /**
-   * Schema 迁移（版本升级）
-   */
-  private migrateSchema(): void {
-    if (!this.db) return
-    const row = this.db.prepare(
-      'SELECT value FROM meta WHERE key = \'schema_version\''
-    ).get() as { value: string } | undefined
-    const currentVersion = row ? parseInt(row.value, 10) : 0
-
-    if (currentVersion < SCHEMA_VERSION) {
-      if (currentVersion < 3) {
-        try {
-          this.db.exec('DROP TABLE IF EXISTS fts_messages;')
-          this.db.prepare('UPDATE sessions_cache SET data_hash = NULL;').run()
-        } catch {
-          // ignore drop errors
-        }
-      }
-
-      if (currentVersion < 4) {
-        this.migrateSessionEvaluationsV4()
-      }
-
-      if (currentVersion < 8) {
-        this.dropPrescriptionsV8()
-      }
-
-      this.db.exec(CREATE_SCHEMA_SQL)
-      this.db.prepare(
-        'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'
-      ).run('schema_version', String(SCHEMA_VERSION))
-      console.log(`[Cache] Database migrated from v${currentVersion} to v${SCHEMA_VERSION}`)
-    }
-  }
-
-  /**
-   * v4：session_evaluations 增加 Rubric v2 字段（旧库 ALTER，幂等）
-   */
-  private migrateSessionEvaluationsV4(): void {
-    if (!this.db) return
-    const columns = this.db.prepare('PRAGMA table_info(session_evaluations)').all() as Array<{ name: string }>
-    const existing = new Set(columns.map(c => c.name))
-    // 预组合的静态 DDL（列名与定义均为编译期常量，避免运行时拼接 SQL）
-    const additions: Array<[string, string]> = [
-      ['strategy_json', 'ALTER TABLE session_evaluations ADD COLUMN strategy_json TEXT DEFAULT \'[]\''],
-      ['flags_json', 'ALTER TABLE session_evaluations ADD COLUMN flags_json TEXT DEFAULT \'{}\''],
-      ['evaluator_version', 'ALTER TABLE session_evaluations ADD COLUMN evaluator_version INTEGER DEFAULT 2'],
-      ['harvest_status', 'ALTER TABLE session_evaluations ADD COLUMN harvest_status TEXT DEFAULT \'\''],
-      ['memory_node_id', 'ALTER TABLE session_evaluations ADD COLUMN memory_node_id TEXT DEFAULT \'\''],
-      ['evidence_hash', 'ALTER TABLE session_evaluations ADD COLUMN evidence_hash TEXT DEFAULT \'\'']
-    ]
-    for (const [name, ddl] of additions) {
-      if (!existing.has(name)) {
-        try {
-          this.db.exec(ddl)
-        } catch (err) {
-          console.error(`[Cache] Failed to add column ${name}:`, err)
-        }
-      }
-    }
-  }
-
-  /**
-   * v8：移除已下线的 prescriptions 台账表。
-   * 处方能力已整体移除，处方不再单独存储（诊断建议仍保留在诊断报告中）。
-   */
-  private dropPrescriptionsV8(): void {
-    if (!this.db) return
-    try {
-      this.db.exec('DROP TABLE IF EXISTS prescriptions')
-    } catch (err) {
-      console.error('[Cache] Failed to drop prescriptions table:', err)
-    }
-  }
-
-  /**
    * 检查缓存是否可用
    */
   isAvailable(): boolean {
-    return this.initialized && this.db !== null
+    // 惰性建连：首个请求就可能走缓存路径，避免冷启动时 isAvailable() 返回 false
+    // 导致调用方回退到「直接读 adapter」的慢路径（表现为 total 抖动、首屏变慢）。
+    this.init()
+    return this.db !== null
   }
 
   /**
@@ -251,7 +85,7 @@ class CacheService {
       return {
         sessions: 0, messages: 0, fts_entries: 0,
         last_sync_at: null, schema_version: null,
-        db_exists: fs.existsSync(DB_PATH)
+        db_exists: fs.existsSync(hubFile('session-hub.db'))
       }
     }
 
@@ -415,7 +249,7 @@ class CacheService {
           syncedSessions++
         }
       } catch (err) {
-        console.error(`[Cache] Error syncing plugin ${plugin.manifest.id}:`, err)
+        logger.error(`[Cache] Error syncing plugin ${plugin.manifest.id}:`, err)
         errors++
       }
     }
@@ -507,7 +341,7 @@ class CacheService {
       const rows = this.db.prepare(sql).all(...params) as SessionCacheRow[]
       return rows.map(r => this.rowToSession(r)).filter(Boolean) as UnifiedSession[]
     } catch (err) {
-      console.error('[Cache] Error reading cached sessions:', err)
+      logger.error('[Cache] Error reading cached sessions:', err)
       return []
     }
   }
@@ -531,7 +365,7 @@ class CacheService {
         .get(...built.params) as { c: number } | undefined
       return row?.c ?? 0
     } catch (err) {
-      console.error('[Cache] Error counting cached sessions:', err)
+      logger.error('[Cache] Error counting cached sessions:', err)
       return 0
     }
   }
@@ -558,7 +392,7 @@ class CacheService {
     try {
       this.buildSessionUpsert(session, messages, newHash)()
     } catch (err) {
-      console.error('[Cache] Error in syncSingleSession:', err)
+      logger.error('[Cache] Error in syncSingleSession:', err)
     }
 
     return this.getCachedSessionDetail(platform, id)
@@ -683,7 +517,7 @@ class CacheService {
         messages: mrows.map(r => this.rowToMessage(r)).filter(Boolean) as SessionMessage[]
       }
     } catch (err) {
-      console.error('[Cache] Error reading cached session detail:', err)
+      logger.error('[Cache] Error reading cached session detail:', err)
       return { session: null, messages: [] }
     }
   }
@@ -694,200 +528,10 @@ class CacheService {
   search(query: string, options: SearchOptions = {}): SearchResponse {
     this.init()
     const limit = Math.min(100, Math.max(1, options.limit ?? 20))
-    const offset = Math.max(0, options.offset ?? 0)
-    const groupBy = options.groupBy || 'session'
-    const page = Math.floor(offset / limit) + 1
-
-    if (!this.db || !query.trim()) {
-      return { results: [], total: 0, query, page, pageSize: limit }
+    if (!this.db) {
+      return { results: [], total: 0, query, page: 1, pageSize: limit }
     }
-
-    const empty: SearchResponse = { results: [], total: 0, query, page, pageSize: limit }
-
-    try {
-      const ftsQuery = escapeFtsQuery(query, this.segmenter)
-      if (!ftsQuery) return empty
-
-      // 动态拼接过滤条件
-      const conditions: string[] = ['fts_messages MATCH ?']
-      const params: unknown[] = [ftsQuery]
-
-      if (options.platform && options.platform !== 'all') {
-        conditions.push('f.platform = ?')
-        params.push(options.platform)
-      }
-
-      if (options.role && options.role !== 'all') {
-        conditions.push('f.role = ?')
-        params.push(options.role)
-      }
-
-      if (options.cwd) {
-        conditions.push('s.cwd LIKE ?')
-        params.push(`%${options.cwd}%`)
-      }
-
-      if (options.tag) {
-        conditions.push('s.tags LIKE ?')
-        params.push(`%${options.tag}%`)
-      }
-
-      // 已知限制：cwd/tag 过滤均为前导通配 %LIKE%，无法利用索引，
-      // 只能作为 FTS 命中结果的后置过滤，代价随命中消息数线性增长。
-
-      const whereClause = conditions.join(' AND ')
-
-      // 1. 统计总匹配消息数及各平台分布。
-      // 已知限制：COUNT + GROUP BY 需扫描全部命中行（FTS5 无近似计数），
-      // 命中集合极大时本查询随匹配消息总量线性变慢。
-      const countSql = `
-        SELECT f.platform, COUNT(*) as c
-        FROM fts_messages f
-        LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
-        WHERE ${whereClause}
-        GROUP BY f.platform
-      `
-      const platformCounts = this.db.prepare(countSql).all(...params) as { platform: string, c: number }[]
-      const platformMap: Record<string, number> = {}
-      let total = 0
-      for (const p of platformCounts) {
-        platformMap[p.platform] = p.c
-        total += p.c
-      }
-
-      if (total === 0) return empty
-
-      // 2. 查询明细
-      const searchSql = `
-        SELECT
-          f.rowid,
-          f.message_id,
-          f.session_id,
-          f.platform,
-          f.role,
-          s.title,
-          s.cwd,
-          s.tags,
-          s.updated_at,
-          f.tool_summary,
-          snippet(fts_messages, 0, '<mark>', '</mark>', '...', 40) AS snippet,
-          f.rank
-        FROM fts_messages f
-        LEFT JOIN sessions_cache s ON s.id = f.session_id AND s.platform = f.platform
-        WHERE ${whereClause}
-        ORDER BY f.rank
-        LIMIT ? OFFSET ?
-      `
-
-      // 如果是按会话聚合，多拉取一些记录以供会话级聚合展示
-      const fetchLimit = groupBy === 'session' ? Math.max(100, limit * 5) : limit
-      const rows = this.db.prepare(searchSql).all(...params, fetchLimit, offset) as Array<{
-        rowid: number
-        message_id: string
-        session_id: string
-        platform: string
-        role: string
-        title: string
-        cwd: string
-        tags: string
-        updated_at: number
-        tool_summary?: string
-        snippet: string
-        rank: number
-      }>
-
-      const results: SearchResultItem[] = rows.map((r) => {
-        let tags: string[] = []
-        try {
-          if (r.tags) tags = JSON.parse(r.tags) as string[]
-        } catch {
-          tags = []
-        }
-
-        return {
-          rowid: r.rowid,
-          message_id: r.message_id || `msg_${r.rowid}`,
-          session_id: r.session_id,
-          platform: r.platform,
-          role: r.role,
-          title: r.title || '无标题会话',
-          cwd: r.cwd || '',
-          tags,
-          updated_at: r.updated_at || Date.now(),
-          snippet: this.cleanSnippetSpaces(r.snippet),
-          tool_summary: r.tool_summary || undefined,
-          rank: r.rank
-        }
-      })
-
-      if (groupBy === 'session') {
-        const sessionMap = new Map<string, SessionGroupedSearchResult>()
-        for (const item of results) {
-          const key = `${item.platform}::${item.session_id}`
-          if (!sessionMap.has(key)) {
-            sessionMap.set(key, {
-              session_id: item.session_id,
-              platform: item.platform,
-              title: item.title,
-              cwd: item.cwd,
-              tags: item.tags,
-              updated_at: item.updated_at,
-              matchedCount: 0,
-              bestRank: item.rank,
-              snippets: []
-            })
-          }
-          const group = sessionMap.get(key)!
-          group.matchedCount++
-          if (item.rank < group.bestRank) {
-            group.bestRank = item.rank
-          }
-          if (group.snippets.length < 5) {
-            group.snippets.push({
-              message_id: item.message_id,
-              role: item.role,
-              snippet: item.snippet
-            })
-          }
-        }
-
-        const groupedSessions = Array.from(sessionMap.values())
-          .sort((a, b) => a.bestRank - b.bestRank)
-          .slice(0, limit)
-
-        return {
-          results,
-          groupedSessions,
-          total,
-          query,
-          page,
-          pageSize: limit,
-          platforms: platformMap
-        }
-      }
-
-      return {
-        results,
-        total,
-        query,
-        page,
-        pageSize: limit,
-        platforms: platformMap
-      }
-    } catch (err) {
-      console.error('[Cache] FTS5 search error:', err)
-      return empty
-    }
-  }
-
-  /**
-   * 清理分词高亮片段中由于分词产生的多余中文空格
-   */
-  private cleanSnippetSpaces(snippet: string): string {
-    if (!snippet) return ''
-    return snippet
-      .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, '$1$2')
-      .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, '$1$2')
+    return searchMessages(this.db, this.segmenter, query, options)
   }
 
   private rowToSession(row: SessionCacheRow): UnifiedSession | null {
@@ -962,7 +606,7 @@ class CacheService {
       tx()
       return true
     } catch (err) {
-      console.error('[Cache] Error updating session title:', err)
+      logger.error('[Cache] Error updating session title:', err)
       return false
     }
   }
@@ -999,7 +643,7 @@ class CacheService {
 
       return { total, counts }
     } catch (err) {
-      console.error('[Cache] Error getting cached platform stats:', err)
+      logger.error('[Cache] Error getting cached platform stats:', err)
       return { total: 0, counts }
     }
   }
@@ -1031,7 +675,7 @@ class CacheService {
       tx()
       return true
     } catch (err) {
-      console.error('[Cache] Error deleting from cache:', err)
+      logger.error('[Cache] Error deleting from cache:', err)
       return false
     }
   }
