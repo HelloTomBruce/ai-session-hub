@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -79,7 +80,7 @@ export class OpenCodeMcpProvider extends BaseJsonMcpProvider {
         })
       }
     } catch (e) {
-      console.error('[OpenCodeMcpProvider] Failed reading OpenCode config:', e)
+      logger.error('[OpenCodeMcpProvider] Failed reading OpenCode config:', e)
     }
 
     return servers

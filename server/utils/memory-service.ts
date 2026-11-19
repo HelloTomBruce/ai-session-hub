@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import { grafeoService } from './grafeo-service'
 import { normalizeTitleForDedup, contentSimilarity } from './harvest-dedup'
 import { recallStats } from './recall-stats'
@@ -183,7 +184,7 @@ class MemoryService {
       }
       return null
     } catch (err) {
-      console.error('[MemoryService] Error in findMemoryBySessionKey:', err)
+      logger.error('[MemoryService] Error in findMemoryBySessionKey:', err)
       return null
     }
   }
@@ -205,7 +206,7 @@ class MemoryService {
       }
       return null
     } catch (err) {
-      console.error('[MemoryService] Error in findMemoryByTitle:', err)
+      logger.error('[MemoryService] Error in findMemoryByTitle:', err)
       return null
     }
   }
@@ -470,7 +471,7 @@ class MemoryService {
         Array.from(supersededSet)
       )
     } catch (err) {
-      console.error('[MemoryService] Error getting memory:', err)
+      logger.error('[MemoryService] Error getting memory:', err)
       return null
     }
   }
@@ -592,7 +593,7 @@ class MemoryService {
 
       return { items: paginated, total }
     } catch (err) {
-      console.error('[MemoryService] Error listing memories:', err)
+      logger.error('[MemoryService] Error listing memories:', err)
       return { items: [], total: 0 }
     }
   }
@@ -613,7 +614,7 @@ class MemoryService {
       grafeoService.checkpoint()
       return true
     } catch (err) {
-      console.error('[MemoryService] Error deleting memory:', err)
+      logger.error('[MemoryService] Error deleting memory:', err)
       return false
     }
   }
@@ -779,7 +780,7 @@ class MemoryService {
 
       return { nodes, edges }
     } catch (err) {
-      console.error('[MemoryService] Error getting graph data:', err)
+      logger.error('[MemoryService] Error getting graph data:', err)
       return { nodes: [], edges: [] }
     }
   }
@@ -844,7 +845,7 @@ class MemoryService {
         total
       }
     } catch (err) {
-      console.error('[MemoryService] Error getting distinct meta:', err)
+      logger.error('[MemoryService] Error getting distinct meta:', err)
       return { types: [], projects: [], techConcepts: [], total: 0 }
     }
   }
@@ -950,7 +951,7 @@ class MemoryService {
       grafeoService.checkpoint()
       return true
     } catch (err) {
-      console.error('[MemoryService] Error confirming memory:', err)
+      logger.error('[MemoryService] Error confirming memory:', err)
       return false
     }
   }

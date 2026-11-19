@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -67,7 +68,7 @@ export class PluginManager {
       this.loadConfig()
       this.loadDeclarativeJsonPluginsSync()
     } catch (err) {
-      console.error('[PluginManager] Error during sync init:', err)
+      logger.error('[PluginManager] Error during sync init:', err)
     }
   }
 
@@ -84,7 +85,7 @@ export class PluginManager {
         }
       }
     } catch (err) {
-      console.error('[PluginManager] Error scanning JSON plugins:', err)
+      logger.error('[PluginManager] Error scanning JSON plugins:', err)
     }
   }
 
@@ -107,7 +108,7 @@ export class PluginManager {
         }
       }
     } catch (e) {
-      console.error(`[PluginManager] Error loading JSON plugin ${fullPath}:`, e)
+      logger.error(`[PluginManager] Error loading JSON plugin ${fullPath}:`, e)
     }
   }
 
@@ -126,7 +127,7 @@ export class PluginManager {
       await this.loadExternalPlugins()
       this.initialized = true
     } catch (err) {
-      console.error('[PluginManager] Error initializing plugin system:', err)
+      logger.error('[PluginManager] Error initializing plugin system:', err)
     }
   }
 
@@ -144,7 +145,7 @@ export class PluginManager {
           }
         }
       } catch (err) {
-        console.error('[PluginManager] Failed to read plugins-config.json:', err)
+        logger.error('[PluginManager] Failed to read plugins-config.json:', err)
       }
     }
   }
@@ -163,7 +164,7 @@ export class PluginManager {
       }
       fs.writeFileSync(PLUGINS_CONFIG_PATH, JSON.stringify({ enabled }, null, 2), 'utf-8')
     } catch (err) {
-      console.error('[PluginManager] Failed to save plugins-config.json:', err)
+      logger.error('[PluginManager] Failed to save plugins-config.json:', err)
     }
   }
 
@@ -231,7 +232,7 @@ export class PluginManager {
           this.loadDeclarativeJsonFromFile(fullPath)
           const added = Array.from(this.plugins.values()).slice(before)
           for (const plugin of added) {
-            console.log(`[PluginManager] Loaded declarative plugin: ${plugin.manifest.id}`)
+            logger.info(`[PluginManager] Loaded declarative plugin: ${plugin.manifest.id}`)
           }
         }
 
@@ -244,10 +245,10 @@ export class PluginManager {
             const pluginInstance: SessionPlugin = typeof PluginClass === 'function' ? new PluginClass() : PluginClass
             if (pluginInstance && pluginInstance.manifest?.id) {
               this.register(pluginInstance)
-              console.log(`[PluginManager] Loaded custom JS plugin: ${pluginInstance.manifest.id}`)
+              logger.info(`[PluginManager] Loaded custom JS plugin: ${pluginInstance.manifest.id}`)
             }
           } catch (e) {
-            console.error(`[PluginManager] Error loading custom JS plugin ${file}:`, e)
+            logger.error(`[PluginManager] Error loading custom JS plugin ${file}:`, e)
           }
         }
       }
@@ -258,7 +259,7 @@ export class PluginManager {
         await this.scanNodeModulesPlugins(userNodeModules)
       }
     } catch (err) {
-      console.error('[PluginManager] Error scanning external plugins dir:', err)
+      logger.error('[PluginManager] Error scanning external plugins dir:', err)
     }
   }
 
@@ -288,13 +289,13 @@ export class PluginManager {
                   const pluginInstance: SessionPlugin = typeof PluginClass === 'function' ? new PluginClass() : PluginClass
                   if (pluginInstance && pluginInstance.manifest?.id) {
                     this.register(pluginInstance)
-                    console.log(`[PluginManager] Loaded npm plugin: ${pluginInstance.manifest.id} (${entry.name})`)
+                    logger.info(`[PluginManager] Loaded npm plugin: ${pluginInstance.manifest.id} (${entry.name})`)
                   }
                 } else {
-                  console.warn(`[PluginManager] Could not resolve entry file for npm plugin at ${pkgDir}`)
+                  logger.warn(`[PluginManager] Could not resolve entry file for npm plugin at ${pkgDir}`)
                 }
               } catch (e) {
-                console.error(`[PluginManager] Failed to load npm plugin from ${pkgDir}:`, e)
+                logger.error(`[PluginManager] Failed to load npm plugin from ${pkgDir}:`, e)
               }
             }
           }
@@ -302,7 +303,7 @@ export class PluginManager {
       }
       await scanScopeOrPkg(nmDir, false)
     } catch (err) {
-      console.error('[PluginManager] Error scanning node_modules plugins:', err)
+      logger.error('[PluginManager] Error scanning node_modules plugins:', err)
     }
   }
 
@@ -412,7 +413,7 @@ export class PluginManager {
         try {
           sessions.push(...plugin.getSessions())
         } catch (e) {
-          console.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
+          logger.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
         }
       }
     } else {
@@ -422,7 +423,7 @@ export class PluginManager {
         try {
           sessions = plugin.getSessions()
         } catch (e) {
-          console.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
+          logger.error(`[PluginManager] Error loading sessions for ${plugin.manifest.id}:`, e)
         }
       }
     }

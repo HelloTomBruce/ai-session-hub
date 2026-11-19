@@ -1,3 +1,4 @@
+import { logger } from '../../../../utils/logger'
 import { adapterRegistry } from '../../../../utils/adapter-registry'
 import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, runDeterministicRubricEvaluation, type AIEvaluationResult } from '@session-hub/analyzer'
 import { streamLLMCompletion } from '@session-hub/llm'
@@ -71,7 +72,7 @@ export default defineEventHandler(async (event) => {
       res.end()
       return
     } catch (err) {
-      console.warn(`[Evaluator] Stream invocation failed:`, (err as { message?: string })?.message)
+      logger.warn(`[Evaluator] Stream invocation failed:`, (err as { message?: string })?.message)
       sendEvent('status', { message: 'AI 流式调用中断，正在切换至本地规则引擎诊断...' })
     }
   }

@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -40,7 +41,7 @@ export class SkillProviderRegistry {
         try {
           skills.push(...provider.getSkills())
         } catch (e) {
-          console.error(`[SkillProviderRegistry] Error reading skills from ${provider.platform}:`, e)
+          logger.error(`[SkillProviderRegistry] Error reading skills from ${provider.platform}:`, e)
         }
       }
     }

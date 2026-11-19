@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -45,7 +46,7 @@ export const fileReportStore: ReportStore = {
       if (!fs.existsSync(DIAGNOSIS_DIR)) fs.mkdirSync(DIAGNOSIS_DIR, { recursive: true })
       fs.writeFileSync(path.join(DIAGNOSIS_DIR, `${sessionId}.json`), JSON.stringify(report, null, 2), 'utf-8')
     } catch (err) {
-      console.warn('[DiagnosisService] Failed to persist diagnosis report:', err)
+      logger.warn('[DiagnosisService] Failed to persist diagnosis report:', err)
     }
   },
   load(sessionId) {

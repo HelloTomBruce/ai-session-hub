@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import { cacheService } from './cache-service'
 import type { PlatformType } from './types'
 import type { QuantitativeEvaluationReport, ValueCategory, GradeLevel } from '@session-hub/analyzer'
@@ -122,7 +123,7 @@ class KnowledgeService {
       const items = rows.map(r => this.rowToItem(r)).filter(Boolean) as KnowledgeItem[]
       return { items, total }
     } catch (err) {
-      console.error('[Knowledge] Error listing items:', err)
+      logger.error('[Knowledge] Error listing items:', err)
       return { items: [], total: 0 }
     }
   }
@@ -139,7 +140,7 @@ class KnowledgeService {
       const row = db.prepare('SELECT * FROM knowledge_vault WHERE id = ?').get(id) as KnowledgeRow | undefined
       return this.rowToItem(row)
     } catch (err) {
-      console.error('[Knowledge] Error getting item:', err)
+      logger.error('[Knowledge] Error getting item:', err)
       return null
     }
   }
@@ -156,7 +157,7 @@ class KnowledgeService {
       const info = db.prepare('DELETE FROM knowledge_vault WHERE id = ?').run(id)
       return info.changes > 0
     } catch (err) {
-      console.error('[Knowledge] Error deleting item:', err)
+      logger.error('[Knowledge] Error deleting item:', err)
       return false
     }
   }
@@ -200,7 +201,7 @@ class KnowledgeService {
         report.evaluatedAt || Date.now()
       )
     } catch (err) {
-      console.error('[Knowledge] Error saving evaluation:', err)
+      logger.error('[Knowledge] Error saving evaluation:', err)
     }
   }
 
@@ -216,7 +217,7 @@ class KnowledgeService {
         'UPDATE session_evaluations SET harvest_status = ?, memory_node_id = ? WHERE session_id = ? AND platform = ?'
       ).run(status, memoryNodeId, sessionId, platform)
     } catch (err) {
-      console.error('[Knowledge] Error updating harvest result:', err)
+      logger.error('[Knowledge] Error updating harvest result:', err)
     }
   }
 
@@ -255,7 +256,7 @@ class KnowledgeService {
         evaluatedAt: row.evaluated_at
       }
     } catch (err) {
-      console.error('[Knowledge] Error getting evaluation:', err)
+      logger.error('[Knowledge] Error getting evaluation:', err)
       return null
     }
   }

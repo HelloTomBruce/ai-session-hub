@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -58,7 +59,7 @@ export class TemplateJsonlPlugin implements SessionPlugin {
       }
       scanFiles(this.baseDir)
     } catch (err) {
-      console.error(`[TemplateJsonlPlugin] Error scanning ${this.manifest.id}:`, err)
+      logger.error(`[TemplateJsonlPlugin] Error scanning ${this.manifest.id}:`, err)
     }
 
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
@@ -93,7 +94,7 @@ export class TemplateJsonlPlugin implements SessionPlugin {
         }
       }
     } catch (err) {
-      console.error(`[TemplateJsonlPlugin] Error reading messages for ${this.manifest.id}:`, err)
+      logger.error(`[TemplateJsonlPlugin] Error reading messages for ${this.manifest.id}:`, err)
     }
 
     return messages
@@ -105,7 +106,7 @@ export class TemplateJsonlPlugin implements SessionPlugin {
       try {
         fs.unlinkSync(session.rawLocation)
       } catch (e) {
-        console.warn(`[TemplateJsonlPlugin] Error deleting file for ${id}:`, e)
+        logger.warn(`[TemplateJsonlPlugin] Error deleting file for ${id}:`, e)
       }
     }
     return true

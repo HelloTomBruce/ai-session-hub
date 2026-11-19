@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -43,7 +44,7 @@ class GrafeoService {
         }
 
         this.initialized = true
-        console.log(`[GrafeoService] Initialized GrafeoDB at ${this.dbPath} (v${this.db.version()})`)
+        logger.info(`[GrafeoService] Initialized GrafeoDB at ${this.dbPath} (v${this.db.version()})`)
       } catch (err) {
         // 不再静默降级内存库：降级会造成「读取谎报空数据 + 写入静默丢失」双重事故。
         // 典型场景是 memory.grafeo 被其他进程（如遗留的生产 server）独占锁定（GRAFEO-X001），
@@ -90,7 +91,7 @@ class GrafeoService {
       try {
         this.db.walCheckpoint()
       } catch (err) {
-        console.warn('[GrafeoService] Error running WAL checkpoint:', err)
+        logger.warn('[GrafeoService] Error running WAL checkpoint:', err)
       }
     }
   }
@@ -103,7 +104,7 @@ class GrafeoService {
       try {
         this.db.close()
       } catch (err) {
-        console.warn('[GrafeoService] Error closing DB:', err)
+        logger.warn('[GrafeoService] Error closing DB:', err)
       }
       this.db = null
       this.initialized = false

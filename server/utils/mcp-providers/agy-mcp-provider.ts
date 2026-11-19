@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -56,7 +57,7 @@ export class AgyMcpProvider implements McpProvider {
         })
       }
     } catch (e) {
-      console.error('[AgyMcpProvider] Failed reading AGY MCP directory:', e)
+      logger.error('[AgyMcpProvider] Failed reading AGY MCP directory:', e)
     }
 
     return servers

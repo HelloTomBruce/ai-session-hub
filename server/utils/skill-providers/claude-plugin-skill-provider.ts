@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -58,7 +59,7 @@ export class ClaudePluginSkillProvider implements SkillProvider {
         }
       }
     } catch (e) {
-      console.error('[ClaudePluginSkillProvider] Failed reading claude plugins:', e)
+      logger.error('[ClaudePluginSkillProvider] Failed reading claude plugins:', e)
     }
 
     return skills

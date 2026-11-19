@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -29,7 +30,7 @@ export function getCachedSessionSummary(platform: string, id: string, updatedAt:
       return data as SingleSessionSummary
     }
   } catch (e) {
-    console.error('[DistillCache] Error reading cache:', e)
+    logger.error('[DistillCache] Error reading cache:', e)
   }
   return null
 }
@@ -40,7 +41,7 @@ export function saveCachedSessionSummary(summary: SingleSessionSummary): void {
     const filePath = path.join(CACHE_DIR, getCacheKey(summary.platform, summary.sessionId, summary.updatedAt))
     fs.writeFileSync(filePath, JSON.stringify(summary, null, 2), 'utf-8')
   } catch (e) {
-    console.error('[DistillCache] Error writing cache:', e)
+    logger.error('[DistillCache] Error writing cache:', e)
   }
 }
 

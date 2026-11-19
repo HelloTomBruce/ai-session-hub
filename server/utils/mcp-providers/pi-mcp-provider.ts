@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -38,7 +39,7 @@ export class PiMcpProvider extends BaseJsonMcpProvider {
         const parsed = JSON.parse(raw)
         cacheData = parsed.servers || {}
       } catch (e) {
-        console.error('[PiMcpProvider] Failed reading Pi mcp cache:', e)
+        logger.error('[PiMcpProvider] Failed reading Pi mcp cache:', e)
       }
     }
 
@@ -106,7 +107,7 @@ export class PiMcpProvider extends BaseJsonMcpProvider {
         })
       }
     } catch (e) {
-      console.error('[PiMcpProvider] Failed reading Pi MCP config:', e)
+      logger.error('[PiMcpProvider] Failed reading Pi MCP config:', e)
     }
 
     return servers

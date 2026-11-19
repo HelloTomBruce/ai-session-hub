@@ -1,3 +1,4 @@
+import { logger } from './logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -28,7 +29,7 @@ export function getLLMProviderSettings(): LLMProviderSettings {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(data) }
     }
   } catch (err) {
-    console.error('[LLM Provider] Failed to read settings:', err)
+    logger.error('[LLM Provider] Failed to read settings:', err)
   }
 
   // Fallback to process.env if available
@@ -52,7 +53,7 @@ export function saveLLMProviderSettings(settings: Partial<LLMProviderSettings>):
     }
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8')
   } catch (err) {
-    console.error('[LLM Provider] Failed to save settings:', err)
+    logger.error('[LLM Provider] Failed to save settings:', err)
   }
 
   return updated

@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -63,7 +64,7 @@ export class ZCodeSkillProvider implements SkillProvider {
           }
         }
       } catch (e) {
-        console.error('[ZCodeSkillProvider] Failed scanning custom skills:', e)
+        logger.error('[ZCodeSkillProvider] Failed scanning custom skills:', e)
       }
     }
 
@@ -123,7 +124,7 @@ export class ZCodeSkillProvider implements SkillProvider {
           }
         }
       } catch (e) {
-        console.error('[ZCodeSkillProvider] Failed scanning plugin skills:', e)
+        logger.error('[ZCodeSkillProvider] Failed scanning plugin skills:', e)
       }
     }
 

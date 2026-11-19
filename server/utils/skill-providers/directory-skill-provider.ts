@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { SkillProvider } from './base-skill-provider'
@@ -90,12 +91,12 @@ export class DirectorySkillProvider implements SkillProvider {
               tags: extractSkillTags(name, description)
             })
           } catch (err) {
-            console.error(`[DirectorySkillProvider:${this.platform}] Failed reading skill ${skillMd}:`, err)
+            logger.error(`[DirectorySkillProvider:${this.platform}] Failed reading skill ${skillMd}:`, err)
           }
         }
       }
     } catch (e) {
-      console.error(`[DirectorySkillProvider:${this.platform}] Failed reading directory ${this.dir}:`, e)
+      logger.error(`[DirectorySkillProvider:${this.platform}] Failed reading directory ${this.dir}:`, e)
     }
 
     return skills

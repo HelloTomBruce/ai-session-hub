@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -68,7 +69,7 @@ export class ReasonixMcpProvider implements McpProvider {
         }
       }
     } catch (e) {
-      console.error('[ReasonixMcpProvider] Failed reading Reasonix TOML config:', e)
+      logger.error('[ReasonixMcpProvider] Failed reading Reasonix TOML config:', e)
     }
 
     return servers
@@ -81,7 +82,7 @@ export class ReasonixMcpProvider implements McpProvider {
       try {
         content = fs.readFileSync(this.filePath, 'utf-8')
       } catch (e) {
-        console.error('[ReasonixMcpProvider] Failed reading config.toml:', e)
+        logger.error('[ReasonixMcpProvider] Failed reading config.toml:', e)
       }
     }
 

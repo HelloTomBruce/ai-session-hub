@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { UnifiedMcpServer, McpServerType } from '../mcp-manager-types'
@@ -137,7 +138,7 @@ export class BaseJsonMcpProvider implements McpProvider {
         })
       }
     } catch (e) {
-      console.error(`[McpProvider:${this.platform}] Failed reading JSON config at ${this.configPath}:`, e)
+      logger.error(`[McpProvider:${this.platform}] Failed reading JSON config at ${this.configPath}:`, e)
     }
 
     return servers
@@ -150,7 +151,7 @@ export class BaseJsonMcpProvider implements McpProvider {
       try {
         content = fs.readFileSync(this.configPath, 'utf-8')
       } catch (e) {
-        console.error(`[McpProvider:${this.platform}] Failed reading raw config:`, e)
+        logger.error(`[McpProvider:${this.platform}] Failed reading raw config:`, e)
       }
     } else {
       content = JSON.stringify({ [this.rootKey]: {} }, null, 2)

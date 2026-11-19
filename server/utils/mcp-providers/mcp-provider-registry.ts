@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import path from 'node:path'
 import os from 'node:os'
 import type { McpProvider, McpConfigFileInfo } from './base-mcp-provider'
@@ -38,7 +39,7 @@ export class McpProviderRegistry {
         try {
           list.push(...provider.getServers())
         } catch (e) {
-          console.error(`[McpProviderRegistry] Error scanning servers from ${provider.platform}:`, e)
+          logger.error(`[McpProviderRegistry] Error scanning servers from ${provider.platform}:`, e)
         }
       }
     }

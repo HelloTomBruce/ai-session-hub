@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import os from 'node:os'
 import Database from 'better-sqlite3'
@@ -66,7 +67,7 @@ export class TemplateSqlitePlugin implements SessionPlugin {
         })
       }
     } catch (err) {
-      console.error(`[TemplateSqlitePlugin] Error reading sessions for ${this.manifest.id}:`, err)
+      logger.error(`[TemplateSqlitePlugin] Error reading sessions for ${this.manifest.id}:`, err)
     } finally {
       db.close()
     }
@@ -93,7 +94,7 @@ export class TemplateSqlitePlugin implements SessionPlugin {
         }
       }
     } catch (err) {
-      console.error(`[TemplateSqlitePlugin] Error reading messages for ${this.manifest.id}:`, err)
+      logger.error(`[TemplateSqlitePlugin] Error reading messages for ${this.manifest.id}:`, err)
     } finally {
       db.close()
     }
@@ -113,7 +114,7 @@ export class TemplateSqlitePlugin implements SessionPlugin {
         db.prepare(`DELETE FROM ${this.config.sessionsTable} WHERE ${idCol} = ?`).run(id)
       }
     } catch (e) {
-      console.warn(`[TemplateSqlitePlugin] Error deleting session ${id}:`, e)
+      logger.warn(`[TemplateSqlitePlugin] Error deleting session ${id}:`, e)
     } finally {
       db.close()
     }

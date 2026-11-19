@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger'
 import type { CliType } from '~~/server/utils/types'
 import { cacheService } from '~~/server/utils/cache-service'
 import { deleteCliSession } from '~~/server/utils/session-service'
@@ -14,7 +15,7 @@ export default defineEventHandler((event) => {
   try {
     deleteCliSession(cli, id)
   } catch (err) {
-    console.warn(`[DeleteSession] Warning deleting from adapter ${cli}/${id}:`, err)
+    logger.warn(`[DeleteSession] Warning deleting from adapter ${cli}/${id}:`, err)
   }
 
   // Always clean up cache if available so ghost/stale sessions don't get stuck in UI

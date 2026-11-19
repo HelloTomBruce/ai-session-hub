@@ -1,3 +1,4 @@
+import { logger } from '../logger'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -91,7 +92,7 @@ export class ZCodeMcpProvider extends BaseJsonMcpProvider {
         })
       }
     } catch (e) {
-      console.error('[ZCodeMcpProvider] Failed reading ZCode config:', e)
+      logger.error('[ZCodeMcpProvider] Failed reading ZCode config:', e)
     }
 
     return servers

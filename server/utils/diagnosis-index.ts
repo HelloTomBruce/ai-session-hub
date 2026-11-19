@@ -1,3 +1,4 @@
+import { logger } from './logger'
 /**
  * 诊断索引（召回效果度量的「结果侧」数据集）。
  *
@@ -83,7 +84,7 @@ export function indexDiagnosis(input: DiagnosisIndexInput): boolean {
     )
     return true
   } catch (err) {
-    console.error('[DiagnosisIndex] indexDiagnosis failed:', err)
+    logger.error('[DiagnosisIndex] indexDiagnosis failed:', err)
     return false
   }
 }
@@ -154,7 +155,7 @@ export function backfillDiagnoses(limit = 200): BackfillResult {
       if (ok) result.indexed++
       else result.errors++
     } catch (err) {
-      console.error('[DiagnosisIndex] backfill session failed:', session.id, err)
+      logger.error('[DiagnosisIndex] backfill session failed:', session.id, err)
       result.errors++
     }
   }
@@ -180,7 +181,7 @@ export function listDiagnoses(options: { cwd?: string, limit?: number, offset?: 
       `SELECT * FROM session_diagnoses ${where} ORDER BY diagnosed_at DESC LIMIT ? OFFSET ?`
     ).all(...params, limit, offset) as DiagnosisRow[]
   } catch (err) {
-    console.error('[DiagnosisIndex] listDiagnoses failed:', err)
+    logger.error('[DiagnosisIndex] listDiagnoses failed:', err)
     return []
   }
 }
@@ -194,7 +195,7 @@ export function deleteDiagnosis(sessionId: string, platform: string): boolean {
       'DELETE FROM session_diagnoses WHERE session_id = ? AND platform = ?'
     ).run(sessionId, platform).changes > 0
   } catch (err) {
-    console.error('[DiagnosisIndex] deleteDiagnosis failed:', err)
+    logger.error('[DiagnosisIndex] deleteDiagnosis failed:', err)
     return false
   }
 }
@@ -239,7 +240,7 @@ export function getDiagnosisSummary(): DiagnosisSummary {
       frictionSessions
     }
   } catch (err) {
-    console.error('[DiagnosisIndex] getDiagnosisSummary failed:', err)
+    logger.error('[DiagnosisIndex] getDiagnosisSummary failed:', err)
     return empty
   }
 }

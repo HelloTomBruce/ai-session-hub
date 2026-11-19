@@ -1,3 +1,4 @@
+import { logger } from './logger'
 /**
  * 统一记忆抽取器（P1 质量管线单一事实源）。
  *
@@ -206,7 +207,7 @@ ${input.messagesContent.slice(0, MAX_CONTEXT)}
       evidenceVerified
     }
   } catch (err) {
-    console.error('[Memory Extractor] Failed to parse JSON response:', fullOutput.slice(0, 500))
+    logger.error('[Memory Extractor] Failed to parse JSON response:', fullOutput.slice(0, 500))
     throw new Error('LLM 返回的记忆数据格式不合法，未能解析为标准 JSON。', { cause: err })
   }
 }

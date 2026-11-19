@@ -1,3 +1,4 @@
+import { logger } from '../../../utils/logger'
 import { adapterRegistry } from '../../../utils/adapter-registry'
 import { EVALUATOR_SYSTEM_PROMPT, buildEvaluationPrompt, runDeterministicRubricEvaluation, type AIEvaluationResult } from '@session-hub/analyzer'
 import { completeLLM, extractJsonFromLLMText } from '@session-hub/llm'
@@ -56,7 +57,7 @@ export default defineEventHandler(async (event) => {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.warn(`[Evaluator] Invoking configured LLM (${provider.model} at ${provider.baseUrl}) failed: ${message}`)
+      logger.warn(`[Evaluator] Invoking configured LLM (${provider.model} at ${provider.baseUrl}) failed: ${message}`)
     }
   }
 
