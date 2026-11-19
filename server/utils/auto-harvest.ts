@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { cacheService } from './cache-service'
+import { logger } from './logger'
 import { memoryService } from './memory-service'
 import { extractMemoryFromSession, buildMessagesContent } from './memory-extractor'
 import { pluginManager } from './plugin-manager'
@@ -340,7 +341,7 @@ class AutoHarvestService {
       SELECT s.id, s.platform, s.title, s.cwd, s.message_count, s.updated_at
       FROM sessions_cache s
       LEFT JOIN session_harvests h ON s.id = h.session_id AND s.platform = h.platform
-      WHERE (h.status IS NULL ${options.force ? "OR h.status IN ('failed', 'skipped')" : ''})
+      WHERE (h.status IS NULL ${options.force ? `OR h.status IN ('failed', 'skipped')` : ''})
     `
     const params: unknown[] = []
     if (platform) {
@@ -431,9 +432,9 @@ class AutoHarvestService {
     this.ensureSchema(db)
 
     const total = (db.prepare('SELECT COUNT(*) as c FROM sessions_cache').get() as { c: number }).c
-    const harvested = (db.prepare("SELECT COUNT(*) as c FROM session_harvests WHERE status = 'harvested'").get() as { c: number }).c
-    const skipped = (db.prepare("SELECT COUNT(*) as c FROM session_harvests WHERE status = 'skipped'").get() as { c: number }).c
-    const failed = (db.prepare("SELECT COUNT(*) as c FROM session_harvests WHERE status = 'failed'").get() as { c: number }).c
+    const harvested = (db.prepare(`SELECT COUNT(*) as c FROM session_harvests WHERE status = 'harvested'`).get() as { c: number }).c
+    const skipped = (db.prepare(`SELECT COUNT(*) as c FROM session_harvests WHERE status = 'skipped'`).get() as { c: number }).c
+    const failed = (db.prepare(`SELECT COUNT(*) as c FROM session_harvests WHERE status = 'failed'`).get() as { c: number }).c
     const pending = Math.max(0, total - (harvested + skipped + failed))
 
     const recent = db.prepare(`
@@ -507,7 +508,7 @@ class AutoHarvestService {
       fs.writeFileSync(gotchaFile, existing.trimEnd() + '\n' + lines.join('\n') + '\n', 'utf-8')
     } catch (err) {
       // 本地写盘失败不阻断主流程
-      console.warn('[AutoHarvest] Dual-write to local .agents/gotchas.md skipped:', err)
+      logger.warn('[AutoHarvest] Dual-write to local .agents/gotchas.md skipped:', err)
     }
   }
 

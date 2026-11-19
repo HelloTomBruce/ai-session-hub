@@ -37,7 +37,6 @@ const { data: metaData, refresh: refreshMeta } = await useFetch('/api/memory/met
 // 获取自动收割流水线状态
 const { data: harvestData, refresh: refreshHarvest } = await useFetch('/api/memory/auto-harvest')
 const isHarvesting = ref(false)
-const isHarvestModalOpen = ref(false)
 
 async function startAutoHarvest(count = 5) {
   isHarvesting.value = true

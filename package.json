@@ -8,7 +8,7 @@
   "scripts": {
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "build": "pnpm run build:packages && nuxt build",
-    "start": "node scripts/check-db-lock.mjs && PORT=3877 node .output/server/index.mjs",
+    "start": "node scripts/check-db-lock.mjs && HOST=${HOST:-127.0.0.1} PORT=${PORT:-3877} node .output/server/index.mjs",
     "dev": "node scripts/check-db-lock.mjs && nuxt dev",
     "preview": "nuxt preview",
     "postinstall": "pnpm run build:packages && nuxt prepare",
@@ -16,7 +16,7 @@
     "typecheck": "pnpm run build:packages && nuxt typecheck",
     "record:demo": "tsx scripts/record-demo.ts",
     "favicon": "node scripts/generate-favicon.mjs",
-    "test": "node --import tsx --test 'test/cache/*.test.ts' 'test/evaluator/*.test.ts' 'test/llm/*.test.ts' 'test/memory/*.test.ts' 'test/plugins/*.test.ts' 'test/diagnoses/*.test.ts' 'test/mcp/*.test.ts'"
+    "test": "node scripts/prepare-test-home.mjs && HUB_HOME=.test-hub node --import tsx --test 'test/cache/*.test.ts' 'test/evaluator/*.test.ts' 'test/llm/*.test.ts' 'test/memory/*.test.ts' 'test/plugins/*.test.ts' 'test/diagnoses/*.test.ts' 'test/mcp/*.test.ts' 'test/tags/*.test.ts' 'test/validate/*.test.ts' 'test/db/*.test.ts' 'test/security/*.test.ts' 'test/shared/*.test.ts'"
   },
   "dependencies": {
     "@grafeo-db/js": "^0.5.42",

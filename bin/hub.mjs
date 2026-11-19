@@ -10,19 +10,19 @@ import os from 'node:os'
 import fs from 'node:fs'
 import Database from 'better-sqlite3'
 
-const DB_DIR = path.join(os.homedir(), '.session-hub')
+// HUB_HOME 与服务端共用同一数据目录约定，便于测试/演示用临时目录隔离
+const DB_DIR = process.env.HUB_HOME || path.join(os.homedir(), '.session-hub')
 const DB_PATH = path.join(DB_DIR, 'session-hub.db')
 const GRAFEO_PATH = path.join(DB_DIR, 'memory.grafeo')
 const API_BASE = process.env.SESSION_HUB_URL || 'http://localhost:3877'
 
 // ANSI Colors
-const bold = (s) => `\x1b[1m${s}\x1b[0m`
-const green = (s) => `\x1b[32m${s}\x1b[0m`
-const yellow = (s) => `\x1b[33m${s}\x1b[0m`
-const cyan = (s) => `\x1b[36m${s}\x1b[0m`
-const magenta = (s) => `\x1b[35m${s}\x1b[0m`
-const red = (s) => `\x1b[31m${s}\x1b[0m`
-const gray = (s) => `\x1b[90m${s}\x1b[0m`
+const bold = s => `\x1b[1m${s}\x1b[0m`
+const green = s => `\x1b[32m${s}\x1b[0m`
+const yellow = s => `\x1b[33m${s}\x1b[0m`
+const cyan = s => `\x1b[36m${s}\x1b[0m`
+const red = s => `\x1b[31m${s}\x1b[0m`
+const gray = s => `\x1b[90m${s}\x1b[0m`
 
 function printHelp() {
   console.log(`
@@ -326,7 +326,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(red(`\n执行错误: ${err.message}\n`))
   process.exit(1)
 })
