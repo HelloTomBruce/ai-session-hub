@@ -9,6 +9,9 @@ dist
 # Node dependencies
 node_modules
 
+# Lockfile: pnpm-lock.yaml 是唯一事实源，禁止提交 npm lockfile
+package-lock.json
+
 # Logs
 logs
 *.log
@@ -35,3 +38,6 @@ recordings
 
 # Browser debugging artifacts (dsh screenshots)
 .dsh-browser
+
+# 测试隔离数据目录（HUB_HOME 指向这里）
+.test-hub

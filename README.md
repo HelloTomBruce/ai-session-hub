@@ -4,13 +4,13 @@
 
 **极简、高效的多源 AI 编码会话聚合、智能检索、效能诊断与知识资产沉淀中枢**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Nuxt](https://img.shields.io/badge/Nuxt-3.x-00DC82?logo=nuxt&logoColor=white)](https://nuxt.com/)
-[![Nuxt UI](https://img.shields.io/badge/Nuxt_UI-v3-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0+-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Nuxt](https://img.shields.io/badge/Nuxt-4.x-00DC82?logo=nuxt&logoColor=white)](https://nuxt.com/)
+[![Nuxt UI](https://img.shields.io/badge/Nuxt_UI-v4-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
 [![SQLite FTS5](https://img.shields.io/badge/SQLite-FTS5_Fulltext-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/fts5.html)
 [![MCP](https://img.shields.io/badge/MCP-SSE_Supported-9B51E0)](https://modelcontextprotocol.io/)
 
-[功能特性](#-核心功能特性) • [插件生态](#-插件化架构与生态) • [快速开始](#-快速开始) • [声明式零代码扩展](#-接入自定义-agent零代码) • [MCP 服务](#-内置-mcp-sse-服务)
+[功能特性](#-核心功能特性) • [插件生态](#-插件化架构与生态) • [快速开始](#-快速开始) • [安全边界](#-本地访问与安全边界) • [声明式零代码扩展](#-接入自定义-agent零代码) • [MCP 服务](#-内置-mcp-sse-服务)
 
 </div>
 
@@ -77,7 +77,7 @@ session-hub/
 │   ├── plugin-agy/            # @session-hub/plugin-agy: Antigravity (AGY) 插件
 │   ├── plugin-workbuddy/      # @session-hub/plugin-workbuddy: WorkBuddy 插件
 │   └── plugin-zcode/          # @session-hub/plugin-zcode: ZCode 桌面端与 CLI 插件
-├── app/                       # Nuxt 3 前端界面与交互层
+├── app/                       # Nuxt 4 前端界面与交互层
 ├── server/                    # Nitro 后端引擎、PluginManager 与 SQLite 缓存层
 └── pnpm-workspace.yaml
 ```
@@ -149,7 +149,7 @@ Session Hub 采用 Iconify 图标系统（Nuxt UI 内置）。编写插件时，
 ## 🚀 快速开始
 
 ### 前置要求
-- Node.js >= 18.0.0
+- Node.js >= 20.19.0（Nuxt 4 要求，CI 矩阵使用 Node 22）
 - pnpm >= 9.0.0
 
 ### 安装与启动
@@ -177,6 +177,57 @@ Session Hub 采用 Iconify 图标系统（Nuxt UI 内置）。编写插件时，
    pnpm build
    node .output/server/index.mjs
    ```
+
+---
+
+## 🔒 本地访问与安全边界
+
+Session Hub 默认是一个**单机工具**：服务只监听 `127.0.0.1`，不做公网暴露，也不内置账号体系。跨越单机边界需要显式配置，边界规则如下。
+
+### 监听地址
+
+- 默认只监听回环地址 `127.0.0.1`，局域网内其他机器无法直连。
+- 需要让同网段的机器访问时，用 `HUB_HOST` 覆盖监听地址（例如 `HUB_HOST=0.0.0.0`）。跨出回环地址时**必须同时设置 `HUB_TOKEN`**：本机会话数据里包含代码、思维链与可能的凭据痕迹，无鉴权的局域网暴露等同于泄露。
+
+```bash
+HUB_HOST=0.0.0.0 HUB_TOKEN="$(openssl rand -hex 32)" pnpm dev
+```
+
+### 鉴权令牌 `HUB_TOKEN`
+
+设置 `HUB_TOKEN` 后，服务端对所有业务请求与 MCP 端点校验令牌，令牌通过以下三种方式之一传递：
+
+| 使用场景 | 传递方式 | 说明 |
+| :--- | :--- | :--- |
+| 浏览器 | 访问一次 `http://<host>:3877/?token=xxx` | 服务端校验通过后下发 `HttpOnly` Cookie（`hub_token`），后续页面与 `/api/*` 请求自动携带，地址栏中的 token 无需保留 |
+| MCP / HTTP 客户端 | 请求头 `Authorization: Bearer <token>` | 推荐方式，适用于 Claude Code、Cursor、Codex 等 MCP 客户端 |
+| 脚本 / 简易客户端 | 请求头 `x-hub-token: <token>` | 不便设置 `Authorization` 时的等价写法 |
+
+> Cookie 为 `HttpOnly`，前端 JS 读不到；`?token=xxx` 只用于**首次换取** Cookie，不写进任何前端代码或静态资源。
+
+MCP 客户端带令牌的配置示例：
+
+```json
+{
+  "mcpServers": {
+    "session-hub": {
+      "url": "http://localhost:3877/api/mcp/streamable",
+      "headers": { "Authorization": "Bearer <your-HUB_TOKEN>" }
+    }
+  }
+}
+```
+
+### 数据目录 `HUB_HOME`
+
+- 默认数据目录为 `~/.session-hub`（SQLite 缓存 `session-hub.db`、Grafeo 图谱 `memory.grafeo`、`plugins/` 声明式插件与 `cache/` 均在此目录下）。
+- 用 `HUB_HOME` 覆盖数据目录即可与日常数据隔离，测试与演示场景推荐指向临时目录：
+
+```bash
+HUB_HOME="$(mktemp -d)" pnpm dev     # 测试用 tmpdir 隔离，退出后丢弃
+```
+
+- CLI（`bin/hub.mjs`）同样读取 `HUB_HOME`，在同一个 shell 中导出即可保证 CLI 与服务端读到同一份数据。
 
 ---
 
