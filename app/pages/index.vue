@@ -85,136 +85,18 @@ watch(
   { deep: true }
 )
 
+const toast = useToast()
 const isRefreshing = ref(false)
 const tagColors: Record<string, string> = {
   bugfix: '#ef4444', refactor: '#f59e0b', feature: '#22c55e',
   deploy: '#3b82f6', migration: '#8b5cf6', documentation: '#06b6d4',
   performance: '#ec4899', security: '#dc2626', testing: '#14b8a6'
 }
-const selectedIds = ref<Set<string>>(new Set())
-const isBatchDeleting = ref(false)
-const isBatchDeleteModalOpen = ref(false)
-const isBatchTagging = ref(false)
-const batchTagInput = ref('')
-
-const toggleSelect = (item: UnifiedSession) => {
-  const key = `${item.cli}::${item.id}`
-  const next = new Set(selectedIds.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  selectedIds.value = next
-}
-
-const selectAllOnPage = () => {
-  const next = new Set(selectedIds.value)
-  for (const s of sessions.value) {
-    next.add(`${s.cli}::${s.id}`)
-  }
-  selectedIds.value = next
-}
-
-const clearSelection = () => {
-  selectedIds.value = new Set()
-}
-
-const selectedSessions = computed(() => {
-  return sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`))
-})
-
-const isAllSelected = computed(() => {
-  if (sessions.value.length === 0) return false
-  return sessions.value.every(s => selectedIds.value.has(`${s.cli}::${s.id}`))
-})
-
-const isIndeterminate = computed(() => {
-  const count = sessions.value.filter(s => selectedIds.value.has(`${s.cli}::${s.id}`)).length
-  return count > 0 && count < sessions.value.length
-})
-
-const toggleSelectAll = () => {
-  if (isAllSelected.value) {
-    clearSelection()
-  } else {
-    selectAllOnPage()
-  }
-}
-
-const toast = useToast()
-
-const openBatchDeleteConfirm = () => {
-  if (selectedSessions.value.length === 0) return
-  isBatchDeleteModalOpen.value = true
-}
-
-const executeBatchDelete = async () => {
-  if (selectedSessions.value.length === 0) return
-  isBatchDeleting.value = true
-  try {
-    const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
-    const res = await $fetch<{
-      success: boolean
-      data: { successCount: number, failCount: number, errors: string[] }
-    }>('/api/sessions/batch-delete', { method: 'POST', body: { items } })
-    if (res.success) {
-      isBatchDeleteModalOpen.value = false
-      selectedIds.value = new Set()
-      await handleRefresh()
-      if (res.data.failCount > 0) {
-        toast.add({
-          title: `已批量删除 ${res.data.successCount} 个会话，${res.data.failCount} 个失败`,
-          color: 'warning',
-          icon: 'i-lucide-alert-triangle'
-        })
-      } else {
-        toast.add({
-          title: `已成功批量删除 ${res.data.successCount} 个会话`,
-          color: 'success',
-          icon: 'i-lucide-check-circle-2'
-        })
-      }
-    }
-  } catch (err) {
-    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
-    toast.add({
-      title: '批量删除失败: ' + (fetchErr?.data?.message || fetchErr?.message || '未知错误'),
-      color: 'error',
-      icon: 'i-lucide-alert-triangle'
-    })
-  } finally {
-    isBatchDeleting.value = false
-  }
-}
-
-const handleBatchAddTag = async () => {
-  const tag = batchTagInput.value.trim()
-  if (!tag) return
-  isBatchTagging.value = true
-  try {
-    const items = selectedSessions.value.map(s => ({ id: s.id, cli: s.cli }))
-    const res = await $fetch<{ success: boolean, message?: string }>('/api/sessions/batch-tag', {
-      method: 'POST',
-      body: { items, tags: [tag], mode: 'add' }
-    })
-    batchTagInput.value = ''
-    selectedIds.value = new Set()
-    await handleRefresh()
-    if (res.message) toast.add({ title: res.message, color: 'success', icon: 'i-lucide-check-circle-2' })
-  } catch (err) {
-    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
-    toast.add({ title: '批量打标签失败: ' + (fetchErr?.data?.message || fetchErr?.message), color: 'error', icon: 'i-lucide-alert-triangle' })
-  } finally {
-    isBatchTagging.value = false
-  }
-}
-
-const handleBatchExport = async (format: string) => {
-  const items = selectedSessions.value.map(s => `${s.cli}::${s.id}`).join(',')
-  const url = `/api/sessions/batch-export?items=${encodeURIComponent(items)}&format=${format}`
-  window.open(url, '_blank')
-  selectedIds.value = new Set()
-}
 
 const getTags = (item: UnifiedSession): string[] => (item.extra?.tags as string[]) || []
+
+/** 卡片上最多展示的标签数，超出折叠为 +N（数据面已由自动打标规则收敛，这里只是兜底） */
+const CARD_TAG_LIMIT = 4
 const toggleTagFilter = (tag: string) => {
   activeTagFilter.value = activeTagFilter.value === tag ? '' : tag
 }
@@ -233,6 +115,30 @@ onMounted(async () => {
     // 忽略缓存状态加载失败，不影响页面主功能
   }
 })
+
+// Formatters
+const formatTime = (ts?: number) => {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// Data fetching
+const { data: statsData, refresh: refreshStats } = await useFetch<{ success: boolean, data: StatsData }>('/api/cli/stats')
+const { data: sessionData, pending, refresh: refreshSessions } = await useFetch<{ success: boolean, total: number, data: UnifiedSession[] }>(
+  () => `/api/sessions?cli=${currentTab.value}&q=${encodeURIComponent(searchQuery.value)}${activeTagFilter.value ? '&tag=' + encodeURIComponent(activeTagFilter.value) : ''}`
+)
+
+const sessions = computed(() => sessionData.value?.data || [])
+const counts = computed(() => statsData.value?.data?.counts || {})
+const totalCount = computed(() => statsData.value?.data?.total || 0)
+
+// Refresh all
+const handleRefresh = async () => {
+  isRefreshing.value = true
+  await Promise.all([refreshPlugins(), refreshStats(), refreshSessions()])
+  isRefreshing.value = false
+}
 
 // Cache sync
 const handleCacheSync = async () => {
@@ -253,156 +159,71 @@ const handleCacheSync = async () => {
   }
 }
 
-// Data fetching
-const { data: statsData, refresh: refreshStats } = await useFetch<{ success: boolean, data: StatsData }>('/api/cli/stats')
-const { data: sessionData, pending, refresh: refreshSessions } = await useFetch<{ success: boolean, total: number, data: UnifiedSession[] }>(
-  () => `/api/sessions?cli=${currentTab.value}&q=${encodeURIComponent(searchQuery.value)}${activeTagFilter.value ? '&tag=' + encodeURIComponent(activeTagFilter.value) : ''}`
-)
-
-const sessions = computed(() => sessionData.value?.data || [])
-const counts = computed(() => statsData.value?.data?.counts || {})
-const totalCount = computed(() => statsData.value?.data?.total || 0)
-
 // —— 大数据量渲染优化：卡片分块挂载 + 触底自动加载 ——
-// 会话数千条时一次性渲染网格会长时间冻结主线程，改为每批渲染、滚到底部自动追加
-const LIST_CHUNK = 60
-const visibleListCount = ref(LIST_CHUNK)
-const visibleSessions = computed(() => sessions.value.slice(0, visibleListCount.value))
-const listRemaining = computed(() => sessions.value.length - visibleListCount.value)
-
-const loadMoreList = () => {
-  if (listRemaining.value > 0) {
-    visibleListCount.value = Math.min(visibleListCount.value + LIST_CHUNK, sessions.value.length)
-  }
-}
-
-const listSentinelRef = ref<HTMLElement | null>(null)
-
-// 哨兵进入视口后持续补齐直到铺满屏幕（IntersectionObserver 对持续相交不会重复回调）
-const fillListUntilVisible = async () => {
-  await nextTick()
-  const el = listSentinelRef.value
-  if (!el) return
-  if (el.getBoundingClientRect().top < window.innerHeight + 600) {
-    loadMoreList()
-    await fillListUntilVisible()
-  }
-}
-
-let listObserver: IntersectionObserver | null = null
-
-onMounted(() => {
-  listObserver = new IntersectionObserver((entries) => {
-    if (entries.some(e => e.isIntersecting)) fillListUntilVisible()
-  }, { rootMargin: '600px' })
-})
-
-onBeforeUnmount(() => {
-  listObserver?.disconnect()
-})
-
-watch(listSentinelRef, (el, oldEl) => {
-  if (oldEl) listObserver?.unobserve(oldEl)
-  if (el) listObserver?.observe(el)
-})
+// 会话数千条时一次性渲染网格会长时间冻结主线程，改为每批渲染、滚到底部自动追加。
+// 具体实现统一在 useChunkedList（chunk=60 / rootMargin=600，与抽取前一致）。
+const {
+  items: visibleSessions,
+  visibleCount: visibleListCount,
+  remaining: listRemaining,
+  sentinelRef: listSentinelRef,
+  reset: resetChunkedList
+} = useChunkedList(sessions, { chunk: 60, rootMargin: 600 })
 
 // 切换平台 / 搜索 / 标签过滤后重置渲染窗口
 watch([currentTab, searchQuery, activeTagFilter], () => {
-  visibleListCount.value = LIST_CHUNK
+  resetChunkedList()
 })
 
-// Refresh all
-const handleRefresh = async () => {
-  isRefreshing.value = true
-  await Promise.all([refreshPlugins(), refreshStats(), refreshSessions()])
-  isRefreshing.value = false
-}
+// —— 批量勾选（selectedIds / selectedSessions / isAllSelected / isIndeterminate ...）——
+// 勾选范围是当前过滤结果的全部会话，与「全选本页 ({{ sessions.length }})」的计数一致。
+const {
+  selectedIds,
+  toggleSelect,
+  clearSelection,
+  selectedSessions,
+  isAllSelected,
+  isIndeterminate,
+  toggleSelectAll
+} = useBatchSelection(sessions)
 
-// Formatters
-const formatTime = (ts?: number) => {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+// —— 批量操作（批量删除 / 批量打标签 / 批量导出）——
+const {
+  isBatchDeleting,
+  isBatchDeleteModalOpen,
+  isBatchTagging,
+  batchTagInput,
+  openBatchDeleteConfirm,
+  executeBatchDelete,
+  handleBatchAddTag,
+  handleBatchExport
+} = useBatchActions({
+  selectedSessions,
+  clearSelection,
+  refresh: handleRefresh
+})
 
-// Modal States
-const isDetailOpen = ref(false)
-const selectedSession = ref<UnifiedSession | null>(null)
-
-const openDetail = (session: UnifiedSession) => {
-  navigateTo(`/sessions/${session.id}?cli=${session.cli}`)
-}
-
-// Edit Modal
-const isEditOpen = ref(false)
-const editingTitle = ref('')
-const isSavingEdit = ref(false)
-
-const startEdit = (session: UnifiedSession) => {
-  selectedSession.value = session
-  editingTitle.value = session.title
-  isEditOpen.value = true
-}
-
-const saveEdit = async () => {
-  if (!selectedSession.value) return
-  isSavingEdit.value = true
-  try {
-    const res = await $fetch<{ success: boolean, message?: string }>(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
-      method: 'PUT',
-      body: { title: editingTitle.value }
-    })
-    if (res.success) {
-      if (selectedSession.value) {
-        selectedSession.value.title = editingTitle.value
-      }
-      const itemInList = sessionData.value?.data?.find(s => s.id === selectedSession.value?.id)
-      if (itemInList) {
-        itemInList.title = editingTitle.value
-      }
-      isEditOpen.value = false
-      await handleRefresh()
-    } else {
-      toast.add({ title: res.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
-    }
-  } catch (err) {
-    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
-    toast.add({ title: fetchErr?.data?.message || fetchErr?.message || '修改失败', color: 'error', icon: 'i-lucide-alert-triangle' })
-  } finally {
-    isSavingEdit.value = false
+// —— 单条操作（详情跳转 / 重命名 / 删除）——
+const {
+  selectedSession,
+  openDetail,
+  isEditOpen,
+  editingTitle,
+  isSavingEdit,
+  startEdit,
+  saveEdit,
+  isDeleteOpen,
+  isDeleting,
+  confirmDelete,
+  executeDelete
+} = useSessionActions<UnifiedSession>({
+  refresh: handleRefresh,
+  // 原名改完后同步页面列表里的同一条（refresh 之前先把 UI 改对，避免闪回旧标题）
+  syncTitleToList: (session, title) => {
+    const itemInList = sessionData.value?.data?.find(s => s.id === session.id)
+    if (itemInList) itemInList.title = title
   }
-}
-
-// Delete Modal
-const isDeleteOpen = ref(false)
-const isDeleting = ref(false)
-
-const confirmDelete = (session: UnifiedSession) => {
-  selectedSession.value = session
-  isDeleteOpen.value = true
-}
-
-const executeDelete = async () => {
-  if (!selectedSession.value) return
-  isDeleting.value = true
-  try {
-    const res = await $fetch<{ success: boolean, message?: string }>(`/api/sessions/${selectedSession.value.id}?cli=${selectedSession.value.cli}`, {
-      method: 'DELETE'
-    })
-    if (res.success) {
-      isDeleteOpen.value = false
-      if (isDetailOpen.value) isDetailOpen.value = false
-      await handleRefresh()
-    } else {
-      toast.add({ title: res.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
-    }
-  } catch (err) {
-    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
-    toast.add({ title: fetchErr?.data?.message || fetchErr?.message || '删除失败', color: 'error', icon: 'i-lucide-alert-triangle' })
-  } finally {
-    isDeleting.value = false
-  }
-}
+})
 </script>
 
 <template>
@@ -628,21 +449,8 @@ const executeDelete = async () => {
       </div>
     </div>
 
-    <!-- Sessions List -->
-    <template v-if="pending">
-      <div class="py-16 text-center text-zinc-400">
-        <UIcon
-          name="i-lucide-loader-2"
-          class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500"
-        />
-        <p class="text-xs">
-          加载会话数据中...
-        </p>
-      </div>
-    </template>
-
-    <!-- Tag filter indicator -->
-    <template v-else-if="activeTagFilter && !pending">
+    <!-- 标签筛选指示条：独立渲染。曾误插进下面的 v-if/v-else-if 链，导致点标签后卡片网格整块消失 -->
+    <template v-if="activeTagFilter && !pending">
       <div class="mb-2 flex items-center gap-2 text-xs text-zinc-500">
         <span>筛选标签：</span>
         <span
@@ -661,6 +469,19 @@ const executeDelete = async () => {
           />
         </span>
         <span class="text-zinc-400">({{ sessions.length }})</span>
+      </div>
+    </template>
+
+    <!-- Sessions List -->
+    <template v-if="pending">
+      <div class="py-16 text-center text-zinc-400">
+        <UIcon
+          name="i-lucide-loader-2"
+          class="w-6 h-6 animate-spin mx-auto mb-2 text-zinc-500"
+        />
+        <p class="text-xs">
+          加载会话数据中...
+        </p>
       </div>
     </template>
 
@@ -684,173 +505,23 @@ const executeDelete = async () => {
     <!-- Batch Action Bar & Sessions Grid -->
     <template v-else>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-        <div
+        <SessionCard
           v-for="item in visibleSessions"
           :key="`${item.cli}-${item.id}`"
-          :class="[
-            'group bg-white dark:bg-zinc-900 rounded-lg border transition-all flex flex-col justify-between overflow-hidden shadow-sm',
-            selectedIds.has(`${item.cli}::${item.id}`)
-              ? 'border-zinc-900 dark:border-zinc-100 ring-2 ring-zinc-900/15 dark:ring-zinc-100/20 bg-zinc-50/50 dark:bg-zinc-800/30'
-              : 'border-zinc-200 dark:border-zinc-800/90 hover:border-zinc-300 dark:hover:border-zinc-700'
-          ]"
-        >
-          <div
-            class="p-4 flex-1 cursor-pointer"
-            @click="openDetail(item)"
-          >
-            <!-- Top Tag & Time -->
-            <div class="flex items-center justify-between mb-2.5 gap-2">
-              <div class="flex items-center gap-1.5">
-                <div
-                  class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all shrink-0 hover:scale-110"
-                  :class="selectedIds.has(`${item.cli}::${item.id}`)
-                    ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100 text-white dark:text-zinc-900 shadow-xs'
-                    : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-500 bg-white/70 dark:bg-zinc-800/70'"
-                  title="勾选此会话以进行批量操作"
-                  @click.stop="toggleSelect(item)"
-                >
-                  <UIcon
-                    v-if="selectedIds.has(`${item.cli}::${item.id}`)"
-                    name="i-lucide-check"
-                    class="w-3 h-3 stroke-[3]"
-                  />
-                </div>
-                <span class="px-2 py-0.5 rounded text-[11px] font-medium font-mono border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                  <UIcon
-                    :name="getPluginMeta(item.cli).icon"
-                    class="w-3 h-3 text-zinc-500 dark:text-zinc-400"
-                  />
-                  {{ getPluginMeta(item.cli).name }}
-                </span>
-                <span
-                  v-if="item.extra?.aiDiagnosed"
-                  class="px-1.5 py-0.5 rounded text-[10px] font-medium border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1 shrink-0"
-                  title="该会话已完成 AI 深度诊断，进入详情页可查看诊断报告"
-                >
-                  <UIcon
-                    name="i-lucide-sparkles"
-                    class="w-3 h-3"
-                  />
-                  AI 已诊断
-                </span>
-              </div>
-              <span class="text-[11px] text-zinc-400 font-mono">
-                {{ formatTime(item.updatedAt) }}
-              </span>
-            </div>
-
-            <!-- Title -->
-            <h3 class="font-medium text-zinc-900 dark:text-zinc-100 text-sm line-clamp-2 mb-1.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
-              {{ item.title }}
-            </h3>
-
-            <!-- Tags -->
-            <div
-              v-if="getTags(item).length"
-              class="flex flex-wrap gap-1 mb-2"
-            >
-              <span
-                v-for="tag in getTags(item)"
-                :key="tag"
-                :class="[
-                  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer select-none border transition-all',
-                  activeTagFilter === tag ? 'ring-2 ring-offset-1 dark:ring-offset-zinc-900' : 'hover:opacity-80'
-                ]"
-                :style="{
-                  backgroundColor: (tagColors[tag] || '#6366f1') + '20',
-                  color: tagColors[tag] || '#6366f1',
-                  borderColor: (tagColors[tag] || '#6366f1') + '40'
-                }"
-                @click.stop="toggleTagFilter(tag)"
-              >
-                #{{ tag }}
-              </span>
-            </div>
-
-            <!-- Details & Path -->
-            <div class="space-y-1 text-xs text-zinc-500 dark:text-zinc-400">
-              <div class="flex items-center gap-1 truncate font-mono text-[11px]">
-                <UIcon
-                  name="i-lucide-folder"
-                  class="w-3.5 h-3.5 shrink-0 text-zinc-400"
-                />
-                <span
-                  class="truncate"
-                  :title="item.cwd"
-                >{{ item.cwd || '默认工作区' }}</span>
-              </div>
-
-              <div class="flex items-center gap-3 text-zinc-400 dark:text-zinc-500 pt-1 text-[11px]">
-                <span
-                  v-if="item.messageCount !== undefined"
-                  class="flex items-center gap-1"
-                >
-                  <UIcon
-                    name="i-lucide-message-square"
-                    class="w-3 h-3"
-                  />
-                  {{ item.messageCount }}
-                </span>
-                <span
-                  v-if="item.model"
-                  class="flex items-center gap-1 truncate max-w-[130px] font-mono"
-                >
-                  <UIcon
-                    name="i-lucide-cpu"
-                    class="w-3 h-3"
-                  />
-                  {{ item.model }}
-                </span>
-                <span
-                  v-if="item.cost !== undefined && item.cost > 0"
-                  class="font-mono"
-                >
-                  ${{ item.cost.toFixed(4) }}
-                </span>
-                <span
-                  v-if="item.status"
-                  class="px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] uppercase font-mono"
-                >
-                  {{ item.status }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Footer Actions -->
-          <div class="bg-zinc-50/70 dark:bg-zinc-900/70 border-t border-zinc-100 dark:border-zinc-800/80 px-3.5 py-1.5 flex items-center justify-between text-xs">
-            <div class="flex items-center gap-1">
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-eye"
-                @click="openDetail(item)"
-              >
-                查看
-              </UButton>
-            </div>
-
-            <div class="flex items-center gap-0.5">
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-edit-3"
-                title="重命名 / 编辑"
-                @click="startEdit(item)"
-              />
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="error"
-                icon="i-lucide-trash-2"
-                title="删除会话"
-                @click="confirmDelete(item)"
-              />
-            </div>
-          </div>
-        </div>
+          :item="item"
+          :selected="selectedIds.has(`${item.cli}::${item.id}`)"
+          :tags="getTags(item)"
+          :limit="CARD_TAG_LIMIT"
+          :plugin-meta="getPluginMeta(item.cli)"
+          :tag-colors="tagColors"
+          :active-tag-filter="activeTagFilter"
+          :format-time="formatTime"
+          @select="toggleSelect(item)"
+          @open="openDetail(item)"
+          @edit="startEdit(item)"
+          @remove="confirmDelete(item)"
+          @tag="toggleTagFilter"
+        />
       </div>
 
       <!-- 分块加载哨兵：滚入视口自动追加下一批卡片 -->
