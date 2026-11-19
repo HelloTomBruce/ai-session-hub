@@ -7,8 +7,8 @@ import { backfillDiagnoses } from '../../utils/diagnosis-index'
  */
 export default defineEventHandler((event) => {
   const query = getQuery(event)
-  const limit = query.limit ? parseInt(query.limit as string, 10) : 200
-  const result = backfillDiagnoses(Number.isFinite(limit) ? limit : 200)
+  const limit = requireInt(query.limit, { field: 'limit', min: 1, max: 1000, fallback: 200 })
+  const result = backfillDiagnoses(limit)
   return {
     success: true,
     ...result

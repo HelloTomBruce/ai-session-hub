@@ -1,10 +1,11 @@
+import { logger } from '../../utils/logger'
 import type { PlatformType } from '../../utils/types'
 import { cacheService } from '../../utils/cache-service'
 import { deleteCliSession } from '../../utils/session-service'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const items: Array<{ id: string, cli: string }> = body?.items || []
+  const body = await readJsonBody(event)
+  const items = requireEntityRefs(body.items, { field: 'items', maxItems: 500 })
 
   if (items.length === 0) {
     throw createError({ statusCode: 400, message: 'No items specified for batch delete' })
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
       try {
         deleteCliSession(item.cli as PlatformType, item.id)
       } catch (err) {
-        console.warn(`[BatchDelete] Warning deleting from adapter ${item.cli}/${item.id}:`, err)
+        logger.warn(`[BatchDelete] Warning deleting from adapter ${item.cli}/${item.id}:`, err)
       }
 
       // Always clean up cache

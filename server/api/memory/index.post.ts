@@ -2,24 +2,33 @@ import { memoryService } from '../../utils/memory-service'
 import type { MemoryGraphItem } from '../../utils/memory-types'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<Partial<MemoryGraphItem>>(event)
+  const raw = await readJsonBody<Partial<MemoryGraphItem>>(event)
 
-  if (!body || !body.title || !body.content) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: '记忆标题 (title) 和内容 (content) 不能为空'
-    })
-  }
+  // 入参校验：标题/内容必填且有长度上限（此前只判空，超长内容会直接进图库）
+  const title = requireString(raw.title, { field: 'title', min: 1, max: 200 })
+  const content = requireString(raw.content, { field: 'content', min: 1, max: 100_000 })
+  const type = optionalString(raw.type, { field: 'type', max: 40 })
+  const summary = optionalString(raw.summary, { field: 'summary', max: 2_000 })
+  const tags = raw.tags === undefined ? undefined : requireStringArray(raw.tags, { field: 'tags', max: 40, maxItems: 20 })
+  const techConcepts = raw.techConcepts
+  const projects = raw.projects
+  const problems = raw.problems
 
   try {
     const result = await memoryService.saveMemoryWithDedup(
       {
-        ...body,
-        title: body.title,
-        content: body.content
+        ...raw,
+        title,
+        content,
+        ...(type ? { type } : {}),
+        ...(summary ? { summary } : {}),
+        ...(tags ? { tags } : {}),
+        ...(techConcepts ? { techConcepts } : {}),
+        ...(projects ? { projects } : {}),
+        ...(problems ? { problems } : {})
       },
-      body.sourceMeta?.sessionId
-        ? { sessionId: body.sourceMeta.sessionId, platform: body.sourceMeta.platform || '' }
+      raw.sourceMeta?.sessionId
+        ? { sessionId: raw.sourceMeta.sessionId, platform: raw.sourceMeta.platform || '' }
         : undefined
     )
 

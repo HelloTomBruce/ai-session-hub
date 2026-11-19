@@ -1,8 +1,8 @@
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const items: Array<{ id: string, cli: string }> = body?.items || []
-  const tags: string[] = body?.tags || []
-  const mode: 'add' | 'set' | 'remove' = body?.mode || 'add'
+  const body = await readJsonBody(event)
+  const items = requireEntityRefs(body.items, { field: 'items', maxItems: 500 })
+  const tags = requireStringArray(body.tags, { field: 'tags', max: 40, maxItems: 20 })
+  const mode = optionalString(body.mode, { field: 'mode', max: 10, oneOf: ['add', 'set', 'remove'] as const }) || 'add'
 
   if (items.length === 0) throw createError({ statusCode: 400, message: 'No items specified' })
   if (tags.length === 0) throw createError({ statusCode: 400, message: 'No tags specified' })

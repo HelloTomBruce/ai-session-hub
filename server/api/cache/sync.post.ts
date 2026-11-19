@@ -2,7 +2,7 @@ import { cacheService } from '~~/server/utils/cache-service'
 
 export default defineEventHandler(async (event) => {
   const { force } = getQuery(event)
-  const result = force === 'true' ? cacheService.rebuildAll() : cacheService.syncAll()
+  const result = optionalBool(force, 'force') ? cacheService.rebuildAll() : cacheService.syncAll()
 
   return {
     success: true,

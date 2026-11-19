@@ -4,8 +4,8 @@ export default defineEventHandler(async (event) => {
   const platform = (query.cli as string) || ''
   if (!id || !platform) throw createError({ statusCode: 400, message: 'id and cli required' })
 
-  const body = await readBody(event)
-  const tags: string[] = body?.tags || []
+  const body = await readJsonBody(event)
+  const tags = body.tags === undefined ? [] : requireStringArray(body.tags, { field: 'tags', max: 40, maxItems: 20 })
 
   const ok = tagService.setSessionTags(id, platform, tags)
   return { success: ok }

@@ -11,9 +11,14 @@ export default defineEventHandler(async (event) => {
   const rawBody = await readBody(event).catch(() => ({}))
   const body: AutoHarvestRequestBody = (rawBody && typeof rawBody === 'object') ? rawBody : {}
 
+  const limit = requireInt(body.limit, { field: 'limit', min: 1, max: 200, fallback: 20 })
+  const platform = optionalString(body.platform, { field: 'platform', max: 40 })
+  const sessionId = optionalString(body.sessionId, { field: 'sessionId', max: 200 })
+  const force = optionalBool(body.force, 'force')
+
   // 支持单个会话立即收割
-  if (body.sessionId && body.platform) {
-    const record = await autoHarvestService.harvestSession(body.platform, body.sessionId, body.force)
+  if (sessionId && platform) {
+    const record = await autoHarvestService.harvestSession(platform, sessionId, force)
     return {
       success: true,
       single: true,
@@ -23,9 +28,9 @@ export default defineEventHandler(async (event) => {
 
   // 批量收割
   const result = await autoHarvestService.batchHarvest({
-    limit: body.limit,
-    platform: body.platform,
-    force: body.force
+    limit,
+    platform,
+    force
   })
 
   return {
