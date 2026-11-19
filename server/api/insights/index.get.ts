@@ -2,6 +2,7 @@ import '../../utils/session-service'
 import { adapterRegistry } from '../../utils/adapter-registry'
 import { knowledgeService, type KnowledgeItem } from '../../utils/knowledge-service'
 import { cacheService } from '../../utils/cache-service'
+import { recallStats } from '../../utils/recall-stats'
 
 export interface ToolCategoryStats {
   category: 'edit' | 'search_read' | 'command' | 'subagent' | 'mcp' | 'other'
@@ -52,6 +53,98 @@ interface CachedEvaluationRow {
   signals_json: string
   is_worth_saving: number
   evaluated_at: number
+}
+
+/**
+ * 度量样本充分性：本页的召回效果结论建立在「诊断索引 + 召回曝光」之上，
+ * 样本过薄时前端必须显式标注结论不可信，而不是用空图表冒充分析。
+ */
+export interface MeasurementStats {
+  /** session_diagnoses 行数（已索引诊断的会话数） */
+  diagnosedSessions: number
+  /** recall_events 行数（召回曝光次数） */
+  recallEvents: number
+  /** session_evaluations 行数（已量化评估的会话数） */
+  evaluatedSessions: number
+  /** 会话总数 */
+  totalSessions: number
+  /** 诊断覆盖率 = diagnosedSessions / totalSessions，0-1，保留两位 */
+  coverage: number
+  /** coverage ≥ 30% 且 recallEvents ≥ 50 才认为样本充分 */
+  sampleSufficient: boolean
+}
+
+/** 样本充分性阈值：覆盖率下限（30%） */
+export const SAMPLE_COVERAGE_THRESHOLD = 0.3
+/** 样本充分性阈值：召回曝光次数下限（50 次） */
+export const SAMPLE_RECALL_EVENTS_THRESHOLD = 50
+
+type CacheDb = ReturnType<typeof cacheService.getDb>
+
+/**
+ * 单表计数：表缺失 / 连接不可用 / SQL 失败一律降级为 0，
+ * 保证度量字段永不把接口拖成 500。
+ */
+function safeCountSessions(db: CacheDb): number {
+  if (!db) return 0
+  try {
+    const row = db.prepare('SELECT COUNT(*) AS c FROM sessions_cache').get() as { c?: number } | undefined
+    return typeof row?.c === 'number' ? row.c : 0
+  } catch {
+    return 0
+  }
+}
+
+function safeCountRows(db: CacheDb, table: 'session_diagnoses' | 'session_evaluations'): number {
+  if (!db) return 0
+  try {
+    const row = db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c?: number } | undefined
+    return typeof row?.c === 'number' ? row.c : 0
+  } catch {
+    return 0
+  }
+}
+
+/** 逐项兜底统计度量样本，任一项失败只影响该项计数（降级为 0），不向上抛错。 */
+function buildMeasurement(adapterTotalSessions: number): MeasurementStats {
+  let diagnosedSessions: number
+  let evaluatedSessions: number
+  let cachedSessions: number
+  let recallEvents: number
+
+  try {
+    const db = cacheService.getDb()
+    diagnosedSessions = safeCountRows(db, 'session_diagnoses')
+    evaluatedSessions = safeCountRows(db, 'session_evaluations')
+    cachedSessions = safeCountSessions(db)
+  } catch {
+    diagnosedSessions = 0
+    evaluatedSessions = 0
+    cachedSessions = 0
+  }
+
+  try {
+    recallEvents = recallStats.countEvents()
+  } catch {
+    recallEvents = 0
+  }
+
+  // 分母取「缓存会话总数」与 adapter 口径的较大者：诊断索引按 sessions_cache 回填，
+  // 只用 adapter 口径会出现「已索引 223 / 总数 221」这种刺眼数字。
+  const adapterTotal = Number.isFinite(adapterTotalSessions) ? Math.max(0, adapterTotalSessions) : 0
+  const safeTotal = Math.max(adapterTotal, cachedSessions)
+  const coverage = safeTotal > 0
+    ? Math.min(1, Math.round((diagnosedSessions / safeTotal) * 100) / 100)
+    : 0
+
+  return {
+    diagnosedSessions,
+    evaluatedSessions,
+    recallEvents,
+    totalSessions: safeTotal,
+    coverage,
+    sampleSufficient: coverage >= SAMPLE_COVERAGE_THRESHOLD && recallEvents >= SAMPLE_RECALL_EVENTS_THRESHOLD
+  }
 }
 
 export default defineEventHandler(async (_event) => {
@@ -297,8 +390,12 @@ export default defineEventHandler(async (_event) => {
       }
     })
 
+    // 7. Measurement Coverage：让样本不足显式可见（前端据此标注「结论暂不可信」）
+    const measurement = buildMeasurement(totalSessions)
+
     return {
       success: true,
+      measurement,
       data: {
         summary: {
           totalSessions,

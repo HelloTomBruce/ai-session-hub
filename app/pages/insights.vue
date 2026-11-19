@@ -39,6 +39,15 @@ interface HighValueSessionItem {
   isVaultWorthy: boolean
 }
 
+interface MeasurementStats {
+  diagnosedSessions: number
+  recallEvents: number
+  evaluatedSessions: number
+  totalSessions: number
+  coverage: number
+  sampleSufficient: boolean
+}
+
 interface InsightsData {
   summary: {
     totalSessions: number
@@ -64,18 +73,55 @@ interface InsightsData {
 
 const isRefreshing = ref(false)
 const isMcpOpen = ref(false)
+const isBackfilling = ref(false)
+const toast = useToast()
 
 const { data: insightsRes, pending, refresh } = await useFetch<{
   success: boolean
+  measurement?: MeasurementStats
   data: InsightsData
 }>('/api/insights')
 
 const insights = computed(() => insightsRes.value?.data)
+const measurement = computed(() => insightsRes.value?.measurement)
+const coveragePercent = computed(() => Math.round((measurement.value?.coverage ?? 0) * 100))
 
 const handleRefresh = async () => {
   isRefreshing.value = true
   await refresh()
   isRefreshing.value = false
+}
+
+// 一键补齐诊断索引：幂等回填确定性 rubric 结果，补完刷新度量口径
+const handleBackfill = async () => {
+  if (isBackfilling.value) return
+  isBackfilling.value = true
+  try {
+    const res = await $fetch<{
+      success: boolean
+      indexed?: number
+      remaining?: number
+    }>('/api/diagnoses/backfill?limit=200', { method: 'POST' })
+    const indexed = res.indexed ?? 0
+    const remaining = res.remaining ?? 0
+    await refresh()
+    toast.add({
+      title: `已索引 ${indexed} 条，剩余 ${remaining} 条`,
+      description: remaining > 0 ? '再次点击可继续补齐剩余会话' : '诊断索引已补齐，度量口径已刷新',
+      color: indexed > 0 ? 'success' : 'warning',
+      icon: indexed > 0 ? 'i-lucide-check-circle' : 'i-lucide-info'
+    })
+  } catch (err) {
+    const fetchErr = err as { data?: { message?: string }, message?: string } | null | undefined
+    toast.add({
+      title: '补齐诊断索引失败',
+      description: fetchErr?.data?.message || fetchErr?.message || '请稍后重试',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  } finally {
+    isBackfilling.value = false
+  }
 }
 
 const formatNumber = (num?: number) => {
@@ -165,6 +211,58 @@ const colorClassMap: Record<string, { bar: string, text: string, bg: string }> =
       v-else-if="insights"
       class="space-y-6"
     >
+      <!-- 0. Measurement Sample Status：样本不足时诚实标注，并给出补齐入口 -->
+      <div
+        v-if="measurement"
+        class="rounded-xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        :class="measurement.sampleSufficient
+          ? 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900'
+          : 'border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30'"
+      >
+        <div class="flex items-start gap-2.5">
+          <UIcon
+            :name="measurement.sampleSufficient ? 'i-lucide-badge-check' : 'i-lucide-triangle-alert'"
+            class="w-4 h-4 mt-0.5 shrink-0"
+            :class="measurement.sampleSufficient ? 'text-emerald-500' : 'text-amber-500'"
+          />
+          <div class="space-y-0.5">
+            <p
+              class="text-xs"
+              :class="measurement.sampleSufficient
+                ? 'text-zinc-500 dark:text-zinc-400'
+                : 'text-amber-800 dark:text-amber-300 font-medium'"
+            >
+              <template v-if="measurement.sampleSufficient">
+                度量样本充足：已索引 {{ formatNumber(measurement.diagnosedSessions) }}/{{ formatNumber(measurement.totalSessions) }} 会话（覆盖率 {{ coveragePercent }}%），召回曝光 {{ formatNumber(measurement.recallEvents) }} 次。
+              </template>
+              <template v-else>
+                度量样本不足：已索引 {{ formatNumber(measurement.diagnosedSessions) }}/{{ formatNumber(measurement.totalSessions) }} 会话（覆盖率 {{ coveragePercent }}%）、召回曝光 {{ formatNumber(measurement.recallEvents) }} 次。此页的召回效果结论暂不可信。
+              </template>
+            </p>
+            <p
+              v-if="!measurement.sampleSufficient"
+              class="text-[11px] text-amber-700/90 dark:text-amber-400/80"
+            >
+              补齐诊断索引（确定性 rubric，零 LLM 成本）后，召回曝光与摩擦变化才具备可比性；样本需达覆盖率 ≥ 30% 且召回曝光 ≥ 50 次。
+            </p>
+          </div>
+        </div>
+
+        <UButton
+          v-if="!measurement.sampleSufficient"
+          size="sm"
+          color="warning"
+          variant="solid"
+          icon="i-lucide-list-checks"
+          :loading="isBackfilling"
+          :disabled="isBackfilling"
+          class="shrink-0"
+          @click="handleBackfill"
+        >
+          补齐诊断索引
+        </UButton>
+      </div>
+
       <!-- 1. KPI Top Summary Grid -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <!-- Sessions Count -->
